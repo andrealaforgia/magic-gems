@@ -66,21 +66,24 @@ Feature: Gem shatter effect (B4)
     And I press "Space"
     Then a selection highlight is present, proving the game accepted input immediately
 
+  # Trimmed per QA test-design review (commit b637cf4 Farley Index 7.8, Granular
+  # finding #6): the only claim here not already proven elsewhere is that input is
+  # accepted *while a shatter is still in flight*, and that a second, independent
+  # shatter still plays normally afterward (no lasting side effect from the
+  # interleaved input). Fragment count/velocity-variation/no-block-input/board-
+  # validity are each already covered atomically by E1, E5, and gem-shatter's own
+  # E7, so those assertions aren't repeated here.
   @E8 @integration
-  Scenario: One continuous session - shatter plays while resolution and the next move proceed normally
+  Scenario: One continuous session - input mid-shatter does not block, and a second shatter plays normally afterward
     Given I open "index.html" directly as a file:// URL with no server or build step
     And I locate an adjacent swap that would produce a match on the live board
     When I commit that swap
     Then multiple fragments are actively animating
-    And I record the fragment velocity pattern
     When I press "ArrowRight"
     And I press "Space"
     Then a selection highlight is present, proving the game accepted input immediately
-    When the shatter animation has settled
-    Then no fragments remain
-    And the board contains no horizontal or vertical run of 3 or more identical gems
-    And all 64 cells contain exactly one recognizable gem colour each
     When I press "Escape"
+    And the shatter animation has settled
     And I locate an adjacent swap that would produce a match on the live board
     And I commit that swap
-    Then the fragment velocity pattern differs from the recorded one
+    Then multiple fragments are actively animating
