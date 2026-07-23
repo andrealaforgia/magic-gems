@@ -10,9 +10,10 @@
     const path = new Path2D();
     switch (gem) {
       case 'purple-triangle':
+        // Apex and base equidistant from centre (SPEC 3.3: centred both axes).
         path.moveTo(cx, cy - r);
-        path.lineTo(cx + r * 0.87, cy + r * 0.6);
-        path.lineTo(cx - r * 0.87, cy + r * 0.6);
+        path.lineTo(cx + r * 0.87, cy + r);
+        path.lineTo(cx - r * 0.87, cy + r);
         path.closePath();
         break;
       case 'red-square':
@@ -23,17 +24,24 @@
         path.arc(cx, cy, r * 0.85, 0, Math.PI * 2);
         break;
       case 'yellow-diamond':
-        path.moveTo(cx, cy - r * 1.15);
-        path.lineTo(cx + r * 0.75, cy);
-        path.lineTo(cx, cy + r * 0.6);
-        path.lineTo(cx - r * 0.75, cy);
+        // Equilateral diamond: a rhombus with 4 equal sides (a square rotated 45deg),
+        // symmetric on both axes (SPEC 2.4, 3.3).
+        path.moveTo(cx, cy - r);
+        path.lineTo(cx + r, cy);
+        path.lineTo(cx, cy + r);
+        path.lineTo(cx - r, cy);
         path.closePath();
         break;
       case 'blue-diamond':
-        path.moveTo(cx, cy - r * 0.6);
-        path.lineTo(cx + r * 0.75, cy);
-        path.lineTo(cx, cy + r * 1.15);
-        path.lineTo(cx - r * 0.75, cy);
+        // Cut-gemstone silhouette pointing down: flat "table" top edge, angled
+        // shoulder facets, sharp pavilion point at bottom. Bounding box spans -r to
+        // +r on both axes, so it's centred (SPEC 3.3) while staying visually distinct
+        // from yellow's plain equilateral rhombus (SPEC 2.5).
+        path.moveTo(cx - r * 0.5, cy - r);
+        path.lineTo(cx + r * 0.5, cy - r);
+        path.lineTo(cx + r, cy - r * 0.15);
+        path.lineTo(cx, cy + r);
+        path.lineTo(cx - r, cy - r * 0.15);
         path.closePath();
         break;
       default:

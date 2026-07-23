@@ -181,14 +181,13 @@ Given('a single {string} gem is drawn in isolation', async function (gemType) {
   this.probeGemType = gemType;
 });
 
-// Same 4 offsets classifyShape queries, in the same order, so pre-fetching every
+// Same 3 offsets classifyShape queries, in the same order, so pre-fetching every
 // sample from the real canvas and feeding them back sequentially reproduces exactly
 // what classifyShape would see live (it may short-circuit before using them all).
 const SHAPE_PROBE_OFFSET_RATIOS = [
-  [0.7, 0.7],
-  [0, -0.7],
-  [0, -0.95],
-  [0.52, 0.55],
+  [0.6, 0],
+  [0.75, 0.75],
+  [0, -0.97],
 ];
 
 Then('it is rendered as a {string} filled with its own distinct colour', async function (expectedShape) {

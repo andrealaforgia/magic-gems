@@ -15,8 +15,10 @@ Six distinct gem types, each a geometric shape drawn with a neon glow effect:
 - 2.1 Purple triangle, pointing up.
 - 2.2 Red square.
 - 2.3 Green circle.
-- 2.4 Yellow diamond.
-- 2.5 Blue diamond, pointing down (visually distinct from the yellow diamond).
+- 2.4 Yellow diamond: an equilateral diamond — a rhombus with four equal sides
+  (a square rotated 45°).
+- 2.5 Blue diamond, pointing down, with the silhouette of a real cut gemstone
+  (visually distinct from the equilateral yellow diamond).
 - 2.6 White circle (visually distinct from the green circle).
 - 2.7 A gem's identity is the (shape + colour) pair; the six pairs above are the
   only gem types. Future sprites may replace the shapes without changing identity.
@@ -24,6 +26,11 @@ Six distinct gem types, each a geometric shape drawn with a neon glow effect:
 ## 3. The board & layout
 - 3.1 The playfield is an 8×8 grid of gems.
 - 3.2 The board occupies the central part of the screen.
+- 3.3 Each gem is drawn centred within its grid cell, both horizontally and
+  vertically.
+- 3.4 The board is sized to occupy about 80% of the viewport's vertical size
+  (height), centred; the gems scale up with the board. It must still fit within
+  the viewport (not overflow horizontally on narrow screens).
 
 ## 4. Initial state
 - 4.1 The board starts filled with randomly chosen gem types.
@@ -60,5 +67,12 @@ Six distinct gem types, each a geometric shape drawn with a neon glow effect:
 
 ## 9. Visual effects
 - 9.1 Gems are rendered with a neon effect (glow).
-- 9.2 When gems are removed, a shatter effect plays: pixels representing the broken
-  gem fall downward.
+- 9.2 When gems are removed (each time a row or column run is completed and
+  cleared), every removed gem plays a shatter effect and breaks apart. The effect
+  must be visually appealing.
+  - 9.2.1 The break is varied: gems do not all shatter identically — each break
+    differs (e.g. randomised fragment paths / spread), so repeated clears never
+    look the same.
+  - 9.2.2 The fragments are small pieces of the broken gem (e.g. miniature versions
+    of it, or pixel-like shards) that fall down the screen, drifting somewhat
+    randomly, and disappear once they pass beyond the lower border of the screen.

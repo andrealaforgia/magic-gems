@@ -49,18 +49,19 @@ export function classifyColor(rgb, palette, tolerance = CLASSIFY_TOLERANCE) {
   return bestDist < tolerance ? best : null;
 }
 
-// Classifies the shape drawn around (cx, cy) with nominal radius r by sampling 4
+// Classifies the shape drawn around (cx, cy) with nominal radius r by sampling 3
 // diagnostic points chosen from this project's own shape geometry (src/render.js):
-// a corner point only a square's axis-aligned bounding box reaches; a point above
-// centre only the blue-diamond's short top vertex fails to reach; a point near the
-// top edge only a circle's round boundary excludes; and a point that only a
-// triangle's wide flat base reaches but a yellow-diamond's narrow bottom point does
-// not. Verified empirically against all 6 gem types (see commit history).
+// a mid-height horizontal point only the triangle's linear taper fails to reach; a
+// corner point only the square's axis-aligned bounding box reaches; and a near-top
+// point only the circle's round boundary excludes. Whatever remains once those three
+// are ruled out is one of the two diamond variants (yellow/blue) — both count as
+// "diamond" here, since shape identity, not colour, is all this distinguishes.
+// Verified empirically against all 6 gem types (see commit history).
 export function classifyShape(getAlphaAt, r, threshold = SHAPE_FILL_ALPHA_THRESHOLD) {
   const filled = (dx, dy) => getAlphaAt(dx, dy) > threshold;
 
-  if (filled(0.7 * r, 0.7 * r)) return 'square';
-  if (!filled(0, -0.7 * r)) return 'diamond'; // blue-diamond
-  if (!filled(0, -0.95 * r)) return 'circle';
-  return filled(0.52 * r, 0.55 * r) ? 'triangle' : 'diamond'; // yellow-diamond
+  if (!filled(0.6 * r, 0)) return 'triangle';
+  if (filled(0.75 * r, 0.75 * r)) return 'square';
+  if (!filled(0, -0.97 * r)) return 'circle';
+  return 'diamond';
 }
