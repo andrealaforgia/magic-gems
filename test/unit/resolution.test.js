@@ -229,7 +229,7 @@ test('resolveCascade clears matches, refills, and settles to a fully-filled matc
     board[4][2] = GEM_TYPES[3];
     board[4][3] = GEM_TYPES[3];
 
-    const settled = resolveCascade(board);
+    const { board: settled } = resolveCascade(board);
 
     assert.equal(hasMatch(settled), false, 'settled board must have no remaining match');
     for (const row of settled) {
@@ -238,6 +238,26 @@ test('resolveCascade clears matches, refills, and settles to a fully-filled matc
       }
     }
   }
+});
+
+test('resolveCascade reports every cleared cell with its original gem type (for the shatter effect)', () => {
+  const board = buildMatchFreeBoard();
+  board[4][1] = GEM_TYPES[3];
+  board[4][2] = GEM_TYPES[3];
+  board[4][3] = GEM_TYPES[3];
+
+  const { clearEvents } = resolveCascade(board);
+
+  const firstClears = clearEvents.filter((e) => e.row === 4 && [1, 2, 3].includes(e.col));
+  assert.equal(firstClears.length, 3, 'all 3 originally-matched cells must be reported as cleared');
+  for (const event of firstClears) {
+    assert.equal(event.gemType, GEM_TYPES[3], 'a clear event must carry the gem type it cleared, not the refilled value');
+  }
+});
+
+test('resolveCascade reports no clear events when the board already has no match', () => {
+  const { clearEvents } = resolveCascade(buildMatchFreeBoard());
+  assert.deepEqual(clearEvents, []);
 });
 
 test('hasAnyValidMove is false for a board where no adjacent swap can create a match', () => {

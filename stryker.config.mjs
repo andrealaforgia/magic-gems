@@ -1,5 +1,5 @@
 export default {
-  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js'],
+  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js'],
   testRunner: 'command',
   commandRunner: { command: 'npm run test:unit' },
   reporters: ['clear-text', 'progress'],
@@ -76,3 +76,15 @@ export default {
 //     tests exist to catch. Both fixtures below were found by local search and
 //     confirmed, by exhaustively enumerating every adjacent swap, to contain exactly
 //     one valid move each.
+// (B4) resolveCascade's clearEvents addition brought one more equivalent survivor into
+// this same safety-net class: the final `return {}` fallback is only reachable past
+// CASCADE_SAFETY_LIMIT iterations, the same pathological case the existing cap/do-while
+// equivalents already cover.
+//
+// src/shatter.js: 1 equivalent survivor (the same UMD-wrapper case). One real gap this
+// run found: a GRAVITY_ACCEL * dt -> / dt mutation survived because the position
+// assertion recomputed its expected value *from the function's own returned vy*, making
+// it consistent with whatever vy the mutant produced rather than independently checking
+// gravity's arithmetic. Fixed by comparing gravity's contribution at two different
+// elapsed times instead (doubling dt must double the contribution; dividing would halve
+// it) - this catches multiply-vs-divide without needing to know GRAVITY_ACCEL's value.

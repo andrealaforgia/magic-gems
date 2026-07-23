@@ -1,6 +1,7 @@
 import { Given, When, Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
 import { classifiedGrid } from '../support/board-reader.js';
+import { findHighlight } from './interaction.steps.js';
 import { loadMagicGems } from '../../support/load-src.js';
 
 const BOARD_SIZE = 8;
@@ -67,14 +68,20 @@ Given('I locate an adjacent swap that would not produce a match on the live boar
 
 When('I commit that swap', async function () {
   const { a, b } = this.foundSwap;
-  const cursor = this.currentCursor ?? { row: 0, col: 0 };
+  const [cursor] = await findHighlight(this.page, 'cursor');
 
   await moveCursorTo(this.page, cursor, a);
   await this.page.keyboard.press(' ');
   await this.page.keyboard.press(directionKey(a, b));
   await this.page.keyboard.press(' ');
+});
 
-  this.currentCursor = a;
+Given('the shatter animation has settled', async function () {
+  await this.page.waitForFunction(
+    () => window.MagicGems.getActiveFragments().length === 0,
+    null,
+    { timeout: 5000 }
+  );
 });
 
 Then('the page shows no score or counter element', async function () {

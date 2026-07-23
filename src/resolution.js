@@ -87,14 +87,26 @@
     return matched.some((row) => row.some(Boolean));
   }
 
+  function collectClearEvents(board, matched) {
+    const events = [];
+    for (let row = 0; row < board.length; row++) {
+      for (let col = 0; col < board[row].length; col++) {
+        if (matched[row][col]) events.push({ row, col, gemType: board[row][col] });
+      }
+    }
+    return events;
+  }
+
   function resolveCascade(board) {
     let current = board;
+    const clearEvents = [];
     for (let i = 0; i < CASCADE_SAFETY_LIMIT; i++) {
       const matched = findMatchedCells(current);
-      if (!hasAnyMatch(matched)) return current;
+      if (!hasAnyMatch(matched)) return { board: current, clearEvents };
+      clearEvents.push(...collectClearEvents(current, matched));
       current = refillBoard(applyGravity(clearMatches(current, matched)));
     }
-    return current;
+    return { board: current, clearEvents };
   }
 
   function hasAnyValidMove(board) {

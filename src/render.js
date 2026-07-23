@@ -129,9 +129,28 @@
     }
   }
 
+  const FRAGMENT_SIZE = 6;
+
+  function drawFragments(ctx, fragments) {
+    for (const fragment of fragments) {
+      ctx.save();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = fragment.color;
+      ctx.fillRect(
+        fragment.x - FRAGMENT_SIZE / 2,
+        fragment.y - FRAGMENT_SIZE / 2,
+        FRAGMENT_SIZE,
+        FRAGMENT_SIZE
+      );
+      ctx.restore();
+    }
+  }
+
   global.MagicGems.drawGem = drawGem;
   global.MagicGems.drawBoard = drawBoard;
   global.MagicGems.drawInteraction = drawInteraction;
+  global.MagicGems.drawFragments = drawFragments;
   global.MagicGems.HIGHLIGHT_COLORS = HIGHLIGHT_COLORS;
   global.MagicGems.HIGHLIGHT_RING_INSET = HIGHLIGHT_RING_INSET;
+  global.MagicGems.FRAGMENT_SIZE = FRAGMENT_SIZE;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -25,7 +25,7 @@ async function readHighlightGrid(page) {
   }, { size: BOARD_SIZE });
 }
 
-async function findHighlight(page, type) {
+export async function findHighlight(page, type) {
   const { samples, palette } = await readHighlightGrid(page);
   const found = [];
   for (let row = 0; row < samples.length; row++) {

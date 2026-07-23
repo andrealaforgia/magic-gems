@@ -11,11 +11,15 @@
     const swapped = applySwap(board, interaction.selection, interaction.target);
 
     if (!hasMatch(swapped)) {
-      return { board, interaction: cancelToCursor(interaction.selection) };
+      return { board, interaction: cancelToCursor(interaction.selection), clearEvents: [] };
     }
 
-    const settled = ensurePlayable(resolveCascade(swapped));
-    return { board: settled, interaction: cancelToCursor(interaction.selection) };
+    const { board: settled, clearEvents } = resolveCascade(swapped);
+    return {
+      board: ensurePlayable(settled),
+      interaction: cancelToCursor(interaction.selection),
+      clearEvents,
+    };
   }
 
   function handleGameKey(gameState, key) {
@@ -23,7 +27,7 @@
     if (key === ' ' && interaction.selection && interaction.target) {
       return commit(board, interaction);
     }
-    return { board, interaction: handleKey(interaction, key) };
+    return { board, interaction: handleKey(interaction, key), clearEvents: [] };
   }
 
   global.MagicGems.handleGameKey = handleGameKey;

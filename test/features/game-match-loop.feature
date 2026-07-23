@@ -9,6 +9,7 @@ Feature: The core match-3 play loop (B3)
     Given I open "index.html" directly as a file:// URL with no server or build step
     And I locate an adjacent swap that would produce a match on the live board
     When I commit that swap
+    And the shatter animation has settled
     Then the board contains no horizontal or vertical run of 3 or more identical gems
     And all 64 cells contain exactly one recognizable gem colour each
     And no selection or target highlight is present
@@ -46,8 +47,10 @@ Feature: The core match-3 play loop (B3)
     Given I open "index.html" directly as a file:// URL with no server or build step
     And I locate an adjacent swap that would produce a match on the live board
     When I commit that swap
+    And the shatter animation has settled
     And I locate an adjacent swap that would produce a match on the live board
     And I commit that swap
+    And the shatter animation has settled
     Then the board contains no horizontal or vertical run of 3 or more identical gems
     And all 64 cells contain exactly one recognizable gem colour each
 
@@ -63,6 +66,7 @@ Feature: The core match-3 play loop (B3)
     Given I open "index.html" directly as a file:// URL with no server or build step
     And I locate an adjacent swap that would produce a match on the live board
     When I commit that swap
+    And the shatter animation has settled
     Then the canvas represents an 8 by 8 grid of 64 cells
     And the canvas is positioned in the central part of the viewport
     And all 64 cells contain exactly one recognizable gem colour each
@@ -73,6 +77,7 @@ Feature: The core match-3 play loop (B3)
     Given I open "index.html" directly as a file:// URL with no server or build step
     And I locate an adjacent swap that would produce a match on the live board
     When I commit that swap
+    And the shatter animation has settled
     Then the board contains no horizontal or vertical run of 3 or more identical gems
     And all 64 cells contain exactly one recognizable gem colour each
     And no selection or target highlight is present
