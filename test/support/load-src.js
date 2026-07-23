@@ -7,7 +7,7 @@ export function loadMagicGems(files) {
   sandbox.globalThis = sandbox;
   // Narrow stub, not the live process object (no process.exit/etc exposed to sandboxed
   // code): Stryker's mutant switch only needs to read process.env.__STRYKER_ACTIVE_MUTANT__.
-  sandbox.process = { env: process.env };
+  sandbox.process = { env: { ...process.env } };
   vm.createContext(sandbox);
 
   for (const file of files) {
