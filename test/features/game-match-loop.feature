@@ -56,17 +56,23 @@ Feature: The core match-3 play loop (B3)
     And I commit that swap
     Then the page shows no score or counter element
 
+  # Trimmed per QA test-design review (commit 59d95e8, Farley Index 8.0): the
+  # closing assertions duplicated the newly-split E1/E4 verbatim, leaving this
+  # scenario's actual claim - that the board still accepts and resolves a *second*
+  # swap after a cascade, not stuck in some post-settle state - never itself
+  # asserted. Now asserted directly: the grid must show a further, real change
+  # from the second commit, rather than re-checking generic board validity.
   @E7
-  Scenario: After a cascade settles, the board accepts another swap - no game-over state
+  Scenario: After a cascade settles, the board still accepts and resolves a second swap
     Given I open "index.html" directly as a file:// URL with no server or build step
     And I locate an adjacent swap that would produce a match on the live board
     When I commit that swap
     And the shatter animation has settled
+    Given I record the classified gem grid
     And I locate an adjacent swap that would produce a match on the live board
-    And I commit that swap
+    When I commit that swap
     And the shatter animation has settled
-    Then the board contains no horizontal or vertical run of 3 or more identical gems
-    And all 64 cells contain exactly one recognizable gem colour each
+    Then the classified gem grid differs from the recorded one
 
   @E8
   Scenario: A board with no valid moves automatically reshuffles into a playable arrangement

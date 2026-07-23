@@ -53,12 +53,11 @@ Feature: Neon board renders (B1)
   # target highlighting may change the canvas, but the board's 64 gems never do
   # (B2 @E9/@E10). Retired here rather than left failing against real interactivity.
 
-  @E8 @integration
-  Scenario: A single fresh load produces one coherent result end to end
-    Given I open "index.html" directly as a file:// URL with no server or build step
-    Then the page renders an HTML5 canvas element for the board
-    And the canvas represents an 8 by 8 grid of 64 cells
-    And the canvas is positioned in the central part of the viewport
-    And all 64 cells contain exactly one recognizable gem colour each
-    And the board's 64 cells show gem colours that map to all six known gem types
-    And the board contains no horizontal or vertical run of 3 or more identical gems
+  # E8 ("a single fresh load produces one coherent result end to end") retired per
+  # QA test-design review (commit 59d95e8, Farley Index 8.0): its 5 assertions
+  # wholesale duplicated this file's own E1/E2/E3/E4/E6 atomic scenarios verbatim,
+  # from a single page load with no distinct sequenced actions to compose - unlike
+  # the E10/E8 integration scenarios elsewhere in this suite, there was no
+  # cross-time claim left to justify keeping it. Retired rather than re-tagged,
+  # per the same reasoning already applied to board-sizing.feature's B1s-E6 and
+  # game-match-loop.feature's E9.

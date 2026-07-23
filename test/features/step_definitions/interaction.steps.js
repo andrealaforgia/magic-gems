@@ -79,6 +79,16 @@ Then('the classified gem grid is unchanged from the recorded one', async functio
   assert.deepEqual(current, this.recordedGemGrid, 'the board gems changed during interaction');
 });
 
+Then('the classified gem grid differs from the recorded one', async function () {
+  await this.page.waitForFunction(
+    () => window.MagicGems.getActiveFragments().length === 0 && !window.MagicGems.isAnimating(),
+    null,
+    { timeout: 5000 }
+  );
+  const current = await readClassifiedGrid(this.page);
+  assert.notDeepEqual(current, this.recordedGemGrid, 'the board gems did not change - the second swap had no visible effect');
+});
+
 Then('the cursor highlight is at cell {int},{int}', async function (row, col) {
   const found = await findHighlight(this.page, 'cursor');
   assert.equal(found.length, 1, `expected exactly one cursor highlight, found ${found.length}`);
