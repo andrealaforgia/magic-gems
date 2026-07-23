@@ -85,8 +85,10 @@ Feature: The core match-3 play loop (B3)
   # retired per QA test-design review (commit 034b6bf, Farley Index 7.9): its 4
   # assertions - canvas 8x8/64 cells, canvas centered, all cells populated, all six
   # gem types present - wholesale duplicate board-renders.feature's own atomic
-  # E2/E3/E4 scenarios (and its E8 integration), and the "populated" claim is now
-  # also covered by this file's own E4 above. None of these render properties have
+  # E2/E3/E4 scenarios, and the "populated" claim is now also covered by this
+  # file's own E4 above (board-renders.feature's own E8 integration scenario that
+  # once also covered this was itself later retired for the same reason - see
+  # board-renders.feature). None of these render properties have
   # any code path by which a swap/animation could plausibly change them (canvas
   # size/position are set once at boot and never touched again) - the "after a
   # swap" framing wasn't testing anything a fresh-load check couldn't already

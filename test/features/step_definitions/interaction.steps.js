@@ -69,23 +69,22 @@ Given('I record the classified gem grid', async function () {
   this.recordedGemGrid = await readClassifiedGrid(this.page);
 });
 
-Then('the classified gem grid is unchanged from the recorded one', async function () {
-  await this.page.waitForFunction(
+async function waitForSettledGrid(page) {
+  await page.waitForFunction(
     () => window.MagicGems.getActiveFragments().length === 0 && !window.MagicGems.isAnimating(),
     null,
     { timeout: 5000 }
   );
-  const current = await readClassifiedGrid(this.page);
+  return readClassifiedGrid(page);
+}
+
+Then('the classified gem grid is unchanged from the recorded one', async function () {
+  const current = await waitForSettledGrid(this.page);
   assert.deepEqual(current, this.recordedGemGrid, 'the board gems changed during interaction');
 });
 
 Then('the classified gem grid differs from the recorded one', async function () {
-  await this.page.waitForFunction(
-    () => window.MagicGems.getActiveFragments().length === 0 && !window.MagicGems.isAnimating(),
-    null,
-    { timeout: 5000 }
-  );
-  const current = await readClassifiedGrid(this.page);
+  const current = await waitForSettledGrid(this.page);
   assert.notDeepEqual(current, this.recordedGemGrid, 'the board gems did not change - the second swap had no visible effect');
 });
 

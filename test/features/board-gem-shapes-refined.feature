@@ -32,7 +32,8 @@ Feature: Board rendering refinement (B1r)
 
   # B1r-E4 ("every previously-verified B1 guarantee still holds") and B1r-E5
   # (the single-fresh-load integration check) would otherwise duplicate
-  # board-renders.feature's @E8 byte-for-byte: canvas/8x8/centred/64-cells-filled/
-  # 6-types/no-pre-existing-match. @E8 already re-runs against this same code (the
-  # shape geometry lives in the same src/render.js it always sampled), so it stands
-  # in for both here rather than tripling the exact same 6-assertion chain.
+  # board-renders.feature's @E1/@E2/@E3/@E4/@E6 byte-for-byte: canvas/8x8/centred/
+  # 64-cells-filled/6-types/no-pre-existing-match. Those atomic scenarios already
+  # re-run against this same code (the shape geometry lives in the same
+  # src/render.js they always sampled), so they stand in for both here rather than
+  # tripling the exact same assertions.
