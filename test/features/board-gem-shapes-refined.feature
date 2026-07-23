@@ -40,7 +40,7 @@ Feature: Board rendering refinement (B1r)
     And the board's 64 cells show gem colours that map to all six known gem types
     And the board contains no horizontal or vertical run of 3 or more identical gems
 
-  @B1r-E5
+  @B1r-E5 @integration
   Scenario: A single fresh load shows the corrected shapes and every B1 guarantee at once
     Given I open "index.html" directly as a file:// URL with no server or build step
     Then the page renders an HTML5 canvas element for the board

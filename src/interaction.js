@@ -3,12 +3,14 @@
 
   const SIZE = 8;
 
-  const DIRECTIONS = {
+  // Object.create(null): no Object.prototype chain, so a key like '__proto__' or
+  // 'toString' can never resolve to an inherited value here.
+  const DIRECTIONS = Object.assign(Object.create(null), {
     ArrowUp: [-1, 0],
     ArrowDown: [1, 0],
     ArrowLeft: [0, -1],
     ArrowRight: [0, 1],
-  };
+  });
 
   function inBounds(row, col) {
     return row >= 0 && row < SIZE && col >= 0 && col < SIZE;

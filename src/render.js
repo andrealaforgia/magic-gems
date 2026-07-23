@@ -78,6 +78,7 @@
   }
 
   const HIGHLIGHT_RING_INSET = 3;
+  const HIGHLIGHT_RING_LINE_WIDTH = 3;
   const HIGHLIGHT_COLORS = Object.freeze({
     cursor: '#ffffff',
     selection: '#00e5a8',
@@ -88,7 +89,7 @@
     ctx.save();
     ctx.shadowBlur = 0;
     ctx.strokeStyle = color;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = HIGHLIGHT_RING_LINE_WIDTH;
     const inset = HIGHLIGHT_RING_INSET;
     ctx.strokeRect(
       col * cellSize + inset,

@@ -82,7 +82,7 @@ Feature: Navigate & select (B2)
     And I press "ArrowUp"
     Then the classified gem grid is unchanged from the recorded one
 
-  @E10
+  @E10 @integration
   Scenario: One continuous session walks cursor -> selection -> target -> cancel -> selection -> target
     Given I open "index.html" directly as a file:// URL with no server or build step
     And I record the classified gem grid

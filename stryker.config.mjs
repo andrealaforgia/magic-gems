@@ -28,10 +28,17 @@ export default {
 // "Space", so that branch could never fire. Removed it and fixed the unit tests, which
 // had been asserting against the fictional 'Space' string instead of the real key value.
 //
-// Note: src/board.js's vertical-match-scan-disabling mutants (e.g. the outer/inner loop
-// body replaced with a no-op) occasionally reappear across separate stryker runs due to
-// apparent non-determinism in the command test runner under sub-50ms test suites (verified
-// non-equivalent by directly hand-applying the same mutation and confirming `npm run
-// test:unit` fails, 17/18 pass) — not a real gap in the test net.
+// Root-caused (was previously misdiagnosed as command-runner non-determinism): an
+// earlier note here claimed src/board.js's vertical-match-scan-disabling mutants
+// occasionally surfaced as "survived" across separate stryker runs. Inspecting
+// @stryker-mutator/core's CommandTestRunner shows mutant switching happens entirely
+// via a __STRYKER_ACTIVE_MUTANT__ env var read by the already-instrumented file at
+// runtime, not by rewriting files between runs — so a real race there was unlikely.
+// Confirmed by reproducing the exact env-var + instrumented-file mechanism directly
+// (bypassing Stryker's own scheduling) 20/20 times, and by running the full `stryker
+// run` three times back-to-back with zero code changes: identical 93.30% score, same
+// 11/1/1 survivor breakdown, every time. The apparent flakiness was a measurement
+// artifact — earlier comparisons were made across different `mutate` config states and
+// test-file edits made while actively iterating, not the same experiment repeated.
 //
 // src/layout.js: 1 equivalent survivor (the same globalThis === window UMD-wrapper case).

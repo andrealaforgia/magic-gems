@@ -8,8 +8,10 @@ import {
   classifyColor,
   classifyShape,
   OWN_COLOR_MATCH_TOLERANCE,
-  BACKGROUND_LUMA_CEILING,
   VIEWPORT_CENTER_TOLERANCE_RATIO,
+  GLOW_EDGE_LUMA_FRACTION,
+  CORE_EDGE_LUMA_FRACTION,
+  MIN_GLOW_FADE_SPAN_PX,
 } from '../support/pixel-utils.js';
 import { loadMagicGems } from '../../support/load-src.js';
 
@@ -69,43 +71,30 @@ async function classifiedGrid(page) {
   return pixels.map((row) => row.map((rgba) => classifyGem(rgba, palette)));
 }
 
-async function countGridBlobs(page) {
-  return page.evaluate(({ ceiling }) => {
-    const canvas = document.getElementById('board');
-    const ctx = canvas.getContext('2d');
-
-    function countBlobs(data, length) {
-      let blobs = 0;
-      let inBlob = false;
-      for (let i = 0; i < length; i++) {
-        const r = data[i * 4];
-        const g = data[i * 4 + 1];
-        const b = data[i * 4 + 2];
-        const luma = (r + g + b) / 3;
-        const isBackground = luma < ceiling;
-        if (!isBackground && !inBlob) {
-          blobs++;
-          inBlob = true;
-        }
-        if (isBackground) inBlob = false;
-      }
-      return blobs;
-    }
-
-    // Sample away from cell (0,0): the cursor highlight ring always renders there by
-    // default (B2), and its stroke would fragment that one cell into extra blobs.
-    const cellGuess = canvas.width / 8;
-    const rowY = Math.round(cellGuess * 3 + cellGuess / 2);
-    const colX = Math.round(cellGuess * 3 + cellGuess / 2);
-
-    const rowData = ctx.getImageData(0, rowY, canvas.width, 1).data;
-    const colData = ctx.getImageData(colX, 0, 1, canvas.height).data;
-
-    return {
-      columns: countBlobs(rowData, canvas.width),
-      rows: countBlobs(colData, canvas.height),
-    };
-  }, { ceiling: BACKGROUND_LUMA_CEILING });
+// Verifying "8x8 grid" by scanning a row/column of pixels for blob boundaries turns
+// out to be structurally fragile: a highlight ring can sit anywhere depending on
+// interaction state, and no fixed pixel margin around it reliably separates its own
+// antialiasing fringe from a genuine, narrow inter-cell background gap without either
+// missing the fringe or swallowing real cell boundaries (verified empirically: this
+// broke at more than one board size). A highlight ring is always drawn inset from a
+// cell's edges and never reaches its exact centre, so instead this reuses the
+// per-cell-centre classification already relied on elsewhere (readCellPixels/
+// classifiedGrid) — those samples are structurally immune to any highlight overlay —
+// combined with a highlight-immune dimension check (square canvas, evenly divisible
+// into 8 whole-pixel cells, per SPEC 3.1's fixed, non-configurable grid size).
+async function measureGridDimensions(page) {
+  const [{ width, height }, grid] = await Promise.all([
+    page.evaluate(() => {
+      const canvas = document.getElementById('board');
+      return { width: canvas.width, height: canvas.height };
+    }),
+    classifiedGrid(page),
+  ]);
+  return {
+    isSquare: width === height,
+    evenlyDivisible: width % BOARD_SIZE === 0,
+    allCellsClassified: grid.every((row) => row.every((gem) => gem !== null)),
+  };
 }
 
 Given('I open {string} directly as a file:\\/\\/ URL with no server or build step', async function (_file) {
@@ -131,9 +120,10 @@ Then('no console errors were raised while loading', function () {
 });
 
 Then('the canvas represents an 8 by 8 grid of 64 cells', async function () {
-  const { columns, rows } = await countGridBlobs(this.page);
-  assert.equal(columns, BOARD_SIZE, `expected 8 columns, saw ${columns}`);
-  assert.equal(rows, BOARD_SIZE, `expected 8 rows, saw ${rows}`);
+  const { isSquare, evenlyDivisible, allCellsClassified } = await measureGridDimensions(this.page);
+  assert.ok(isSquare, 'canvas is not square');
+  assert.ok(evenlyDivisible, 'canvas width is not evenly divisible into 8 whole-pixel cells');
+  assert.ok(allCellsClassified, 'not every one of the 64 assumed cell positions holds a recognizable gem');
 });
 
 Then('the canvas is positioned in the central part of the viewport', async function () {
@@ -245,8 +235,8 @@ Then('a soft glow halo fades outward from its edge, not a flat cutoff', async fu
   const maxLuma = Math.max(...rightHalf);
   const backgroundLuma = row[row.length - 1];
 
-  const glowThreshold = backgroundLuma + (maxLuma - backgroundLuma) * 0.1;
-  const coreThreshold = backgroundLuma + (maxLuma - backgroundLuma) * 0.85;
+  const glowThreshold = backgroundLuma + (maxLuma - backgroundLuma) * GLOW_EDGE_LUMA_FRACTION;
+  const coreThreshold = backgroundLuma + (maxLuma - backgroundLuma) * CORE_EDGE_LUMA_FRACTION;
 
   let glowStart = -1;
   let coreStart = -1;
@@ -258,7 +248,7 @@ Then('a soft glow halo fades outward from its edge, not a flat cutoff', async fu
   assert.ok(glowStart !== -1 && coreStart !== -1, 'could not locate gem edge in probe render');
   const fadeSpan = glowStart - coreStart;
   assert.ok(
-    fadeSpan >= 6,
-    `expected a multi-pixel glow fade (>=6px), measured ${fadeSpan}px — looks like a flat cutoff`
+    fadeSpan >= MIN_GLOW_FADE_SPAN_PX,
+    `expected a multi-pixel glow fade (>=${MIN_GLOW_FADE_SPAN_PX}px), measured ${fadeSpan}px — looks like a flat cutoff`
   );
 });

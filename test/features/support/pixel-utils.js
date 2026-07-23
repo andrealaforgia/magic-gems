@@ -36,6 +36,22 @@ export const SHAPE_FILL_ALPHA_THRESHOLD = 200;
 // dimension is a generous, visually-central margin without requiring pixel-perfect centering.
 export const VIEWPORT_CENTER_TOLERANCE_RATIO = 0.1;
 
+// Fraction of the way from background luma to peak (core) luma at which the glow's
+// faint outer edge is considered to have started. Chosen low (10%) so it catches the
+// glow's fade as early as any real brightness rises above background noise.
+export const GLOW_EDGE_LUMA_FRACTION = 0.1;
+
+// Fraction of the way from background to peak luma at which the shape's solid core is
+// considered to have begun. Chosen high (85%) so it sits just past the steepest part
+// of a real gem's core-to-glow falloff, leaving room to measure the fade between it
+// and GLOW_EDGE_LUMA_FRACTION.
+export const CORE_EDGE_LUMA_FRACTION = 0.85;
+
+// Minimum pixel distance between the glow-edge and core-edge thresholds above to count
+// as a genuine soft fade rather than a hard, anti-aliased-only cutoff (which measures
+// as a 1-2px span in this project's rendering).
+export const MIN_GLOW_FADE_SPAN_PX = 6;
+
 export function classifyColor(rgb, palette, tolerance = CLASSIFY_TOLERANCE) {
   let best = null;
   let bestDist = Infinity;

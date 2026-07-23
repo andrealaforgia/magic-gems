@@ -40,7 +40,7 @@ Feature: Board sizing (B1s)
     And the board's 64 cells show gem colours that map to all six known gem types
     And the board contains no horizontal or vertical run of 3 or more identical gems
 
-  @B1s-E7
+  @B1s-E7 @integration
   Scenario Outline: A single fresh load shows the correctly-sized board with zero regression, at more than one viewport
     Given the viewport is <width> by <height>
     And I open "index.html" directly as a file:// URL with no server or build step

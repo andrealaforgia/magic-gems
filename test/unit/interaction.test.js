@@ -106,6 +106,14 @@ test('an unrecognized key leaves the state unchanged', () => {
   assert.strictEqual(next, state);
 });
 
+test('inherited Object.prototype property names are not treated as recognized directions', () => {
+  const state = createInteractionState();
+  for (const key of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+    const next = handleKey(state, key);
+    assert.strictEqual(next, state, `key "${key}" should be a no-op, not resolve to a direction`);
+  }
+});
+
 test('an unrecognized key while a selection is active does not cancel it (only Escape does)', () => {
   const selected = handleKey(createInteractionState(), SPACE);
   const next = handleKey(selected, 'a');

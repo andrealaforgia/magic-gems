@@ -53,7 +53,7 @@ Feature: Neon board renders (B1)
   # target highlighting may change the canvas, but the board's 64 gems never do
   # (B2 @E9/@E10). Retired here rather than left failing against real interactivity.
 
-  @E8
+  @E8 @integration
   Scenario: A single fresh load produces one coherent result end to end
     Given I open "index.html" directly as a file:// URL with no server or build step
     Then the page renders an HTML5 canvas element for the board
