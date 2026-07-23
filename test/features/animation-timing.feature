@@ -38,17 +38,22 @@ Feature: Shatter scope and transition timing (B4r)
     When I commit 5 matching swaps in a row, each settling before the next
     Then every round settled into a valid, match-free, fully-populated board
 
+  # Trimmed per QA test-design review (commit 034b6bf, Farley Index 7.9): the
+  # original version re-derived E1/E2's full origin check and duplicated
+  # game-match-loop.feature's revert-on-non-match assertion, even though each
+  # claim is already independently provable by an atomic scenario elsewhere. The
+  # one thing none of those atomic scenarios can show - since Cucumber gives each
+  # of them a fresh page load - is that a scoped-shatter commit and a later timed
+  # swap commit both hold correctly back to back in the *same* session, with no
+  # state (e.g. animation/commit-tracking) bleeding from one into the other. Kept
+  # to exactly one representative assertion per event type for that reason.
   @E8 @integration
-  Scenario: One continuous session - scoped shatter, timed swap, and every prior guarantee together
+  Scenario: One continuous session - a scoped shatter and a timed swap each hold correctly back to back
     Given I open "index.html" directly as a file:// URL with no server or build step
     And I locate an adjacent swap that would produce a match on the live board
     When I commit that swap
     Then the shatter fragments originate only from the cells the live commit actually cleared
     And the shatter animation has settled
-    Then the board contains no horizontal or vertical run of 3 or more identical gems
-    And all 64 cells contain exactly one recognizable gem colour each
-    Given I record the classified gem grid
-    And I locate an adjacent swap that would not produce a match on the live board
+    Given I locate an adjacent swap that would not produce a match on the live board
     When I commit that swap and time how long the visual swap phase takes
     Then the visual swap phase took at least 300 ms
-    And the classified gem grid is unchanged from the recorded one

@@ -4,15 +4,29 @@ Feature: The core match-3 play loop (B3)
   swap to revert cleanly, and the game to keep going forever
   So that I can actually play, not just look at and navigate the board
 
-  @E1 @E4 @E5 @integration
-  Scenario: A second SPACE commits a match-producing swap, which clears, falls, refills, and cascades to a stable board
+  @E1
+  Scenario: A second SPACE commits a match-producing swap, which clears the match
     Given I open "index.html" directly as a file:// URL with no server or build step
     And I locate an adjacent swap that would produce a match on the live board
     When I commit that swap
     And the shatter animation has settled
     Then the board contains no horizontal or vertical run of 3 or more identical gems
-    And all 64 cells contain exactly one recognizable gem colour each
-    And no selection or target highlight is present
+
+  @E4
+  Scenario: After a match-producing swap settles, gravity and refill leave every cell populated
+    Given I open "index.html" directly as a file:// URL with no server or build step
+    And I locate an adjacent swap that would produce a match on the live board
+    When I commit that swap
+    And the shatter animation has settled
+    Then all 64 cells contain exactly one recognizable gem colour each
+
+  @E5
+  Scenario: After committing a match-producing swap, the selection and target highlights are cleared
+    Given I open "index.html" directly as a file:// URL with no server or build step
+    And I locate an adjacent swap that would produce a match on the live board
+    When I commit that swap
+    And the shatter animation has settled
+    Then no selection or target highlight is present
 
   @E2
   Scenario: A second SPACE with a non-match swap reverts the board and cancels the selection
@@ -61,23 +75,24 @@ Feature: The core match-3 play loop (B3)
     Then the reshuffled result has no pre-existing match
     And the reshuffled result has at least one valid move
 
-  @E9 @integration
-  Scenario: Every previous rendering guarantee still holds after a swap settles
-    Given I open "index.html" directly as a file:// URL with no server or build step
-    And I locate an adjacent swap that would produce a match on the live board
-    When I commit that swap
-    And the shatter animation has settled
-    Then the canvas represents an 8 by 8 grid of 64 cells
-    And the canvas is positioned in the central part of the viewport
-    And all 64 cells contain exactly one recognizable gem colour each
-    And the board's 64 cells show gem colours that map to all six known gem types
+  # E9 ("every previous rendering guarantee still holds after a swap settles")
+  # retired per QA test-design review (commit 034b6bf, Farley Index 7.9): its 4
+  # assertions - canvas 8x8/64 cells, canvas centered, all cells populated, all six
+  # gem types present - wholesale duplicate board-renders.feature's own atomic
+  # E2/E3/E4 scenarios (and its E8 integration), and the "populated" claim is now
+  # also covered by this file's own E4 above. None of these render properties have
+  # any code path by which a swap/animation could plausibly change them (canvas
+  # size/position are set once at boot and never touched again) - the "after a
+  # swap" framing wasn't testing anything a fresh-load check couldn't already
+  # prove. Retired rather than re-tagged, per the same reasoning already applied
+  # to board-sizing.feature's B1s-E6.
 
-  # E10 (integration) composes two flows E1/E4/E5 and E2 already each prove
-  # atomically: a match settles, then a later non-match reverts. Trimmed to its
-  # final checkpoint per flow rather than re-asserting every intermediate check
-  # those scenarios already cover - what's actually new here is that both flows
-  # compose correctly back to back in one continuous session, not either flow
-  # in isolation.
+  # E10 (integration) composes two flows E1/E4/E5 (now three atomic scenarios) and
+  # E2 already each prove atomically: a match settles, then a later non-match
+  # reverts. Trimmed to its final checkpoint per flow rather than re-asserting
+  # every intermediate check those scenarios already cover - what's actually new
+  # here is that both flows compose correctly back to back in one continuous
+  # session, not either flow in isolation.
   @E10 @integration
   Scenario: One continuous session - match swap settles, then a non-match swap reverts
     Given I open "index.html" directly as a file:// URL with no server or build step
