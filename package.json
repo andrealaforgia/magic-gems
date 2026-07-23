@@ -1,0 +1,17 @@
+{
+  "name": "magic-gems",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Dev tooling only — the shipped game is index.html/styles.css/src (no build step, no runtime deps).",
+  "type": "module",
+  "scripts": {
+    "test:unit": "node --test \"test/unit/**/*.test.js\"",
+    "test:acceptance": "cucumber-js --config test/features/cucumber.mjs",
+    "test": "npm run test:unit && npm run test:acceptance"
+  },
+  "devDependencies": {
+    "@cucumber/cucumber": "^11.2.0",
+    "@stryker-mutator/core": "^8.7.1",
+    "playwright": "^1.49.1"
+  }
+}

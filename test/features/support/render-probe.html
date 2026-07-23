@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <canvas id="probe" width="256" height="256"></canvas>
+  <script src="../../../src/gems.js"></script>
+  <script src="../../../src/render.js"></script>
+  <script>
+    window.__drawSingleGem = function (gemType, cellSize) {
+      const canvas = document.getElementById('probe');
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      window.MagicGems.drawGem(ctx, gemType, canvas.width / 2, canvas.height / 2, cellSize);
+    };
+  </script>
+</body>
+</html>
