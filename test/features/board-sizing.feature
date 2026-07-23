@@ -30,15 +30,10 @@ Feature: Board sizing (B1s)
     And I open "index.html" directly as a file:// URL with no server or build step
     Then the board does not overflow the viewport horizontally
 
-  @B1s-E6
-  Scenario: Every previous board guarantee still holds at the new size
-    Given the viewport is 1280 by 800
-    And I open "index.html" directly as a file:// URL with no server or build step
-    Then the page renders an HTML5 canvas element for the board
-    And the canvas represents an 8 by 8 grid of 64 cells
-    And all 64 cells contain exactly one recognizable gem colour each
-    And the board's 64 cells show gem colours that map to all six known gem types
-    And the board contains no horizontal or vertical run of 3 or more identical gems
+  # B1s-E6 ("every previous board guarantee still holds at the new size") would
+  # otherwise duplicate the 1280x800 example of B1s-E7 below - E7's first example
+  # asserts the same 5 render facts (canvas/8x8/64-cells-filled/6-types/no-match)
+  # plus centring and overflow on top, so it stands in for both.
 
   @B1s-E7 @integration
   Scenario Outline: A single fresh load shows the correctly-sized board with zero regression, at more than one viewport
