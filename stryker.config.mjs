@@ -1,5 +1,5 @@
 export default {
-  mutate: ['src/board.js', 'src/interaction.js'],
+  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js'],
   testRunner: 'command',
   commandRunner: { command: 'npm run test:unit' },
   reporters: ['clear-text', 'progress'],
@@ -33,3 +33,5 @@ export default {
 // apparent non-determinism in the command test runner under sub-50ms test suites (verified
 // non-equivalent by directly hand-applying the same mutation and confirming `npm run
 // test:unit` fails, 17/18 pass) — not a real gap in the test net.
+//
+// src/layout.js: 1 equivalent survivor (the same globalThis === window UMD-wrapper case).
