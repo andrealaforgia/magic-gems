@@ -30,22 +30,9 @@ Feature: Board rendering refinement (B1r)
       | blue-diamond    |
       | white-circle    |
 
-  @B1r-E4
-  Scenario: Every previously-verified B1 guarantee still holds unchanged
-    Given I open "index.html" directly as a file:// URL with no server or build step
-    Then the page renders an HTML5 canvas element for the board
-    And the canvas represents an 8 by 8 grid of 64 cells
-    And the canvas is positioned in the central part of the viewport
-    And all 64 cells contain exactly one recognizable gem colour each
-    And the board's 64 cells show gem colours that map to all six known gem types
-    And the board contains no horizontal or vertical run of 3 or more identical gems
-
-  @B1r-E5 @integration
-  Scenario: A single fresh load shows the corrected shapes and every B1 guarantee at once
-    Given I open "index.html" directly as a file:// URL with no server or build step
-    Then the page renders an HTML5 canvas element for the board
-    And the canvas represents an 8 by 8 grid of 64 cells
-    And the canvas is positioned in the central part of the viewport
-    And all 64 cells contain exactly one recognizable gem colour each
-    And the board's 64 cells show gem colours that map to all six known gem types
-    And the board contains no horizontal or vertical run of 3 or more identical gems
+  # B1r-E4 ("every previously-verified B1 guarantee still holds") and B1r-E5
+  # (the single-fresh-load integration check) would otherwise duplicate
+  # board-renders.feature's @E8 byte-for-byte: canvas/8x8/centred/64-cells-filled/
+  # 6-types/no-pre-existing-match. @E8 already re-runs against this same code (the
+  # shape geometry lives in the same src/render.js it always sampled), so it stands
+  # in for both here rather than tripling the exact same 6-assertion chain.

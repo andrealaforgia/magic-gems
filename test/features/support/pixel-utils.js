@@ -52,6 +52,22 @@ export const CORE_EDGE_LUMA_FRACTION = 0.85;
 // as a 1-2px span in this project's rendering).
 export const MIN_GLOW_FADE_SPAN_PX = 6;
 
+// How far a shape's measured cardinal-direction edge distances (up/down/left/right)
+// may differ from one another and still count as "centred"/"equal-length" — a few
+// pixels of antialiasing/rounding noise, not a real asymmetry.
+export const CENTERING_TOLERANCE_PX = 3;
+
+// Fraction of the measured top-edge distance at which to sample for a flat table
+// edge: slightly inside the edge itself (90%) so the sample lands solidly on the
+// facet rather than in the antialiased boundary pixel right at the edge.
+export const FLAT_EDGE_HEIGHT_RATIO = 0.9;
+
+// Horizontal offset from centre, as a fraction of the top-edge distance, at which to
+// sample left/right of a shape's apex for flatness: far enough that a pointed apex
+// (near-zero width at this height) reads empty, but still within a flat-topped
+// gem's own table-edge half-width.
+export const FLAT_EDGE_HALF_WIDTH_RATIO = 0.3;
+
 export function classifyColor(rgb, palette, tolerance = CLASSIFY_TOLERANCE) {
   let best = null;
   let bestDist = Infinity;

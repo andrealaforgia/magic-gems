@@ -1,8 +1,11 @@
 import { Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
-import { SHAPE_FILL_ALPHA_THRESHOLD } from '../support/pixel-utils.js';
-
-const CENTERING_TOLERANCE_PX = 3;
+import {
+  SHAPE_FILL_ALPHA_THRESHOLD,
+  CENTERING_TOLERANCE_PX,
+  FLAT_EDGE_HEIGHT_RATIO,
+  FLAT_EDGE_HALF_WIDTH_RATIO,
+} from '../support/pixel-utils.js';
 
 // Scans outward from the probe canvas's true centre along a cardinal direction and
 // returns the pixel distance to where the shape's solid core (not its glow tail)
@@ -60,20 +63,25 @@ Then('all four of its sides are equal length', async function () {
 Then("it has a flat top edge unlike the yellow gem's pointed apex", async function () {
   const { up } = await measureEdgeDistances(this.page);
   const result = await this.page.evaluate(
-    ({ topDistance, threshold }) => {
+    ({ topDistance, threshold, heightRatio, halfWidthRatio }) => {
       const canvas = document.getElementById('probe');
       const ctx = canvas.getContext('2d');
       const cx = canvas.width / 2;
       const cy = canvas.height / 2;
-      const y = Math.round(cy - topDistance * 0.9);
+      const y = Math.round(cy - topDistance * heightRatio);
       const alphaAt = (x) => ctx.getImageData(x, y, 1, 1).data[3];
       return {
-        left: alphaAt(Math.round(cx - topDistance * 0.3)),
-        right: alphaAt(Math.round(cx + topDistance * 0.3)),
+        left: alphaAt(Math.round(cx - topDistance * halfWidthRatio)),
+        right: alphaAt(Math.round(cx + topDistance * halfWidthRatio)),
         threshold,
       };
     },
-    { topDistance: up, threshold: SHAPE_FILL_ALPHA_THRESHOLD }
+    {
+      topDistance: up,
+      threshold: SHAPE_FILL_ALPHA_THRESHOLD,
+      heightRatio: FLAT_EDGE_HEIGHT_RATIO,
+      halfWidthRatio: FLAT_EDGE_HALF_WIDTH_RATIO,
+    }
   );
   assert.ok(
     result.left > result.threshold && result.right > result.threshold,
