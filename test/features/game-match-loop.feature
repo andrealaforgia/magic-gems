@@ -4,7 +4,7 @@ Feature: The core match-3 play loop (B3)
   swap to revert cleanly, and the game to keep going forever
   So that I can actually play, not just look at and navigate the board
 
-  @E1 @E4 @E5
+  @E1 @E4 @E5 @integration
   Scenario: A second SPACE commits a match-producing swap, which clears, falls, refills, and cascades to a stable board
     Given I open "index.html" directly as a file:// URL with no server or build step
     And I locate an adjacent swap that would produce a match on the live board
@@ -61,7 +61,7 @@ Feature: The core match-3 play loop (B3)
     Then the reshuffled result has no pre-existing match
     And the reshuffled result has at least one valid move
 
-  @E9
+  @E9 @integration
   Scenario: Every previous rendering guarantee still holds after a swap settles
     Given I open "index.html" directly as a file:// URL with no server or build step
     And I locate an adjacent swap that would produce a match on the live board
@@ -72,6 +72,12 @@ Feature: The core match-3 play loop (B3)
     And all 64 cells contain exactly one recognizable gem colour each
     And the board's 64 cells show gem colours that map to all six known gem types
 
+  # E10 (integration) composes two flows E1/E4/E5 and E2 already each prove
+  # atomically: a match settles, then a later non-match reverts. Trimmed to its
+  # final checkpoint per flow rather than re-asserting every intermediate check
+  # those scenarios already cover - what's actually new here is that both flows
+  # compose correctly back to back in one continuous session, not either flow
+  # in isolation.
   @E10 @integration
   Scenario: One continuous session - match swap settles, then a non-match swap reverts
     Given I open "index.html" directly as a file:// URL with no server or build step
@@ -79,8 +85,6 @@ Feature: The core match-3 play loop (B3)
     When I commit that swap
     And the shatter animation has settled
     Then the board contains no horizontal or vertical run of 3 or more identical gems
-    And all 64 cells contain exactly one recognizable gem colour each
-    And no selection or target highlight is present
     Given I record the classified gem grid
     And I locate an adjacent swap that would not produce a match on the live board
     When I commit that swap

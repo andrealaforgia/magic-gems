@@ -5,6 +5,7 @@
   const { hasMatch } = global.MagicGems;
 
   const CASCADE_SAFETY_LIMIT = 20;
+  const RESHUFFLE_SAFETY_LIMIT = 1000;
 
   function randomGem() {
     return GEM_TYPES[Math.floor(Math.random() * GEM_TYPES.length)];
@@ -127,10 +128,10 @@
   function ensurePlayable(board) {
     if (hasAnyValidMove(board)) return board;
     const { generateBoard } = global.MagicGems;
-    let candidate;
-    do {
+    let candidate = generateBoard();
+    for (let i = 0; i < RESHUFFLE_SAFETY_LIMIT && !hasAnyValidMove(candidate); i++) {
       candidate = generateBoard();
-    } while (!hasAnyValidMove(candidate));
+    }
     return candidate;
   }
 
