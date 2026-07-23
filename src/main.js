@@ -9,8 +9,9 @@
       drawBoard,
       drawInteraction,
       createInteractionState,
-      handleKey,
+      handleGameKey,
       computeCellSize,
+      ensurePlayable,
     } = global.MagicGems;
     const canvas = document.getElementById('board');
     const cellSize = computeCellSize(window.innerWidth, window.innerHeight, BOARD_SIZE);
@@ -18,7 +19,7 @@
     canvas.height = BOARD_SIZE * cellSize;
 
     const ctx = canvas.getContext('2d');
-    const board = generateBoard();
+    let board = ensurePlayable(generateBoard());
     let interaction = createInteractionState();
 
     function render() {
@@ -29,9 +30,10 @@
     render();
 
     document.addEventListener('keydown', (event) => {
-      const next = handleKey(interaction, event.key);
-      if (next !== interaction) {
-        interaction = next;
+      const next = handleGameKey({ board, interaction }, event.key);
+      if (next.board !== board || next.interaction !== interaction) {
+        board = next.board;
+        interaction = next.interaction;
         render();
       }
     });
