@@ -56,6 +56,9 @@ Feature: Navigate & select (B2)
     And I press "ArrowUp"
     Then the target highlight is at cell 0,1
     And the selection highlight is at cell 0,0
+    When I press "ArrowDown"
+    Then the target highlight is at cell 1,0
+    And the selection highlight is at cell 0,0
 
   @E8
   Scenario: ESC clears any active selection and target back to the plain cursor

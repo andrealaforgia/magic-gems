@@ -2,7 +2,16 @@ import { Given, When, Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { hexToRgb, colorDistance, classifyColor } from '../support/pixel-utils.js';
+import {
+  hexToRgb,
+  colorDistance,
+  classifyColor,
+  classifyShape,
+  OWN_COLOR_MATCH_TOLERANCE,
+  BACKGROUND_LUMA_CEILING,
+  VIEWPORT_CENTER_TOLERANCE_RATIO,
+} from '../support/pixel-utils.js';
+import { loadMagicGems } from '../../support/load-src.js';
 
 const PROJECT_ROOT = path.resolve(import.meta.dirname, '..', '..', '..');
 const INDEX_HTML_URL = pathToFileURL(path.join(PROJECT_ROOT, 'index.html')).href;
@@ -11,7 +20,13 @@ const PROBE_HTML_URL = pathToFileURL(
 ).href;
 
 const BOARD_SIZE = 8;
-const BACKGROUND_LUMA_CEILING = 30;
+
+// Reuse the real production match-detection algorithm (not a hand-rolled
+// reimplementation) against the classified grid read from live canvas pixels.
+const { hasMatch } = loadMagicGems([
+  new URL('../../../src/gems.js', import.meta.url),
+  new URL('../../../src/board.js', import.meta.url),
+]);
 
 function classifyGem(rgb, palette) {
   return classifyColor(rgb, palette);
@@ -52,23 +67,6 @@ async function readGemPalette(page) {
 async function classifiedGrid(page) {
   const [{ pixels }, palette] = await Promise.all([readCellPixels(page), readGemPalette(page)]);
   return pixels.map((row) => row.map((rgba) => classifyGem(rgba, palette)));
-}
-
-function hasRunOf3(grid) {
-  const size = grid.length;
-  for (let row = 0; row < size; row++) {
-    for (let col = 0; col < size - 2; col++) {
-      const g = grid[row][col];
-      if (g && g === grid[row][col + 1] && g === grid[row][col + 2]) return true;
-    }
-  }
-  for (let col = 0; col < size; col++) {
-    for (let row = 0; row < size - 2; row++) {
-      const g = grid[row][col];
-      if (g && g === grid[row + 1][col] && g === grid[row + 2][col]) return true;
-    }
-  }
-  return false;
 }
 
 async function countGridBlobs(page) {
@@ -147,8 +145,8 @@ Then('the canvas is positioned in the central part of the viewport', async funct
   const viewportCenter = { x: viewport.width / 2, y: viewport.height / 2 };
   const dx = Math.abs(canvasCenter.x - viewportCenter.x);
   const dy = Math.abs(canvasCenter.y - viewportCenter.y);
-  assert.ok(dx < viewport.width * 0.1, `canvas center x off by ${dx}px`);
-  assert.ok(dy < viewport.height * 0.1, `canvas center y off by ${dy}px`);
+  assert.ok(dx < viewport.width * VIEWPORT_CENTER_TOLERANCE_RATIO, `canvas center x off by ${dx}px`);
+  assert.ok(dy < viewport.height * VIEWPORT_CENTER_TOLERANCE_RATIO, `canvas center y off by ${dy}px`);
 });
 
 Then('all 64 cells contain exactly one recognizable gem colour each', async function () {
@@ -168,7 +166,7 @@ Then("the board's 64 cells show gem colours that map to all six known gem types"
 
 Then('the board contains no horizontal or vertical run of 3 or more identical gems', async function () {
   const grid = await classifiedGrid(this.page);
-  assert.equal(hasRunOf3(grid), false, 'found a pre-existing match of 3+');
+  assert.equal(hasMatch(grid), false, 'found a pre-existing match of 3+');
 });
 
 Then('the new arrangement differs from the previous one', async function () {
@@ -183,20 +181,51 @@ Given('a single {string} gem is drawn in isolation', async function (gemType) {
   this.probeGemType = gemType;
 });
 
-Then('it is rendered as a {string} filled with its own distinct colour', async function (shape) {
-  const { core, palette, gemType } = await this.page.evaluate((gem) => {
-    const canvas = document.getElementById('probe');
-    const ctx = canvas.getContext('2d');
-    const [r, g, b] = ctx.getImageData(canvas.width / 2, canvas.height / 2, 1, 1).data;
-    return { core: [r, g, b], palette: window.MagicGems.GEM_COLORS, gemType: gem };
-  }, this.probeGemType);
+// Same 4 offsets classifyShape queries, in the same order, so pre-fetching every
+// sample from the real canvas and feeding them back sequentially reproduces exactly
+// what classifyShape would see live (it may short-circuit before using them all).
+const SHAPE_PROBE_OFFSET_RATIOS = [
+  [0.7, 0.7],
+  [0, -0.7],
+  [0, -0.95],
+  [0.52, 0.55],
+];
+
+Then('it is rendered as a {string} filled with its own distinct colour', async function (expectedShape) {
+  const { core, alphaSamples, palette, gemType, r } = await this.page.evaluate(
+    ({ gem, offsetRatios }) => {
+      const canvas = document.getElementById('probe');
+      const ctx = canvas.getContext('2d');
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+      const radius = 64 * 0.3; // matches render.js's GEM_RADIUS_RATIO at cellSize=64
+      const alphaAt = (dx, dy) =>
+        ctx.getImageData(Math.round(cx + dx), Math.round(cy + dy), 1, 1).data[3];
+      const [r, g, b] = ctx.getImageData(cx, cy, 1, 1).data;
+      return {
+        core: [r, g, b],
+        alphaSamples: offsetRatios.map(([rx, ry]) => alphaAt(rx * radius, ry * radius)),
+        palette: window.MagicGems.GEM_COLORS,
+        gemType: gem,
+        r: radius,
+      };
+    },
+    { gem: this.probeGemType, offsetRatios: SHAPE_PROBE_OFFSET_RATIOS }
+  );
 
   const expectedRgb = hexToRgb(palette[gemType]);
   assert.ok(
-    colorDistance(core, expectedRgb) < 20,
+    colorDistance(core, expectedRgb) < OWN_COLOR_MATCH_TOLERANCE,
     `centre pixel colour ${core} does not match ${gemType}'s own colour ${expectedRgb}`
   );
-  assert.ok(['triangle', 'square', 'circle', 'diamond'].includes(shape));
+
+  let nextSample = 0;
+  const actualShape = classifyShape(() => alphaSamples[nextSample++], r);
+  assert.equal(
+    actualShape,
+    expectedShape,
+    `sampled shape geometry for ${gemType} looks like a ${actualShape}, expected ${expectedShape}`
+  );
 });
 
 Then('a soft glow halo fades outward from its edge, not a flat cutoff', async function () {

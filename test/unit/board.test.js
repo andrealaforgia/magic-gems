@@ -13,6 +13,23 @@ function countCells(board) {
   return board.reduce((n, row) => n + row.length, 0);
 }
 
+// A deterministic, provably match-free 8x8 fixture: cell value cycles diagonally
+// through all 6 gem types, so any 3 consecutive cells in a row or column always take
+// 3 different residues mod 6 (3 < 6, no wraparound) — never a coincidental run of 3.
+// Unlike generateBoard() + a 3-cell overwrite, this can never mask a broken detector
+// behind an unrelated, incidental match elsewhere in the grid.
+function buildMatchFreeBoard() {
+  const board = [];
+  for (let row = 0; row < SIZE; row++) {
+    const cells = [];
+    for (let col = 0; col < SIZE; col++) {
+      cells.push(GEM_TYPES[(row + col) % GEM_TYPES.length]);
+    }
+    board.push(cells);
+  }
+  return board;
+}
+
 test('generateBoard produces an 8x8 grid', () => {
   const board = generateBoard();
   assert.equal(board.length, SIZE);
@@ -44,18 +61,22 @@ test('generateBoard is randomized across calls', () => {
   assert.equal(allIdentical, false, 'repeated generation must not be a fixed layout');
 });
 
+test('the diagonal fixture itself has no match (sanity check on the fixture)', () => {
+  assert.equal(hasMatch(buildMatchFreeBoard()), false);
+});
+
 test('hasMatch detects a horizontal run of 3', () => {
-  const board = generateBoard();
-  board[0][0] = GEM_TYPES[0];
-  board[0][1] = GEM_TYPES[0];
-  board[0][2] = GEM_TYPES[0];
+  const board = buildMatchFreeBoard();
+  board[3][2] = GEM_TYPES[0];
+  board[3][3] = GEM_TYPES[0];
+  board[3][4] = GEM_TYPES[0];
   assert.equal(hasMatch(board), true);
 });
 
 test('hasMatch detects a vertical run of 3', () => {
-  const board = generateBoard();
-  board[0][0] = GEM_TYPES[1];
-  board[1][0] = GEM_TYPES[1];
-  board[2][0] = GEM_TYPES[1];
+  const board = buildMatchFreeBoard();
+  board[2][3] = GEM_TYPES[1];
+  board[3][3] = GEM_TYPES[1];
+  board[4][3] = GEM_TYPES[1];
   assert.equal(hasMatch(board), true);
 });

@@ -7,7 +7,36 @@ export function colorDistance([r1, g1, b1], [r2, g2, b2]) {
   return Math.sqrt((r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2);
 }
 
-export function classifyColor(rgb, palette, tolerance = 40) {
+// Euclidean RGB distance under which a sampled pixel is confidently one of N
+// candidate palette colours rather than background/glow-blend noise. The six gem
+// colours and three highlight colours are all >100 apart from each other and from
+// the near-black background (~rgb(10,10,18)), so 40 leaves comfortable headroom
+// without being loose enough to misclassify across colours.
+export const CLASSIFY_TOLERANCE = 40;
+
+// Tighter bound for checking a pixel against one already-known expected colour
+// (not classifying among several candidates) — used where the isolated single-gem
+// probe samples its own centre pixel and compares it to that exact gem's palette entry.
+export const OWN_COLOR_MATCH_TOLERANCE = 20;
+
+// Background is a near-black navy (~rgb(10,10,18), luma ~13). Gem cores and their
+// glow are always much brighter. 30 sits comfortably above background luma and well
+// below any gem's glow-tail brightness, so it reliably separates "empty cell" from
+// "cell holds something".
+export const BACKGROUND_LUMA_CEILING = 30;
+
+// A sampled point is "solidly filled" (inside a shape's hard core, not just touched
+// by its glow's blurred tail) once its alpha crosses this line. Calibrated empirically
+// against all 6 gem shapes: true interior points read ~232-255, true exterior points
+// (background or glow-tail) read ~5-150, leaving a clear gap around 200.
+export const SHAPE_FILL_ALPHA_THRESHOLD = 200;
+
+// How far off exact-center the canvas's on-screen bounding box may sit and still
+// count as "the central part of the viewport" (SPEC 3.2) — 10% of the viewport
+// dimension is a generous, visually-central margin without requiring pixel-perfect centering.
+export const VIEWPORT_CENTER_TOLERANCE_RATIO = 0.1;
+
+export function classifyColor(rgb, palette, tolerance = CLASSIFY_TOLERANCE) {
   let best = null;
   let bestDist = Infinity;
   for (const [key, hex] of Object.entries(palette)) {
@@ -18,4 +47,20 @@ export function classifyColor(rgb, palette, tolerance = 40) {
     }
   }
   return bestDist < tolerance ? best : null;
+}
+
+// Classifies the shape drawn around (cx, cy) with nominal radius r by sampling 4
+// diagnostic points chosen from this project's own shape geometry (src/render.js):
+// a corner point only a square's axis-aligned bounding box reaches; a point above
+// centre only the blue-diamond's short top vertex fails to reach; a point near the
+// top edge only a circle's round boundary excludes; and a point that only a
+// triangle's wide flat base reaches but a yellow-diamond's narrow bottom point does
+// not. Verified empirically against all 6 gem types (see commit history).
+export function classifyShape(getAlphaAt, r, threshold = SHAPE_FILL_ALPHA_THRESHOLD) {
+  const filled = (dx, dy) => getAlphaAt(dx, dy) > threshold;
+
+  if (filled(0.7 * r, 0.7 * r)) return 'square';
+  if (!filled(0, -0.7 * r)) return 'diamond'; // blue-diamond
+  if (!filled(0, -0.95 * r)) return 'circle';
+  return filled(0.52 * r, 0.55 * r) ? 'triangle' : 'diamond'; // yellow-diamond
 }
