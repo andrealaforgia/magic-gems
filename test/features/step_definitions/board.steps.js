@@ -2,6 +2,7 @@ import { Given, When, Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { hexToRgb, colorDistance, classifyColor } from '../support/pixel-utils.js';
 
 const PROJECT_ROOT = path.resolve(import.meta.dirname, '..', '..', '..');
 const INDEX_HTML_URL = pathToFileURL(path.join(PROJECT_ROOT, 'index.html')).href;
@@ -11,28 +12,9 @@ const PROBE_HTML_URL = pathToFileURL(
 
 const BOARD_SIZE = 8;
 const BACKGROUND_LUMA_CEILING = 30;
-const CLASSIFY_TOLERANCE = 40;
 
-function hexToRgb(hex) {
-  const n = parseInt(hex.slice(1), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-function colorDistance([r1, g1, b1], [r2, g2, b2]) {
-  return Math.sqrt((r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2);
-}
-
-function classifyGem([r, g, b], palette) {
-  let best = null;
-  let bestDist = Infinity;
-  for (const [gem, hex] of Object.entries(palette)) {
-    const d = colorDistance([r, g, b], hexToRgb(hex));
-    if (d < bestDist) {
-      bestDist = d;
-      best = gem;
-    }
-  }
-  return bestDist < CLASSIFY_TOLERANCE ? best : null;
+function classifyGem(rgb, palette) {
+  return classifyColor(rgb, palette);
 }
 
 async function waitForBoardReady(page) {
@@ -112,9 +94,11 @@ async function countGridBlobs(page) {
       return blobs;
     }
 
+    // Sample away from cell (0,0): the cursor highlight ring always renders there by
+    // default (B2), and its stroke would fragment that one cell into extra blobs.
     const cellGuess = canvas.width / 8;
-    const rowY = Math.round(cellGuess / 2);
-    const colX = Math.round(cellGuess / 2);
+    const rowY = Math.round(cellGuess * 3 + cellGuess / 2);
+    const colX = Math.round(cellGuess * 3 + cellGuess / 2);
 
     const rowData = ctx.getImageData(0, rowY, canvas.width, 1).data;
     const colData = ctx.getImageData(colX, 0, 1, canvas.height).data;
@@ -135,18 +119,6 @@ When('I open {string} again as a fresh file:\\/\\/ page load', async function (_
   this.previousGrid = await classifiedGrid(this.page);
   await this.page.reload();
   await waitForBoardReady(this.page);
-});
-
-Given('I capture the rendered board as a snapshot', async function () {
-  this.snapshotDataUrl = await this.page.evaluate(() =>
-    document.getElementById('board').toDataURL()
-  );
-});
-
-When('I press the arrow keys, SPACE, and ESC', async function () {
-  for (const key of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Escape']) {
-    await this.page.keyboard.press(key);
-  }
 });
 
 Then('the page renders an HTML5 canvas element for the board', async function () {
@@ -202,11 +174,6 @@ Then('the board contains no horizontal or vertical run of 3 or more identical ge
 Then('the new arrangement differs from the previous one', async function () {
   const grid = await classifiedGrid(this.page);
   assert.notDeepEqual(grid, this.previousGrid, 'reload produced an identical arrangement');
-});
-
-Then('the rendered board is pixel-identical to the snapshot', async function () {
-  const current = await this.page.evaluate(() => document.getElementById('board').toDataURL());
-  assert.equal(current, this.snapshotDataUrl);
 });
 
 Given('a single {string} gem is drawn in isolation', async function (gemType) {

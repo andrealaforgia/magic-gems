@@ -69,6 +69,60 @@
     }
   }
 
+  const HIGHLIGHT_RING_INSET = 3;
+  const HIGHLIGHT_COLORS = Object.freeze({
+    cursor: '#ffffff',
+    selection: '#00e5a8',
+    target: '#ff7a00',
+  });
+
+  function drawHighlightRing(ctx, row, col, cellSize, color) {
+    ctx.save();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    const inset = HIGHLIGHT_RING_INSET;
+    ctx.strokeRect(
+      col * cellSize + inset,
+      row * cellSize + inset,
+      cellSize - 2 * inset,
+      cellSize - 2 * inset
+    );
+    ctx.restore();
+  }
+
+  function drawInteraction(ctx, interaction, cellSize) {
+    if (interaction.selection) {
+      drawHighlightRing(
+        ctx,
+        interaction.selection.row,
+        interaction.selection.col,
+        cellSize,
+        HIGHLIGHT_COLORS.selection
+      );
+      if (interaction.target) {
+        drawHighlightRing(
+          ctx,
+          interaction.target.row,
+          interaction.target.col,
+          cellSize,
+          HIGHLIGHT_COLORS.target
+        );
+      }
+    } else {
+      drawHighlightRing(
+        ctx,
+        interaction.cursor.row,
+        interaction.cursor.col,
+        cellSize,
+        HIGHLIGHT_COLORS.cursor
+      );
+    }
+  }
+
   global.MagicGems.drawGem = drawGem;
   global.MagicGems.drawBoard = drawBoard;
+  global.MagicGems.drawInteraction = drawInteraction;
+  global.MagicGems.HIGHLIGHT_COLORS = HIGHLIGHT_COLORS;
+  global.MagicGems.HIGHLIGHT_RING_INSET = HIGHLIGHT_RING_INSET;
 })(typeof window !== 'undefined' ? window : globalThis);

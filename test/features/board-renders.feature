@@ -70,16 +70,11 @@ Feature: Neon board renders (B1)
     # or vertically. A real page.reload() (fresh file:// load, not a re-render call)
     # produced a classified grid that differs from the pre-reload one. Passed.
 
-  @E7
-  Scenario: No interactivity beyond the static render
-    Given I open "index.html" directly as a file:// URL with no server or build step
-    And I capture the rendered board as a snapshot
-    When I press the arrow keys, SPACE, and ESC
-    Then the rendered board is pixel-identical to the snapshot
-    # Evidence: canvas.toDataURL() snapshot taken, then real keyboard events
-    # (ArrowUp/Down/Left/Right, Space, Escape) dispatched via Playwright against the
-    # live page; src/main.js registers no key listeners, so the re-captured dataURL
-    # was byte-identical to the snapshot. Passed.
+  # E7 ("no interactivity beyond the static render") was B1's boundary before any
+  # interaction behaviour existed. B2 (test/features/board-navigate-select.feature)
+  # supersedes it with the precise boundary that actually matters: cursor/selection/
+  # target highlighting may change the canvas, but the board's 64 gems never do
+  # (B2 @E9/@E10). Retired here rather than left failing against real interactivity.
 
   @E8
   Scenario: A single fresh load produces one coherent result end to end
@@ -90,12 +85,10 @@ Feature: Neon board renders (B1)
     And all 64 cells contain exactly one recognizable gem colour each
     And the board's 64 cells show gem colours that map to all six known gem types
     And the board contains no horizontal or vertical run of 3 or more identical gems
-    And I capture the rendered board as a snapshot
-    When I press the arrow keys, SPACE, and ESC
-    Then the rendered board is pixel-identical to the snapshot
     # Evidence: all of the above checks chained inside one single fresh file:// load —
     # canvas present, 8x8, centered, 64/64 cells filled, 6/6 gem types, no pre-existing
-    # match, no reaction to input — proving the coherent whole, not isolated parts.
+    # match — proving the coherent whole, not isolated parts. (Interactivity is now
+    # in scope via B2, so it is no longer part of this static-render integration check.)
     #
     # Examiner verification (2026-07-23): re-ran `npm test` independently —
     #   node --test "test/unit/**/*.test.js"  -> 6 tests, 6 pass, 0 fail
