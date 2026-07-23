@@ -178,7 +178,7 @@ test('applyGravity compacts each column downward, preserving order, nulls float 
   board[1][col] = null;
   board[2][col] = null;
 
-  const fallen = applyGravity(board);
+  const { board: fallen } = applyGravity(board);
 
   // the two nulls must end up at the top of the column
   assert.equal(fallen[0][col], null);
@@ -195,7 +195,7 @@ test('applyGravity compacts each column downward, preserving order, nulls float 
 
 test('applyGravity does not touch a column with no gaps', () => {
   const board = buildMatchFreeBoard();
-  const fallen = applyGravity(board);
+  const { board: fallen } = applyGravity(board);
   for (let row = 0; row < SIZE; row++) {
     assert.equal(fallen[row][7], board[row][7]);
   }
@@ -204,9 +204,38 @@ test('applyGravity does not touch a column with no gaps', () => {
 test('applyGravity returns a full SIZE x SIZE grid (no extra columns from an off-by-one)', () => {
   const board = buildMatchFreeBoard();
   board[3][2] = null;
-  const fallen = applyGravity(board);
+  const { board: fallen } = applyGravity(board);
   assert.equal(fallen.length, SIZE);
   for (const row of fallen) assert.equal(row.length, SIZE);
+});
+
+test('applyGravity reports a fall event only for cells that actually moved, with their real from/to rows', () => {
+  const board = buildMatchFreeBoard();
+  const col = 4;
+  const survivorGem = board[3][col];
+  board[1][col] = null;
+  board[2][col] = null;
+  // column 4, rows 0..7: [orig0, null, null, survivorGem, orig4, orig5, orig6, orig7]
+  // after gravity: rows 0-1 null, row2=orig0 (fell 0->2), row3=survivorGem (fell 3->3, no move), rows4-7 unchanged
+
+  const { fallEvents } = applyGravity(board);
+  const colEvents = fallEvents.filter((e) => e.col === col);
+
+  assert.equal(colEvents.length, 1, 'only the one cell that actually changed row should be reported');
+  assert.deepEqual(colEvents[0], { col, fromRow: 0, toRow: 2, gemType: board[0][col] });
+  // the cell that ends up in the same row it started in (survivorGem, row 3) must not be reported
+  assert.ok(!fallEvents.some((e) => e.col === col && e.toRow === 3));
+});
+
+test('applyGravity reports no fall events for a column with no gaps', () => {
+  const board = buildMatchFreeBoard();
+  const { fallEvents } = applyGravity(board);
+  assert.deepEqual(fallEvents.filter((e) => e.col === 7), []);
+});
+
+test('applyGravity reports exactly no fall events for a fully-populated board (no phantom entries)', () => {
+  const { fallEvents } = applyGravity(buildMatchFreeBoard());
+  assert.deepEqual(fallEvents, [], 'a board with no gaps at all must report an empty fallEvents array, not just one with no matching column');
 });
 
 test('refillBoard replaces every null with a known gem type and leaves existing gems alone', () => {
@@ -215,11 +244,45 @@ test('refillBoard replaces every null with a known gem type and leaves existing 
   board[7][7] = null;
   const untouchedValue = board[3][3];
 
-  const refilled = refillBoard(board);
+  const { board: refilled } = refillBoard(board);
 
   assert.ok(GEM_TYPES.includes(refilled[0][0]));
   assert.ok(GEM_TYPES.includes(refilled[7][7]));
   assert.equal(refilled[3][3], untouchedValue);
+});
+
+test('refillBoard reports a refill event for every newly-filled cell, starting above the board in fall order', () => {
+  const board = buildMatchFreeBoard();
+  const col = 2;
+  board[0][col] = null;
+  board[1][col] = null;
+
+  const { board: refilled, refillEvents } = refillBoard(board);
+  const colEvents = refillEvents.filter((e) => e.col === col).sort((a, b) => a.row - b.row);
+
+  assert.equal(colEvents.length, 2);
+  assert.deepEqual(colEvents.map((e) => e.row), [0, 1]);
+  // both entries fall into a 2-gap column, stacked above row 0 in the order they land:
+  // the one landing at row 0 starts furthest up (-2), the one landing at row 1 starts at -1.
+  assert.deepEqual(colEvents.map((e) => e.startRow), [-2, -1]);
+  for (const event of colEvents) {
+    assert.equal(event.gemType, refilled[event.row][col]);
+  }
+});
+
+test('refillBoard reports no refill events when there is nothing to fill', () => {
+  const { refillEvents } = refillBoard(buildMatchFreeBoard());
+  assert.deepEqual(refillEvents, []);
+});
+
+test('refillBoard does not mutate the board it was given', () => {
+  const board = buildMatchFreeBoard();
+  board[0][0] = null;
+  const originalRowZero = board[0].slice();
+
+  refillBoard(board);
+
+  assert.deepEqual(board[0], originalRowZero, 'the input board\'s row must be left exactly as it was, not written into in place');
 });
 
 test('resolveCascade clears matches, refills, and settles to a fully-filled match-free board', () => {
@@ -240,24 +303,68 @@ test('resolveCascade clears matches, refills, and settles to a fully-filled matc
   }
 });
 
-test('resolveCascade reports every cleared cell with its original gem type (for the shatter effect)', () => {
+test('resolveCascade reports one step whose clearEvents cover every originally-matched cell with its original gem type', () => {
   const board = buildMatchFreeBoard();
   board[4][1] = GEM_TYPES[3];
   board[4][2] = GEM_TYPES[3];
   board[4][3] = GEM_TYPES[3];
 
-  const { clearEvents } = resolveCascade(board);
+  const { steps } = resolveCascade(board);
 
-  const firstClears = clearEvents.filter((e) => e.row === 4 && [1, 2, 3].includes(e.col));
+  assert.ok(steps.length >= 1, 'a match must produce at least one resolution step');
+  const allClearEvents = steps.flatMap((s) => s.clearEvents);
+  const firstClears = allClearEvents.filter((e) => e.row === 4 && [1, 2, 3].includes(e.col));
   assert.equal(firstClears.length, 3, 'all 3 originally-matched cells must be reported as cleared');
   for (const event of firstClears) {
     assert.equal(event.gemType, GEM_TYPES[3], 'a clear event must carry the gem type it cleared, not the refilled value');
   }
 });
 
-test('resolveCascade reports no clear events when the board already has no match', () => {
-  const { clearEvents } = resolveCascade(buildMatchFreeBoard());
-  assert.deepEqual(clearEvents, []);
+test("resolveCascade's first step also reports how the surviving/refilled gems moved", () => {
+  const board = buildMatchFreeBoard();
+  board[4][1] = GEM_TYPES[3];
+  board[4][2] = GEM_TYPES[3];
+  board[4][3] = GEM_TYPES[3];
+
+  const { steps } = resolveCascade(board);
+  const [firstStep] = steps;
+
+  assert.ok(firstStep.fallEvents.length + firstStep.refillEvents.length > 0, 'clearing 3 cells must move or refill something above them');
+  for (const event of firstStep.refillEvents) {
+    assert.ok(event.startRow < event.row, 'a refilled gem must start above the row it lands in');
+  }
+});
+
+test("resolveCascade's clearEvents contain only the actually-matched cells, never an unmatched cell", () => {
+  const board = buildMatchFreeBoard();
+  board[4][1] = GEM_TYPES[3];
+  board[4][2] = GEM_TYPES[3];
+  board[4][3] = GEM_TYPES[3];
+
+  const { steps } = resolveCascade(board);
+  const [firstStep] = steps;
+
+  assert.equal(firstStep.clearEvents.length, 3, 'exactly the 3 matched cells must be reported as cleared, no extras from the rest of the board');
+  const clearedPositions = new Set(firstStep.clearEvents.map((e) => `${e.row},${e.col}`));
+  assert.deepEqual(clearedPositions, new Set(['4,1', '4,2', '4,3']));
+});
+
+test("resolveCascade's step reports the board exactly as it stood before that step's clear/fall/refill", () => {
+  const board = buildMatchFreeBoard();
+  board[4][1] = GEM_TYPES[3];
+  board[4][2] = GEM_TYPES[3];
+  board[4][3] = GEM_TYPES[3];
+
+  const { steps } = resolveCascade(board);
+  const [firstStep] = steps;
+
+  assert.deepEqual(firstStep.boardBeforeStep, board, 'first step must show the board exactly as passed in, pre-clear');
+  assert.equal(firstStep.boardBeforeStep[4][1], GEM_TYPES[3], 'the matched cells must still show their original (uncleared) gem type');
+});
+
+test('resolveCascade reports no steps when the board already has no match', () => {
+  const { steps } = resolveCascade(buildMatchFreeBoard());
+  assert.deepEqual(steps, []);
 });
 
 test('hasAnyValidMove is false for a board where no adjacent swap can create a match', () => {

@@ -70,6 +70,11 @@ Given('I record the classified gem grid', async function () {
 });
 
 Then('the classified gem grid is unchanged from the recorded one', async function () {
+  await this.page.waitForFunction(
+    () => window.MagicGems.getActiveFragments().length === 0 && !window.MagicGems.isAnimating(),
+    null,
+    { timeout: 5000 }
+  );
   const current = await readClassifiedGrid(this.page);
   assert.deepEqual(current, this.recordedGemGrid, 'the board gems changed during interaction');
 });

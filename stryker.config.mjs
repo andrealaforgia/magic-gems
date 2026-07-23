@@ -1,5 +1,5 @@
 export default {
-  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js'],
+  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js', 'src/animation.js'],
   testRunner: 'command',
   commandRunner: { command: 'npm run test:unit' },
   reporters: ['clear-text', 'progress'],
@@ -88,3 +88,39 @@ export default {
 // gravity's arithmetic. Fixed by comparing gravity's contribution at two different
 // elapsed times instead (doubling dt must double the contribution; dividing would halve
 // it) - this catches multiply-vs-divide without needing to know GRAVITY_ACCEL's value.
+//
+// src/animation.js: 1 equivalent survivor (the same UMD-wrapper case), new file this
+// (B4r) run.
+//
+// (B4r) resolution.js's applyGravity/refillBoard/resolveCascade changes (per-step
+// fallEvents/refillEvents/boardBeforeStep, needed so the renderer can animate swap and
+// fall/refill transitions instead of snapping instantly) brought a few more equivalent
+// survivors into the same already-established classes, plus 3 real gaps that were fixed:
+//   - applyGravity's `next[row][col] = null` assignment in the gap branch is redundant
+//     and can be deleted without effect, because `next` is scaffolded via
+//     `Array(size).fill(null)` - every cell already starts null. Equivalent, same
+//     "assignment made irrelevant by the scaffold's own initial value" family as the
+//     already-documented scaffold-array-size equivalents.
+//   - refillBoard's outer column loop and collectClearEvents' inner column loop each
+//     gained an off-by-one (`<` -> `<=`) equivalent survivor: the extra out-of-bounds
+//     column index reads back `undefined`, which fails both loops' `=== null` /
+//     truthiness checks, so the extra iteration never does anything observable. Same
+//     OOB-index-returns-undefined family as board.js's documented equivalents.
+//   - hasAnyValidMove picked up the same harmless-extra-candidate equivalents already
+//     documented for board.js's match-checking (weakened bounds only ever try one extra
+//     candidate that resolves to false via undefined, never hiding a real valid move).
+//   Real gaps found and fixed, not waived:
+//   - applyGravity's fallEvents started as `[]` but no test asserted the *unfiltered*
+//     array's exact contents - only per-column filtered subsets - so an array seeded
+//     with a phantom extra entry survived undetected. Added a test asserting the whole
+//     array is exactly `[]` for a fully-populated (no-gap) board.
+//   - refillBoard's defensive `row.slice()` copy had no test proving the input board is
+//     left untouched; removing it (aliasing the caller's row arrays) survived. Added a
+//     test asserting the original board's row contents are unchanged after the call.
+//   - collectClearEvents' `if (matched[row][col])` guard could be replaced with `true`,
+//     unconditionally reporting *every* cell (not just matched ones) as a clear event,
+//     and no test caught it: the existing test only checked that matched cells were
+//     *included*, never that unmatched cells were *excluded*. This is the exact property
+//     B4r's shatter-scope guarantee (only matched cells shatter; falling/refilled ones
+//     never do) depends on, so it was a real, load-bearing gap - fixed by asserting
+//     clearEvents' length and full position set exactly match the matched run, no more.

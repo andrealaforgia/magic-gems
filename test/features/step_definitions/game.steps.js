@@ -78,7 +78,7 @@ When('I commit that swap', async function () {
 
 Given('the shatter animation has settled', async function () {
   await this.page.waitForFunction(
-    () => window.MagicGems.getActiveFragments().length === 0,
+    () => window.MagicGems.getActiveFragments().length === 0 && !window.MagicGems.isAnimating(),
     null,
     { timeout: 5000 }
   );

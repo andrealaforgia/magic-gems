@@ -39,7 +39,8 @@ test('a non-space, non-committing key only moves the interaction state; the boar
 
   assert.strictEqual(next.board, board);
   assert.deepEqual(next.interaction.cursor, { row: 0, col: 1 });
-  assert.deepEqual(next.clearEvents, []);
+  assert.equal(next.swapAnimation, null);
+  assert.deepEqual(next.steps, []);
 });
 
 test('SPACE with a selection but no target does not commit anything (matches B2 no-op)', () => {
@@ -50,6 +51,7 @@ test('SPACE with a selection but no target does not commit anything (matches B2 
 
   assert.strictEqual(next.board, board);
   assert.strictEqual(next.interaction, selected);
+  assert.equal(next.swapAnimation, null);
 });
 
 test('an arrow key while a selection and target both already exist re-aims the target instead of committing', () => {
@@ -61,6 +63,7 @@ test('an arrow key while a selection and target both already exist re-aims the t
   assert.strictEqual(next.board, board, 'a non-SPACE key must never commit a swap');
   assert.deepEqual(next.interaction.selection, { row: 0, col: 0 });
   assert.deepEqual(next.interaction.target, { row: 1, col: 0 }, 'the target re-aims per ordinary B2 behaviour');
+  assert.equal(next.swapAnimation, null);
 });
 
 test('committing a swap that produces no match reverts the board and cancels the selection', () => {
@@ -76,7 +79,12 @@ test('committing a swap that produces no match reverts the board and cancels the
   assert.equal(next.interaction.selection, null);
   assert.equal(next.interaction.target, null);
   assert.deepEqual(next.interaction.cursor, { row: 0, col: 0 }, 'cursor returns to the original selection cell');
-  assert.deepEqual(next.clearEvents, [], 'a reverted swap must report no clear events (nothing to shatter)');
+  assert.deepEqual(next.steps, [], 'a reverted swap must report no resolution steps (nothing to shatter/fall)');
+
+  assert.deepEqual(next.swapAnimation.a, { row: 0, col: 0 });
+  assert.deepEqual(next.swapAnimation.b, { row: 0, col: 1 });
+  assert.strictEqual(next.swapAnimation.preSwapBoard, board);
+  assert.equal(next.swapAnimation.matched, false);
 });
 
 test('committing a swap that produces a match clears it, settles the board, and returns to plain cursor mode', () => {
@@ -107,11 +115,18 @@ test('committing a swap that produces a match clears it, settles the board, and 
   assert.equal(next.interaction.selection, null);
   assert.equal(next.interaction.target, null);
 
-  const clearedPositions = next.clearEvents.map((e) => `${e.row},${e.col}`);
+  assert.deepEqual(next.swapAnimation.a, { row: 2, col: 1 });
+  assert.deepEqual(next.swapAnimation.b, { row: 2, col: 2 });
+  assert.strictEqual(next.swapAnimation.preSwapBoard, board);
+  assert.equal(next.swapAnimation.matched, true);
+
+  assert.ok(next.steps.length >= 1);
+  const clearEvents = next.steps.flatMap((s) => s.clearEvents);
+  const clearedPositions = clearEvents.map((e) => `${e.row},${e.col}`);
   assert.ok(clearedPositions.includes('0,2'));
   assert.ok(clearedPositions.includes('1,2'));
   assert.ok(clearedPositions.includes('2,2'));
-  for (const event of next.clearEvents) {
+  for (const event of clearEvents) {
     assert.ok(GEM_TYPES.includes(event.gemType));
   }
 });

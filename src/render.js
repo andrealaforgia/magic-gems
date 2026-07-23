@@ -64,15 +64,18 @@
     ctx.restore();
   }
 
-  function drawBoard(ctx, board, cellSize) {
+  function drawBoard(ctx, board, cellSize, hiddenCells) {
     const size = board.length;
     ctx.clearRect(0, 0, size * cellSize, size * cellSize);
 
     for (let row = 0; row < size; row++) {
       for (let col = 0; col < size; col++) {
+        if (hiddenCells && hiddenCells.has(`${row},${col}`)) continue;
+        const gem = board[row][col];
+        if (gem === null) continue;
         const cx = col * cellSize + cellSize / 2;
         const cy = row * cellSize + cellSize / 2;
-        drawGem(ctx, board[row][col], cx, cy, cellSize);
+        drawGem(ctx, gem, cx, cy, cellSize);
       }
     }
   }

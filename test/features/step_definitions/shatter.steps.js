@@ -14,8 +14,11 @@ async function readFragments(page) {
 }
 
 Then('multiple fragments are actively animating', async function () {
-  const fragments = await readFragments(this.page);
-  assert.ok(fragments.length >= 4, `expected multiple active fragments, found ${fragments.length}`);
+  await this.page.waitForFunction(
+    () => window.MagicGems.getActiveFragments().length >= 4,
+    null,
+    { timeout: 3000 }
+  );
 });
 
 Then('no fragments remain', async function () {
@@ -24,6 +27,11 @@ Then('no fragments remain', async function () {
 });
 
 Given('I capture the active fragment positions', async function () {
+  await this.page.waitForFunction(
+    () => window.MagicGems.getActiveFragments().length > 0,
+    null,
+    { timeout: 3000 }
+  );
   this.fragmentPositions = await readFragments(this.page);
 });
 
@@ -47,11 +55,21 @@ Then('at least one fragment shows lateral drift since the last capture', async f
 });
 
 Given('I record the fragment velocity pattern', async function () {
+  await this.page.waitForFunction(
+    () => window.MagicGems.getActiveFragments().length > 0,
+    null,
+    { timeout: 3000 }
+  );
   const fragments = await readFragments(this.page);
   this.recordedVelocityPattern = fragments.map((f) => [f.vx, f.vy]);
 });
 
 Then('the fragment velocity pattern differs from the recorded one', async function () {
+  await this.page.waitForFunction(
+    () => window.MagicGems.getActiveFragments().length > 0,
+    null,
+    { timeout: 3000 }
+  );
   const fragments = await readFragments(this.page);
   const current = fragments.map((f) => [f.vx, f.vy]);
   assert.notDeepEqual(current, this.recordedVelocityPattern, 'two separate shatters replayed an identical fragment pattern');

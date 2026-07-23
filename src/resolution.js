@@ -65,23 +65,47 @@
   function applyGravity(board) {
     const size = board.length;
     const next = Array.from({ length: size }, () => new Array(size).fill(null));
+    const fallEvents = [];
 
     for (let col = 0; col < size; col++) {
       const survivors = [];
       for (let row = 0; row < size; row++) {
-        if (board[row][col] !== null) survivors.push(board[row][col]);
+        if (board[row][col] !== null) survivors.push({ row, gemType: board[row][col] });
       }
       const gapCount = size - survivors.length;
       for (let row = 0; row < size; row++) {
-        next[row][col] = row < gapCount ? null : survivors[row - gapCount];
+        if (row < gapCount) {
+          next[row][col] = null;
+        } else {
+          const survivor = survivors[row - gapCount];
+          next[row][col] = survivor.gemType;
+          if (survivor.row !== row) {
+            fallEvents.push({ col, fromRow: survivor.row, toRow: row, gemType: survivor.gemType });
+          }
+        }
       }
     }
 
-    return next;
+    return { board: next, fallEvents };
   }
 
   function refillBoard(board) {
-    return board.map((row) => row.map((gem) => (gem === null ? randomGem() : gem)));
+    const size = board.length;
+    const next = board.map((row) => row.slice());
+    const refillEvents = [];
+
+    for (let col = 0; col < size; col++) {
+      const gapCount = next.reduce((count, row) => count + (row[col] === null ? 1 : 0), 0);
+      for (let row = 0; row < size; row++) {
+        if (next[row][col] === null) {
+          const gemType = randomGem();
+          next[row][col] = gemType;
+          refillEvents.push({ col, row, gemType, startRow: row - gapCount });
+        }
+      }
+    }
+
+    return { board: next, refillEvents };
   }
 
   function hasAnyMatch(matched) {
@@ -100,14 +124,17 @@
 
   function resolveCascade(board) {
     let current = board;
-    const clearEvents = [];
+    const steps = [];
     for (let i = 0; i < CASCADE_SAFETY_LIMIT; i++) {
       const matched = findMatchedCells(current);
-      if (!hasAnyMatch(matched)) return { board: current, clearEvents };
-      clearEvents.push(...collectClearEvents(current, matched));
-      current = refillBoard(applyGravity(clearMatches(current, matched)));
+      if (!hasAnyMatch(matched)) return { board: current, steps };
+      const clearEvents = collectClearEvents(current, matched);
+      const { board: fallen, fallEvents } = applyGravity(clearMatches(current, matched));
+      const { board: refilled, refillEvents } = refillBoard(fallen);
+      steps.push({ boardBeforeStep: current, clearEvents, fallEvents, refillEvents });
+      current = refilled;
     }
-    return { board: current, clearEvents };
+    return { board: current, steps };
   }
 
   function hasAnyValidMove(board) {

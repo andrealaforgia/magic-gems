@@ -76,3 +76,10 @@ Six distinct gem types, each a geometric shape drawn with a neon glow effect:
   - 9.2.2 The fragments are small pieces of the broken gem (e.g. miniature versions
     of it, or pixel-like shards) that fall down the screen, drifting somewhat
     randomly, and disappear once they pass beyond the lower border of the screen.
+  - 9.2.3 The shatter effect applies ONLY to gems that are removed as part of a
+    completed match (the cleared run). Gems that merely fall to fill gaps (7.2) or
+    drop in to refill from the top (7.3) do NOT shatter — they simply move into
+    place.
+- 9.3 Animated transitions — the swap, gems falling/refilling (7.2, 7.3), and the
+  shatter — play at a slow, deliberate pace, noticeably slower than an instant
+  snap, so the motion is clearly visible and appealing.
