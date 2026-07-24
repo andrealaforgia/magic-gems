@@ -44,8 +44,10 @@ The game is controlled entirely with the **keyboard** (no mouse).
 - A **match** is a straight run of 3 or more identical gems, horizontal or vertical.
 - Matched gems **shatter** and clear; gems above **fall** to fill the gaps and new
   gems **drop in** from the top; any new matches **cascade** until the board settles.
-- There is **no score** and **no game-over** — the game runs forever. If the board
-  ever has no possible move, it **reshuffles** into a playable layout.
+- The game keeps a running **score** (shown above the board, along with the current
+  time multiplier) that rewards fast, big, and chained clears — but there is
+  **no game-over**; the game runs forever. If the board ever has no possible move,
+  it **reshuffles** into a playable layout.
 
 ### The gems
 

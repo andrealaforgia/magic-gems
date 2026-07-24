@@ -84,15 +84,6 @@ Given('the shatter animation has settled', async function () {
   );
 });
 
-Then('the page shows no score or counter element', async function () {
-  const visibleElementCount = await this.page.evaluate(
-    () => document.body.querySelectorAll(':not(script)').length
-  );
-  const bodyText = await this.page.evaluate(() => document.body.innerText.trim());
-  assert.equal(visibleElementCount, 1, 'expected only the canvas as a visible element in the page body');
-  assert.equal(bodyText, '', 'expected no visible text (a score/counter) anywhere on the page');
-});
-
 When('I apply the live page\'s own ensurePlayable to a known stuck board', async function () {
   this.reshuffledResult = await this.page.evaluate(
     (stuckBoard) => window.MagicGems.ensurePlayable(stuckBoard),

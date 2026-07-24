@@ -48,13 +48,10 @@ Feature: The core match-3 play loop (B3)
     Then the classified gem grid is unchanged from the recorded one
     And no selection or target highlight is present
 
-  @E6
-  Scenario: No score or counter is ever displayed, before or after a swap
-    Given I open "index.html" directly as a file:// URL with no server or build step
-    Then the page shows no score or counter element
-    When I locate an adjacent swap that would produce a match on the live board
-    And I commit that swap
-    Then the page shows no score or counter element
+  # E6 ("no score or counter is ever displayed") is superseded by SPEC 8.1's later
+  # amendment (SCORE behaviour, test/features/scoring.feature): the game now keeps
+  # and displays a running score. Retired here rather than left asserting the
+  # opposite of what the frozen spec currently requires.
 
   # Trimmed per QA test-design review (commit 59d95e8, Farley Index 8.0): the
   # closing assertions duplicated the newly-split E1/E4 verbatim, leaving this

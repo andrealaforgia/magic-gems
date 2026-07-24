@@ -24,8 +24,14 @@
       clampProgress,
       interpolatePoint,
       loadGemSprites,
+      summedBasePoints,
+      computeTimeMultiplier,
+      comboFactorForChainIndex,
+      computeCompletionScore,
     } = global.MagicGems;
     const canvas = document.getElementById('board');
+    const scoreEl = document.getElementById('score');
+    const multiplierEl = document.getElementById('multiplier');
     const cellSize = computeCellSize(window.innerWidth, window.innerHeight, BOARD_SIZE);
     canvas.width = BOARD_SIZE * cellSize;
     canvas.height = BOARD_SIZE * cellSize;
@@ -38,6 +44,20 @@
     let animationQueue = [];
     let activeAnimation = null;
     let lastCommitSteps = [];
+    let score = 0;
+    let chainIndex = 1;
+    let lastCompletionTimeMs = performance.now();
+
+    function applyCompletionScore(runLengths) {
+      const now = performance.now();
+      const timeMultiplier = computeTimeMultiplier(now - lastCompletionTimeMs);
+      const base = summedBasePoints(runLengths);
+      const combo = comboFactorForChainIndex(chainIndex);
+      score += computeCompletionScore(base, timeMultiplier, combo);
+      chainIndex += 1;
+      lastCompletionTimeMs = now;
+      scoreEl.textContent = `Score: ${score}`;
+    }
 
     function cellCenter(row, col) {
       return { x: col * cellSize + cellSize / 2, y: row * cellSize + cellSize / 2 };
@@ -98,6 +118,7 @@
       activeAnimation.elapsedMs = 0;
       if (activeAnimation.kind === 'cascade') {
         spawnFragments(activeAnimation.clearEvents);
+        applyCompletionScore(activeAnimation.runLengths);
       }
     }
 
@@ -178,6 +199,15 @@
       } else {
         lastFrameTimeMs = null;
       }
+      // After the above, so a completion's reset (SPEC 10.5) this same frame is
+      // reflected immediately - never a stale pre-reset value even for one tick.
+      // Independent of the isActive gate above: the multiplier keeps ticking down
+      // in real time even while the board sits at rest with nothing else to
+      // animate (SPEC 10.8). Uses performance.now() rather than the rAF frameTimeMs
+      // parameter, matching the clock applyCompletionScore stamps lastCompletionTimeMs
+      // with - mixing the two would read a small negative elapsed on the exact tick
+      // a reset happens (frameTimeMs is captured before this tick's own work runs).
+      multiplierEl.textContent = `x${computeTimeMultiplier(performance.now() - lastCompletionTimeMs)}`;
       requestAnimationFrame(tick);
     }
 
@@ -186,6 +216,11 @@
     document.addEventListener('keydown', (event) => {
       const next = handleGameKey({ board, interaction }, event.key);
       if (next.board !== board || next.interaction !== interaction) {
+        if (next.swapAnimation) {
+          // A new swap starts a new cascade chain (SPEC 10.6) - resets even if
+          // this swap turns out not to match, since the *next* one starts fresh.
+          chainIndex = 1;
+        }
         board = next.board;
         interaction = next.interaction;
         lastCommitSteps = next.steps;

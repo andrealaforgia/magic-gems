@@ -19,15 +19,22 @@
     return next;
   }
 
-  function markRun(matched, cells) {
+  function markRun(matched, cells, runLengths) {
     if (cells.length >= 3) {
       for (const { row, col } of cells) matched[row][col] = true;
+      runLengths.push(cells.length);
     }
   }
 
+  // runLengths lists every qualifying run's own length (one entry per run, not per
+  // cell) - the scoring system (SPEC 10.3/10.4) needs each run's individual length
+  // to compute its own base points before summing, which the boolean matched grid
+  // alone can't distinguish (it can't tell a lone 5-run from a 3-run and a 4-run
+  // that happen to touch).
   function findMatchedCells(board) {
     const size = board.length;
     const matched = Array.from({ length: size }, () => new Array(size).fill(false));
+    const runLengths = [];
 
     for (let row = 0; row < size; row++) {
       let run = [{ row, col: 0 }];
@@ -36,7 +43,7 @@
         if (sameAsRunStart) {
           run.push({ row, col });
         } else {
-          markRun(matched, run);
+          markRun(matched, run, runLengths);
           run = [{ row, col }];
         }
       }
@@ -49,13 +56,13 @@
         if (sameAsRunStart) {
           run.push({ row, col });
         } else {
-          markRun(matched, run);
+          markRun(matched, run, runLengths);
           run = [{ row, col }];
         }
       }
     }
 
-    return matched;
+    return { matched, runLengths };
   }
 
   function clearMatches(board, matched) {
@@ -126,12 +133,12 @@
     let current = board;
     const steps = [];
     for (let i = 0; i < CASCADE_SAFETY_LIMIT; i++) {
-      const matched = findMatchedCells(current);
+      const { matched, runLengths } = findMatchedCells(current);
       if (!hasAnyMatch(matched)) return { board: current, steps };
       const clearEvents = collectClearEvents(current, matched);
       const { board: fallen, fallEvents } = applyGravity(clearMatches(current, matched));
       const { board: refilled, refillEvents } = refillBoard(fallen);
-      steps.push({ boardBeforeStep: current, clearEvents, fallEvents, refillEvents });
+      steps.push({ boardBeforeStep: current, clearEvents, fallEvents, refillEvents, runLengths });
       current = refilled;
     }
     return { board: current, steps };

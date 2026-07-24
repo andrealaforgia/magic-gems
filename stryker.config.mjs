@@ -1,5 +1,5 @@
 export default {
-  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js', 'src/animation.js', 'src/sprite-layout.js', 'src/render.js'],
+  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js', 'src/animation.js', 'src/sprite-layout.js', 'src/render.js', 'src/scoring.js'],
   testRunner: 'command',
   commandRunner: { command: 'npm run test:unit' },
   reporters: ['clear-text', 'progress'],
@@ -158,3 +158,18 @@ export default {
 // tileHeight multiplications survived at index 0 (col=0 and row=0 make multiply and
 // divide coincidentally agree at 0) - added a non-corner-tile test (index 5, both
 // axes non-zero) asserting its exact origin.
+//
+// (SCORE) src/scoring.js: new file this run (base points, time multiplier, combo
+// factor, and the combined completion-score formula). 1 equivalent survivor (the
+// same UMD-wrapper case as every file above). One real gap found and fixed: the
+// combo-factor argument's multiply survived because every worked-example test used
+// comboFactor=1, where multiplying and dividing by it are indistinguishable - added
+// a comboFactor=2 case. resolution.js's findMatchedCells/markRun changes (now also
+// returns each qualifying run's own length, needed to compute per-run base points
+// without conflating a lone 5-run with a 3-run and 4-run that happen to touch)
+// brought no new survivors - fully covered by dedicated run-length tests from the
+// start, including one that caught a real, pre-existing latent bug in this file's
+// own L-shaped-intersection test fixture (its overwrite value coincidentally
+// extended one of its two "3-runs" to length 4 via the diagonal base pattern's own
+// period-7 wraparound - never surfaced before because no prior test checked run
+// length, only that certain cells were marked true).

@@ -61,7 +61,8 @@ glossy, faceted 3D gemstone. The seven identities are:
   the board is stable.
 
 ## 8. Endless play
-- 8.1 There is no score.
+- 8.1 The game keeps a running score (see §10). Scoring is purely additive — it
+  does not change how the game ends.
 - 8.2 The game runs infinitely; there is no game-over.
 - 8.3 If the board ever has no possible valid move, it auto-reshuffles, guaranteeing
   at least one possible match, so play never dead-ends.
@@ -88,3 +89,32 @@ glossy, faceted 3D gemstone. The seven identities are:
 - 9.3 Animated transitions — the swap, gems falling/refilling (7.2, 7.3), and the
   shatter — play at a slow, deliberate pace, noticeably slower than an instant
   snap, so the motion is clearly visible and appealing.
+
+## 10. Scoring
+The game keeps a running score that only ever increases. It rewards clearing gems
+quickly and in bigger, chained clears.
+
+- 10.1 The score starts at 0 and is displayed centred at the top of the gem grid.
+- 10.2 A **completion** is a single resolution step in which one or more matched
+  runs clear at the same time.
+- 10.3 Base points for one cleared run = (run length − 2) × 50. So a 3-run = 50,
+  a 4-run = 100, a 5-run = 150, and so on.
+- 10.4 When several runs clear in the same completion (10.2), their base points are
+  summed before any multiplier is applied.
+- 10.5 A time multiplier rewards fast play. It resets to 5000 at each completion and
+  then counts down by 1 every second, never below 0. At the moment of a completion
+  its value is `5000 − (whole seconds elapsed since the previous completion)`,
+  floored at 0. For the first completion of the game the elapsed time is measured
+  from the start of play.
+- 10.6 A combo factor rewards chains. Within the cascade chain triggered by one
+  swap (7.4), the k-th completion carries a factor of 2^(k−1): the 1st completion
+  ×1, the 2nd ×2, the 3rd ×4, the 4th ×8, and so on. The chain index resets to 1
+  on each new swap.
+- 10.7 Each completion adds to the running score:
+  `floor( summed_base (10.4) × time_multiplier (10.5) × combo_factor (10.6) / 100 )`.
+  - 10.7.1 Worked examples: a lone 3-run 30 seconds after the previous completion
+    scores `floor(50 × (5000−30) × 1 / 100)` = 2485. A 3-run and a 4-run clearing
+    together, same 30-second gap, first in the chain: `floor((50+100) × 4970 × 1
+    / 100)` = 7455.
+- 10.8 The current time multiplier (10.5) is shown near the score as live feedback,
+  counting down between completions.

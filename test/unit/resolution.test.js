@@ -82,7 +82,7 @@ test('findMatchedCells marks every cell of a run, including runs longer than 3',
   board[0][4] = GEM_TYPES[2];
   board[0][5] = GEM_TYPES[2]; // a run of 4
 
-  const matched = findMatchedCells(board);
+  const { matched } = findMatchedCells(board);
 
   assert.equal(matched[0][2], true);
   assert.equal(matched[0][3], true);
@@ -105,7 +105,7 @@ test('findMatchedCells marks a run that ends exactly at the last column or last 
   board[6][5] = GEM_TYPES[1];
   board[7][5] = GEM_TYPES[1];
 
-  const matched = findMatchedCells(board);
+  const { matched } = findMatchedCells(board);
 
   assert.equal(matched[1][5], true, 'horizontal run ending at the last column must be marked');
   assert.equal(matched[1][6], true);
@@ -127,7 +127,7 @@ test('findMatchedCells marks a run that starts exactly at the first column or fi
   board[0][2] = GEM_TYPES[1];
   board[1][2] = GEM_TYPES[1];
 
-  const matched = findMatchedCells(board);
+  const { matched } = findMatchedCells(board);
 
   assert.equal(matched[2][0], true, 'horizontal run starting at the first column must be marked');
   assert.equal(matched[2][1], true);
@@ -137,26 +137,67 @@ test('findMatchedCells marks a run that starts exactly at the first column or fi
 });
 
 test('findMatchedCells returns a full SIZE x SIZE grid (no structural corruption at the boundary)', () => {
-  const matched = findMatchedCells(buildMatchFreeBoard());
+  const { matched } = findMatchedCells(buildMatchFreeBoard());
   assert.equal(matched.length, SIZE);
   for (const row of matched) assert.equal(row.length, SIZE);
 });
 
 test('findMatchedCells marks a cell that is part of both a horizontal and a vertical run once', () => {
   const board = buildMatchFreeBoard();
-  board[3][3] = GEM_TYPES[2];
-  board[3][4] = GEM_TYPES[2];
-  board[3][5] = GEM_TYPES[2];
-  board[1][3] = GEM_TYPES[2];
-  board[2][3] = GEM_TYPES[2];
+  board[3][3] = GEM_TYPES[1];
+  board[3][4] = GEM_TYPES[1];
+  board[3][5] = GEM_TYPES[1];
+  board[1][3] = GEM_TYPES[1];
+  board[2][3] = GEM_TYPES[1];
   // (3,3) is now the corner of an L: horizontal run [3][3..5] and vertical run [1..3][3]
 
-  const matched = findMatchedCells(board);
+  const { matched } = findMatchedCells(board);
   assert.equal(matched[3][3], true);
   assert.equal(matched[1][3], true);
   assert.equal(matched[2][3], true);
   assert.equal(matched[3][4], true);
   assert.equal(matched[3][5], true);
+});
+
+test('findMatchedCells reports one run length per qualifying run (SPEC 10.3)', () => {
+  const board = buildMatchFreeBoard();
+  board[0][2] = GEM_TYPES[2];
+  board[0][3] = GEM_TYPES[2];
+  board[0][4] = GEM_TYPES[2];
+  board[0][5] = GEM_TYPES[2]; // a lone run of 4
+
+  const { runLengths } = findMatchedCells(board);
+  assert.deepEqual(runLengths, [4]);
+});
+
+test('findMatchedCells reports each run\'s own length separately when two runs clear together (SPEC 10.4)', () => {
+  const board = buildMatchFreeBoard();
+  // A 4-run on row 0, cols 2-5.
+  board[0][2] = GEM_TYPES[2];
+  board[0][3] = GEM_TYPES[2];
+  board[0][4] = GEM_TYPES[2];
+  board[0][5] = GEM_TYPES[2];
+  // An unrelated 3-run on row 6, cols 0-2.
+  board[6][0] = GEM_TYPES[1];
+  board[6][1] = GEM_TYPES[1];
+  board[6][2] = GEM_TYPES[1];
+
+  const { runLengths } = findMatchedCells(board);
+  assert.deepEqual([...runLengths].sort(), [3, 4]);
+});
+
+test('findMatchedCells reports an L-shaped intersection as two separate run lengths, not merged (SPEC 10.4)', () => {
+  const board = buildMatchFreeBoard();
+  // Same L fixture as the shared-cell test above: a horizontal 3-run and a
+  // vertical 3-run sharing cell (3,3) - two runs, not one 5-cell run.
+  board[3][3] = GEM_TYPES[1];
+  board[3][4] = GEM_TYPES[1];
+  board[3][5] = GEM_TYPES[1];
+  board[1][3] = GEM_TYPES[1];
+  board[2][3] = GEM_TYPES[1];
+
+  const { runLengths } = findMatchedCells(board);
+  assert.deepEqual([...runLengths].sort(), [3, 3]);
 });
 
 test('clearMatches nulls out matched cells and leaves everything else unchanged', () => {
@@ -347,6 +388,34 @@ test("resolveCascade's clearEvents contain only the actually-matched cells, neve
   assert.equal(firstStep.clearEvents.length, 3, 'exactly the 3 matched cells must be reported as cleared, no extras from the rest of the board');
   const clearedPositions = new Set(firstStep.clearEvents.map((e) => `${e.row},${e.col}`));
   assert.deepEqual(clearedPositions, new Set(['4,1', '4,2', '4,3']));
+});
+
+test("resolveCascade's step reports the run length of each run it actually cleared (SPEC 10.3)", () => {
+  const board = buildMatchFreeBoard();
+  board[4][1] = GEM_TYPES[3];
+  board[4][2] = GEM_TYPES[3];
+  board[4][3] = GEM_TYPES[3];
+
+  const { steps } = resolveCascade(board);
+  const [firstStep] = steps;
+
+  assert.deepEqual(firstStep.runLengths, [3]);
+});
+
+test("resolveCascade's step reports separately-summed run lengths when two runs clear in the same step (SPEC 10.4)", () => {
+  const board = buildMatchFreeBoard();
+  board[0][2] = GEM_TYPES[2];
+  board[0][3] = GEM_TYPES[2];
+  board[0][4] = GEM_TYPES[2];
+  board[0][5] = GEM_TYPES[2];
+  board[6][0] = GEM_TYPES[1];
+  board[6][1] = GEM_TYPES[1];
+  board[6][2] = GEM_TYPES[1];
+
+  const { steps } = resolveCascade(board);
+  const [firstStep] = steps;
+
+  assert.deepEqual([...firstStep.runLengths].sort(), [3, 4]);
 });
 
 test("resolveCascade's step reports the board exactly as it stood before that step's clear/fall/refill", () => {
