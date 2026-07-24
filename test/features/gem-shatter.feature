@@ -49,12 +49,12 @@ Feature: Gem shatter effect (B4)
     Then the fragment velocity pattern differs from the recorded one
 
   @E6
-  Scenario: The glow effect on remaining gems is unaffected while a shatter is playing
+  Scenario: An unaffected gem elsewhere on the board still renders normally while a shatter is playing
     Given I open "index.html" directly as a file:// URL with no server or build step
     And I locate an adjacent swap that would produce a match on the live board
     When I commit that swap
     Then multiple fragments are actively animating
-    And an unaffected gem elsewhere on the board still shows its neon glow fade
+    And an unaffected gem elsewhere on the board still renders a recognizable gem
 
   @E7
   Scenario: The shatter effect does not block or delay resolution or the next move

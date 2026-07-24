@@ -1,5 +1,5 @@
 export default {
-  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js', 'src/animation.js'],
+  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js', 'src/animation.js', 'src/sprite-layout.js', 'src/render.js'],
   testRunner: 'command',
   commandRunner: { command: 'npm run test:unit' },
   reporters: ['clear-text', 'progress'],
@@ -91,6 +91,24 @@ export default {
 //
 // src/animation.js: 1 equivalent survivor (the same UMD-wrapper case), new file this
 // (B4r) run.
+//
+// (SG1) src/sprite-layout.js and src/render.js: newly added to `mutate` this run (the
+// old vector/glow rendering in render.js used Path2D/shadowBlur and had no unit tests
+// at all - the sprite re-skin's plain ctx.drawImage()+rect-math approach is finally
+// spy-testable with no real Canvas). Each has 1 equivalent survivor (the same
+// UMD-wrapper case as every file above). Real gaps this run found were fixed, not
+// waived: render.js's highlight-ring rect arithmetic and drawFragments' centring
+// arithmetic were exercised only by call-count assertions, not the actual rect
+// values, so several ArithmeticOperator mutants on those coordinates survived; fixed
+// by asserting exact rect coordinates. A `target` ring drawing unconditionally
+// (`if (interaction.target)` -> `if (true)`) also survived because no test covered
+// "selection set, target still null" - added one (it also crashes that mutant, since
+// null.row throws). HIGHLIGHT_COLORS.selection collapsing to '' survived because no
+// test read the colour values themselves, only ring counts - added a
+// distinctness/non-empty check. sprite-layout.js's `box / imgHeight` -> `box *
+// imgHeight` survived because every existing aspect-ratio test used a landscape
+// (wide) sprite, where the height term never actually constrains the result - added
+// a portrait (tall) sprite case where it does.
 //
 // (B4r) resolution.js's applyGravity/refillBoard/resolveCascade changes (per-step
 // fallEvents/refillEvents/boardBeforeStep, needed so the renderer can animate swap and

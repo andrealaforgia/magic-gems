@@ -49,17 +49,17 @@ The game is controlled entirely with the **keyboard** (no mouse).
 
 ### The gems
 
-Six types, each a neon-glowing geometric shape: purple triangle (up), red square,
-green circle, yellow equilateral diamond, blue cut-gemstone diamond (down), and
-white circle.
+Seven types, each a glossy, faceted gemstone sprite: blue teardrop, green octagon,
+orange hexagon, purple triangle, red square, silver octagon, and yellow diamond.
 
 ## Project layout
 
 | Path | What it is |
 | --- | --- |
 | `index.html` | Entry point — the game canvas |
-| `styles.css` | Layout and neon styling |
+| `styles.css` | Page layout and background |
 | `src/` | Game logic (board, gems, rendering, interaction) |
+| `assets/gems/` | Sprite art, one folder per gem identity |
 | `SPEC.md` | The frozen, normative specification |
 | `test/` | Unit tests and Cucumber/Playwright acceptance tests |
 

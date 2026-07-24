@@ -1,70 +1,22 @@
 (function (global) {
   'use strict';
 
-  const { GEM_COLORS } = global.MagicGems;
+  const { computeSpriteDrawRect, GEM_SPRITE_FIT_RATIO } = global.MagicGems;
 
-  const GLOW_BLUR_RATIO = 0.15;
-  const GEM_RADIUS_RATIO = 0.3;
-
-  function pathFor(gem, cx, cy, r) {
-    const path = new Path2D();
-    switch (gem) {
-      case 'purple-triangle':
-        // Apex and base equidistant from centre (SPEC 3.3: centred both axes).
-        path.moveTo(cx, cy - r);
-        path.lineTo(cx + r * 0.87, cy + r);
-        path.lineTo(cx - r * 0.87, cy + r);
-        path.closePath();
-        break;
-      case 'red-square':
-        path.rect(cx - r * 0.8, cy - r * 0.8, r * 1.6, r * 1.6);
-        break;
-      case 'green-circle':
-      case 'white-circle':
-        path.arc(cx, cy, r * 0.85, 0, Math.PI * 2);
-        break;
-      case 'yellow-diamond':
-        // Equilateral diamond: a rhombus with 4 equal sides (a square rotated 45deg),
-        // symmetric on both axes (SPEC 2.4, 3.3).
-        path.moveTo(cx, cy - r);
-        path.lineTo(cx + r, cy);
-        path.lineTo(cx, cy + r);
-        path.lineTo(cx - r, cy);
-        path.closePath();
-        break;
-      case 'blue-diamond':
-        // Cut-gemstone silhouette pointing down: flat "table" top edge, angled
-        // shoulder facets, sharp pavilion point at bottom. Bounding box spans -r to
-        // +r on both axes, so it's centred (SPEC 3.3) while staying visually distinct
-        // from yellow's plain equilateral rhombus (SPEC 2.5).
-        path.moveTo(cx - r * 0.5, cy - r);
-        path.lineTo(cx + r * 0.5, cy - r);
-        path.lineTo(cx + r, cy - r * 0.15);
-        path.lineTo(cx, cy + r);
-        path.lineTo(cx - r, cy - r * 0.15);
-        path.closePath();
-        break;
-      default:
-        throw new Error(`Unknown gem type: ${gem}`);
-    }
-    return path;
+  function drawGem(ctx, gem, cx, cy, cellSize, sprites) {
+    const sprite = sprites[gem];
+    const rect = computeSpriteDrawRect(
+      sprite.naturalWidth,
+      sprite.naturalHeight,
+      cx,
+      cy,
+      cellSize,
+      GEM_SPRITE_FIT_RATIO
+    );
+    ctx.drawImage(sprite, rect.x, rect.y, rect.width, rect.height);
   }
 
-  function drawGem(ctx, gem, cx, cy, cellSize) {
-    const r = cellSize * GEM_RADIUS_RATIO;
-    const color = GEM_COLORS[gem];
-    const path = pathFor(gem, cx, cy, r);
-
-    ctx.save();
-    ctx.fillStyle = color;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = cellSize * GLOW_BLUR_RATIO;
-    ctx.fill(path);
-    ctx.fill(path);
-    ctx.restore();
-  }
-
-  function drawBoard(ctx, board, cellSize, hiddenCells) {
+  function drawBoard(ctx, board, cellSize, sprites, hiddenCells) {
     const size = board.length;
     ctx.clearRect(0, 0, size * cellSize, size * cellSize);
 
@@ -75,7 +27,7 @@
         if (gem === null) continue;
         const cx = col * cellSize + cellSize / 2;
         const cy = row * cellSize + cellSize / 2;
-        drawGem(ctx, gem, cx, cy, cellSize);
+        drawGem(ctx, gem, cx, cy, cellSize, sprites);
       }
     }
   }
@@ -90,7 +42,6 @@
 
   function drawHighlightRing(ctx, row, col, cellSize, color) {
     ctx.save();
-    ctx.shadowBlur = 0;
     ctx.strokeStyle = color;
     ctx.lineWidth = HIGHLIGHT_RING_LINE_WIDTH;
     const inset = HIGHLIGHT_RING_INSET;
@@ -137,7 +88,6 @@
   function drawFragments(ctx, fragments) {
     for (const fragment of fragments) {
       ctx.save();
-      ctx.shadowBlur = 0;
       ctx.fillStyle = fragment.color;
       ctx.fillRect(
         fragment.x - FRAGMENT_SIZE / 2,

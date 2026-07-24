@@ -8,65 +8,23 @@ export function colorDistance([r1, g1, b1], [r2, g2, b2]) {
 }
 
 // Euclidean RGB distance under which a sampled pixel is confidently one of N
-// candidate palette colours rather than background/glow-blend noise. The six gem
-// colours and three highlight colours are all >100 apart from each other and from
-// the near-black background (~rgb(10,10,18)), so 40 leaves comfortable headroom
-// without being loose enough to misclassify across colours.
+// candidate palette colours rather than background/antialiasing noise. The seven
+// gem sprites' own sampled colours and the three highlight colours are all >100
+// apart from each other and from the near-black background (~rgb(10,10,18)), so 40
+// leaves comfortable headroom without being loose enough to misclassify across
+// colours.
 export const CLASSIFY_TOLERANCE = 40;
 
-// Tighter bound for checking a pixel against one already-known expected colour
-// (not classifying among several candidates) — used where the isolated single-gem
-// probe samples its own centre pixel and compares it to that exact gem's palette entry.
-export const OWN_COLOR_MATCH_TOLERANCE = 20;
-
-// Background is a near-black navy (~rgb(10,10,18), luma ~13). Gem cores and their
-// glow are always much brighter. 30 sits comfortably above background luma and well
-// below any gem's glow-tail brightness, so it reliably separates "empty cell" from
-// "cell holds something".
+// Background is a near-black navy (~rgb(10,10,18), luma ~13). Gem sprites are
+// always much brighter. 30 sits comfortably above background luma and well below
+// any sprite's brightness, so it reliably separates "empty cell" from "cell holds
+// something".
 export const BACKGROUND_LUMA_CEILING = 30;
-
-// A sampled point is "solidly filled" (inside a shape's hard core, not just touched
-// by its glow's blurred tail) once its alpha crosses this line. Calibrated empirically
-// against all 6 gem shapes: true interior points read ~232-255, true exterior points
-// (background or glow-tail) read ~5-150, leaving a clear gap around 200.
-export const SHAPE_FILL_ALPHA_THRESHOLD = 200;
 
 // How far off exact-center the canvas's on-screen bounding box may sit and still
 // count as "the central part of the viewport" (SPEC 3.2) — 10% of the viewport
 // dimension is a generous, visually-central margin without requiring pixel-perfect centering.
 export const VIEWPORT_CENTER_TOLERANCE_RATIO = 0.1;
-
-// Fraction of the way from background luma to peak (core) luma at which the glow's
-// faint outer edge is considered to have started. Chosen low (10%) so it catches the
-// glow's fade as early as any real brightness rises above background noise.
-export const GLOW_EDGE_LUMA_FRACTION = 0.1;
-
-// Fraction of the way from background to peak luma at which the shape's solid core is
-// considered to have begun. Chosen high (85%) so it sits just past the steepest part
-// of a real gem's core-to-glow falloff, leaving room to measure the fade between it
-// and GLOW_EDGE_LUMA_FRACTION.
-export const CORE_EDGE_LUMA_FRACTION = 0.85;
-
-// Minimum pixel distance between the glow-edge and core-edge thresholds above to count
-// as a genuine soft fade rather than a hard, anti-aliased-only cutoff (which measures
-// as a 1-2px span in this project's rendering).
-export const MIN_GLOW_FADE_SPAN_PX = 6;
-
-// How far a shape's measured cardinal-direction edge distances (up/down/left/right)
-// may differ from one another and still count as "centred"/"equal-length" — a few
-// pixels of antialiasing/rounding noise, not a real asymmetry.
-export const CENTERING_TOLERANCE_PX = 3;
-
-// Fraction of the measured top-edge distance at which to sample for a flat table
-// edge: slightly inside the edge itself (90%) so the sample lands solidly on the
-// facet rather than in the antialiased boundary pixel right at the edge.
-export const FLAT_EDGE_HEIGHT_RATIO = 0.9;
-
-// Horizontal offset from centre, as a fraction of the top-edge distance, at which to
-// sample left/right of a shape's apex for flatness: far enough that a pointed apex
-// (near-zero width at this height) reads empty, but still within a flat-topped
-// gem's own table-edge half-width.
-export const FLAT_EDGE_HALF_WIDTH_RATIO = 0.3;
 
 export function classifyColor(rgb, palette, tolerance = CLASSIFY_TOLERANCE) {
   let best = null;
@@ -79,21 +37,4 @@ export function classifyColor(rgb, palette, tolerance = CLASSIFY_TOLERANCE) {
     }
   }
   return bestDist < tolerance ? best : null;
-}
-
-// Classifies the shape drawn around (cx, cy) with nominal radius r by sampling 3
-// diagnostic points chosen from this project's own shape geometry (src/render.js):
-// a mid-height horizontal point only the triangle's linear taper fails to reach; a
-// corner point only the square's axis-aligned bounding box reaches; and a near-top
-// point only the circle's round boundary excludes. Whatever remains once those three
-// are ruled out is one of the two diamond variants (yellow/blue) — both count as
-// "diamond" here, since shape identity, not colour, is all this distinguishes.
-// Verified empirically against all 6 gem types (see commit history).
-export function classifyShape(getAlphaAt, r, threshold = SHAPE_FILL_ALPHA_THRESHOLD) {
-  const filled = (dx, dy) => getAlphaAt(dx, dy) > threshold;
-
-  if (!filled(0.6 * r, 0)) return 'triangle';
-  if (filled(0.75 * r, 0.75 * r)) return 'square';
-  if (!filled(0, -0.97 * r)) return 'circle';
-  return 'diamond';
 }

@@ -2,21 +2,26 @@
   'use strict';
 
   const GEM_TYPES = Object.freeze([
+    'blue-teardrop',
+    'green-octagon',
+    'orange-hexagon',
     'purple-triangle',
     'red-square',
-    'green-circle',
+    'silver-octagon',
     'yellow-diamond',
-    'blue-diamond',
-    'white-circle',
   ]);
 
+  // Approximate average colour of each gem's sprite art. Gems themselves render
+  // from the sprite images (see render.js), not these colours; this palette only
+  // tints the shatter fragments (shatter.js/main.js) to roughly match.
   const GEM_COLORS = Object.freeze({
-    'purple-triangle': '#b544ff',
-    'red-square': '#ff2d55',
-    'green-circle': '#39ff8f',
-    'yellow-diamond': '#f9ff3d',
-    'blue-diamond': '#33baff',
-    'white-circle': '#f2f6ff',
+    'blue-teardrop': '#218ec2',
+    'green-octagon': '#3ab722',
+    'orange-hexagon': '#bb6312',
+    'purple-triangle': '#a712a7',
+    'red-square': '#c72129',
+    'silver-octagon': '#a2a2a2',
+    'yellow-diamond': '#a8a818',
   });
 
   global.MagicGems = global.MagicGems || {};

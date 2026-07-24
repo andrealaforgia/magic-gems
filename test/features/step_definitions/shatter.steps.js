@@ -1,10 +1,7 @@
 import { Given, When, Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
-import {
-  GLOW_EDGE_LUMA_FRACTION,
-  CORE_EDGE_LUMA_FRACTION,
-  MIN_GLOW_FADE_SPAN_PX,
-} from '../support/pixel-utils.js';
+import { classifyColor } from '../support/pixel-utils.js';
+import { readGemPalette } from '../support/board-reader.js';
 import { findHighlight } from './interaction.steps.js';
 
 const REAL_INTERVAL_MS = 200;
@@ -80,36 +77,22 @@ Then('a selection highlight is present, proving the game accepted input immediat
   assert.equal(found.length, 1, `expected exactly one selection highlight, found ${found.length}`);
 });
 
-Then('an unaffected gem elsewhere on the board still shows its neon glow fade', async function () {
-  const { fadeSpan } = await this.page.evaluate(
-    ({ glowFraction, coreFraction }) => {
-      const canvas = document.getElementById('board');
-      const ctx = canvas.getContext('2d');
-      const cellSize = canvas.width / 8;
-      // Row/col 7 (bottom-right) is far from any default-cursor or typical
-      // top-left-biased swap search result, and still holds an original gem.
-      const cx = Math.round(7 * cellSize + cellSize / 2);
-      const cy = Math.round(7 * cellSize + cellSize / 2);
-      const rightEdge = Math.round(7 * cellSize + cellSize - 1);
-      const data = ctx.getImageData(cx, cy, rightEdge - cx, 1).data;
-      const luma = [];
-      for (let x = 0; x < (rightEdge - cx); x++) {
-        luma.push((data[x * 4] + data[x * 4 + 1] + data[x * 4 + 2]) / 3);
-      }
-      const maxLuma = Math.max(...luma);
-      const backgroundLuma = luma[luma.length - 1];
-      const glowThreshold = backgroundLuma + (maxLuma - backgroundLuma) * glowFraction;
-      const coreThreshold = backgroundLuma + (maxLuma - backgroundLuma) * coreFraction;
-      let glowStart = -1;
-      let coreStart = -1;
-      for (let i = luma.length - 1; i >= 0; i--) {
-        if (glowStart === -1 && luma[i] > glowThreshold) glowStart = i;
-        if (luma[i] > coreThreshold) coreStart = i;
-      }
-      return { fadeSpan: glowStart === -1 || coreStart === -1 ? -1 : glowStart - coreStart };
-    },
-    { glowFraction: GLOW_EDGE_LUMA_FRACTION, coreFraction: CORE_EDGE_LUMA_FRACTION }
-  );
+Then('an unaffected gem elsewhere on the board still renders a recognizable gem', async function () {
+  const palette = await readGemPalette(this.page);
+  const rgb = await this.page.evaluate(() => {
+    const canvas = document.getElementById('board');
+    const ctx = canvas.getContext('2d');
+    const cellSize = canvas.width / 8;
+    // Row/col 7 (bottom-right) is far from any default-cursor or typical
+    // top-left-biased swap search result, and still holds an original gem.
+    const cx = Math.round(7 * cellSize + cellSize / 2);
+    const cy = Math.round(7 * cellSize + cellSize / 2);
+    const [r, g, b] = ctx.getImageData(cx, cy, 1, 1).data;
+    return [r, g, b];
+  });
 
-  assert.ok(fadeSpan >= MIN_GLOW_FADE_SPAN_PX, `expected a glow fade of at least ${MIN_GLOW_FADE_SPAN_PX}px on an unaffected gem, measured ${fadeSpan}px`);
+  assert.ok(
+    classifyColor(rgb, palette) !== null,
+    'expected cell (7,7) to still show a recognizable sprite gem while a shatter plays elsewhere'
+  );
 });

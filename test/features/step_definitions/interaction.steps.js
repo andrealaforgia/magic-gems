@@ -1,6 +1,7 @@
 import { Given, When, Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
 import { classifyColor } from '../support/pixel-utils.js';
+import { classifiedGrid } from '../support/board-reader.js';
 
 const BOARD_SIZE = 8;
 
@@ -38,35 +39,12 @@ export async function findHighlight(page, type) {
   return found;
 }
 
-async function readClassifiedGrid(page) {
-  return page.evaluate(({ size }) => {
-    const canvas = document.getElementById('board');
-    const ctx = canvas.getContext('2d');
-    const cellW = canvas.width / size;
-    const cellH = canvas.height / size;
-    const pixels = [];
-    for (let row = 0; row < size; row++) {
-      const rowPixels = [];
-      for (let col = 0; col < size; col++) {
-        const cx = Math.round(col * cellW + cellW / 2);
-        const cy = Math.round(row * cellH + cellH / 2);
-        const [r, g, b] = ctx.getImageData(cx, cy, 1, 1).data;
-        rowPixels.push([r, g, b]);
-      }
-      pixels.push(rowPixels);
-    }
-    return { pixels, palette: window.MagicGems.GEM_COLORS };
-  }, { size: BOARD_SIZE }).then(({ pixels, palette }) =>
-    pixels.map((row) => row.map((rgb) => classifyColor(rgb, palette)))
-  );
-}
-
 When('I press {string}', async function (key) {
   await this.page.keyboard.press(key);
 });
 
 Given('I record the classified gem grid', async function () {
-  this.recordedGemGrid = await readClassifiedGrid(this.page);
+  this.recordedGemGrid = await classifiedGrid(this.page);
 });
 
 async function waitForSettledGrid(page) {
@@ -75,7 +53,7 @@ async function waitForSettledGrid(page) {
     null,
     { timeout: 5000 }
   );
-  return readClassifiedGrid(page);
+  return classifiedGrid(page);
 }
 
 Then('the classified gem grid is unchanged from the recorded one', async function () {

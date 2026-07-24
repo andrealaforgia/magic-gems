@@ -10,19 +10,15 @@ Feature: Board sizing (B1s)
     Then the board's height is about 80% of the viewport height
     And the canvas is positioned in the central part of the viewport
 
-  @B1s-E2 @B1s-E4
-  Scenario Outline: Gems scale up with the board and remain centred in their cell
-    Given a single "<gem>" gem is drawn in isolation at cell size 128
-    Then its bounding box is symmetric on both axes around its centre
-
-    Examples:
-      | gem             |
-      | purple-triangle |
-      | red-square      |
-      | green-circle    |
-      | yellow-diamond  |
-      | blue-diamond    |
-      | white-circle    |
+  # B1s-E2/E4 ("gems scale up with the board and remain centred in their cell",
+  # tested via isolated-probe alpha-edge scanning of a vector shape) is retired per
+  # SG1 (sprite re-skin): a raster sprite's own artwork need not be symmetric within
+  # its PNG canvas, so scanning for a symmetric alpha bounding box no longer proves
+  # (or disproves) centring - what actually determines centring/scaling now is the
+  # draw-rect geometry in src/sprite-layout.js, exhaustively unit-tested there
+  # (test/unit/sprite-layout.test.js) for every combination of cell size and sprite
+  # aspect ratio. Retired here rather than replaced with a fragile pixel probe of
+  # the same claim.
 
   @B1s-E5
   Scenario: The board fits within a narrower viewport without horizontal overflow
@@ -32,7 +28,7 @@ Feature: Board sizing (B1s)
 
   # B1s-E6 ("every previous board guarantee still holds at the new size") would
   # otherwise duplicate the 1280x800 example of B1s-E7 below - E7's first example
-  # asserts the same 5 render facts (canvas/8x8/64-cells-filled/6-types/no-match)
+  # asserts the same 5 render facts (canvas/8x8/64-cells-filled/7-types/no-match)
   # plus centring and overflow on top, so it stands in for both.
 
   @B1s-E7 @integration
@@ -44,7 +40,7 @@ Feature: Board sizing (B1s)
     And the canvas is positioned in the central part of the viewport
     And the board does not overflow the viewport horizontally
     And all 64 cells contain exactly one recognizable gem colour each
-    And the board's 64 cells show gem colours that map to all six known gem types
+    And the board's 64 cells show gem colours that map to all seven known gem types
     And the board contains no horizontal or vertical run of 3 or more identical gems
 
     Examples:

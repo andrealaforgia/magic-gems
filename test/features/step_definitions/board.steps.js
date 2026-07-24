@@ -2,25 +2,12 @@ import { Given, When, Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import {
-  hexToRgb,
-  colorDistance,
-  classifyShape,
-  OWN_COLOR_MATCH_TOLERANCE,
-  VIEWPORT_CENTER_TOLERANCE_RATIO,
-  GLOW_EDGE_LUMA_FRACTION,
-  CORE_EDGE_LUMA_FRACTION,
-  MIN_GLOW_FADE_SPAN_PX,
-  BACKGROUND_LUMA_CEILING,
-} from '../support/pixel-utils.js';
+import { VIEWPORT_CENTER_TOLERANCE_RATIO, BACKGROUND_LUMA_CEILING } from '../support/pixel-utils.js';
 import { waitForBoardReady, classifiedGrid } from '../support/board-reader.js';
 import { loadMagicGems } from '../../support/load-src.js';
 
 const PROJECT_ROOT = path.resolve(import.meta.dirname, '..', '..', '..');
 const INDEX_HTML_URL = pathToFileURL(path.join(PROJECT_ROOT, 'index.html')).href;
-const PROBE_HTML_URL = pathToFileURL(
-  path.join(import.meta.dirname, '..', 'support', 'render-probe.html')
-).href;
 
 const BOARD_SIZE = 8;
 
@@ -127,10 +114,10 @@ Then('all 64 cells contain exactly one recognizable gem colour each', async func
   }
 });
 
-Then("the board's 64 cells show gem colours that map to all six known gem types", async function () {
+Then("the board's 64 cells show gem colours that map to all seven known gem types", async function () {
   const grid = await classifiedGrid(this.page);
   const seen = new Set(grid.flat());
-  assert.equal(seen.size, 6, `expected 6 distinct gem types, saw ${seen.size}: ${[...seen]}`);
+  assert.equal(seen.size, 7, `expected 7 distinct gem types, saw ${seen.size}: ${[...seen]}`);
 });
 
 Then('the board contains no horizontal or vertical run of 3 or more identical gems', async function () {
@@ -141,93 +128,4 @@ Then('the board contains no horizontal or vertical run of 3 or more identical ge
 Then('the new arrangement differs from the previous one', async function () {
   const grid = await classifiedGrid(this.page);
   assert.notDeepEqual(grid, this.previousGrid, 'reload produced an identical arrangement');
-});
-
-Given('a single {string} gem is drawn in isolation', async function (gemType) {
-  await this.page.goto(PROBE_HTML_URL);
-  await this.page.waitForFunction(() => typeof window.__drawSingleGem === 'function');
-  await this.page.evaluate((gem) => window.__drawSingleGem(gem, 64), gemType);
-  this.probeGemType = gemType;
-});
-
-// Same 3 offsets classifyShape queries, in the same order, so pre-fetching every
-// sample from the real canvas and feeding them back sequentially reproduces exactly
-// what classifyShape would see live (it may short-circuit before using them all).
-const SHAPE_PROBE_OFFSET_RATIOS = [
-  [0.6, 0],
-  [0.75, 0.75],
-  [0, -0.97],
-];
-
-Then('it is rendered as a {string} filled with its own distinct colour', async function (expectedShape) {
-  const { core, alphaSamples, palette, gemType, r } = await this.page.evaluate(
-    ({ gem, offsetRatios }) => {
-      const canvas = document.getElementById('probe');
-      const ctx = canvas.getContext('2d');
-      const cx = canvas.width / 2;
-      const cy = canvas.height / 2;
-      const radius = 64 * 0.3; // matches render.js's GEM_RADIUS_RATIO at cellSize=64
-      const alphaAt = (dx, dy) =>
-        ctx.getImageData(Math.round(cx + dx), Math.round(cy + dy), 1, 1).data[3];
-      const [r, g, b] = ctx.getImageData(cx, cy, 1, 1).data;
-      return {
-        core: [r, g, b],
-        alphaSamples: offsetRatios.map(([rx, ry]) => alphaAt(rx * radius, ry * radius)),
-        palette: window.MagicGems.GEM_COLORS,
-        gemType: gem,
-        r: radius,
-      };
-    },
-    { gem: this.probeGemType, offsetRatios: SHAPE_PROBE_OFFSET_RATIOS }
-  );
-
-  const expectedRgb = hexToRgb(palette[gemType]);
-  assert.ok(
-    colorDistance(core, expectedRgb) < OWN_COLOR_MATCH_TOLERANCE,
-    `centre pixel colour ${core} does not match ${gemType}'s own colour ${expectedRgb}`
-  );
-
-  let nextSample = 0;
-  const actualShape = classifyShape(() => alphaSamples[nextSample++], r);
-  assert.equal(
-    actualShape,
-    expectedShape,
-    `sampled shape geometry for ${gemType} looks like a ${actualShape}, expected ${expectedShape}`
-  );
-});
-
-Then('a soft glow halo fades outward from its edge, not a flat cutoff', async function () {
-  const row = await this.page.evaluate(() => {
-    const canvas = document.getElementById('probe');
-    const ctx = canvas.getContext('2d');
-    const y = Math.round(canvas.height / 2);
-    const data = ctx.getImageData(0, y, canvas.width, 1).data;
-    const luma = [];
-    for (let x = 0; x < canvas.width; x++) {
-      luma.push((data[x * 4] + data[x * 4 + 1] + data[x * 4 + 2]) / 3);
-    }
-    return luma;
-  });
-
-  const mid = Math.floor(row.length / 2);
-  const rightHalf = row.slice(mid);
-  const maxLuma = Math.max(...rightHalf);
-  const backgroundLuma = row[row.length - 1];
-
-  const glowThreshold = backgroundLuma + (maxLuma - backgroundLuma) * GLOW_EDGE_LUMA_FRACTION;
-  const coreThreshold = backgroundLuma + (maxLuma - backgroundLuma) * CORE_EDGE_LUMA_FRACTION;
-
-  let glowStart = -1;
-  let coreStart = -1;
-  for (let i = rightHalf.length - 1; i >= 0; i--) {
-    if (glowStart === -1 && rightHalf[i] > glowThreshold) glowStart = i;
-    if (rightHalf[i] > coreThreshold) coreStart = i;
-  }
-
-  assert.ok(glowStart !== -1 && coreStart !== -1, 'could not locate gem edge in probe render');
-  const fadeSpan = glowStart - coreStart;
-  assert.ok(
-    fadeSpan >= MIN_GLOW_FADE_SPAN_PX,
-    `expected a multi-pixel glow fade (>=${MIN_GLOW_FADE_SPAN_PX}px), measured ${fadeSpan}px — looks like a flat cutoff`
-  );
 });

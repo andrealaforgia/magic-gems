@@ -394,14 +394,14 @@ test('hasAnyValidMove is true when a specific adjacent swap would create a match
 
 test("hasAnyValidMove detects a valid move at the board's rightmost column pair (and only that move exists)", () => {
   const board = [
-    ['purple-triangle', 'red-square', 'green-circle', 'white-circle', 'purple-triangle', 'green-circle', 'green-circle', 'purple-triangle'],
-    ['red-square', 'green-circle', 'yellow-diamond', 'red-square', 'red-square', 'yellow-diamond', 'yellow-diamond', 'purple-triangle'],
-    ['green-circle', 'yellow-diamond', 'blue-diamond', 'green-circle', 'purple-triangle', 'white-circle', 'purple-triangle', 'red-square'],
-    ['yellow-diamond', 'blue-diamond', 'white-circle', 'purple-triangle', 'red-square', 'green-circle', 'yellow-diamond', 'blue-diamond'],
-    ['blue-diamond', 'white-circle', 'purple-triangle', 'red-square', 'green-circle', 'yellow-diamond', 'blue-diamond', 'white-circle'],
-    ['white-circle', 'purple-triangle', 'red-square', 'green-circle', 'yellow-diamond', 'blue-diamond', 'white-circle', 'purple-triangle'],
-    ['purple-triangle', 'red-square', 'green-circle', 'yellow-diamond', 'blue-diamond', 'white-circle', 'purple-triangle', 'red-square'],
-    ['red-square', 'green-circle', 'yellow-diamond', 'blue-diamond', 'white-circle', 'purple-triangle', 'red-square', 'green-circle'],
+    ['purple-triangle', 'red-square', 'green-octagon', 'silver-octagon', 'purple-triangle', 'green-octagon', 'green-octagon', 'purple-triangle'],
+    ['red-square', 'green-octagon', 'yellow-diamond', 'red-square', 'red-square', 'yellow-diamond', 'yellow-diamond', 'purple-triangle'],
+    ['green-octagon', 'yellow-diamond', 'blue-teardrop', 'green-octagon', 'purple-triangle', 'silver-octagon', 'purple-triangle', 'red-square'],
+    ['yellow-diamond', 'blue-teardrop', 'silver-octagon', 'purple-triangle', 'red-square', 'green-octagon', 'yellow-diamond', 'blue-teardrop'],
+    ['blue-teardrop', 'silver-octagon', 'purple-triangle', 'red-square', 'green-octagon', 'yellow-diamond', 'blue-teardrop', 'silver-octagon'],
+    ['silver-octagon', 'purple-triangle', 'red-square', 'green-octagon', 'yellow-diamond', 'blue-teardrop', 'silver-octagon', 'purple-triangle'],
+    ['purple-triangle', 'red-square', 'green-octagon', 'yellow-diamond', 'blue-teardrop', 'silver-octagon', 'purple-triangle', 'red-square'],
+    ['red-square', 'green-octagon', 'yellow-diamond', 'blue-teardrop', 'silver-octagon', 'purple-triangle', 'red-square', 'green-octagon'],
   ];
   // the only valid move is swapping (2,6)<->(2,7), completing a horizontal run at row 2
 
@@ -411,14 +411,14 @@ test("hasAnyValidMove detects a valid move at the board's rightmost column pair 
 
 test('hasAnyValidMove detects a valid move that can only be found via a vertical swap (and only that move exists)', () => {
   const board = [
-    ['green-circle', 'yellow-diamond', 'blue-diamond', 'purple-triangle', 'blue-diamond', 'white-circle', 'purple-triangle', 'red-square'],
-    ['green-circle', 'red-square', 'purple-triangle', 'red-square', 'white-circle', 'purple-triangle', 'red-square', 'green-circle'],
-    ['purple-triangle', 'purple-triangle', 'red-square', 'blue-diamond', 'purple-triangle', 'red-square', 'green-circle', 'yellow-diamond'],
-    ['yellow-diamond', 'blue-diamond', 'white-circle', 'yellow-diamond', 'red-square', 'green-circle', 'yellow-diamond', 'blue-diamond'],
-    ['blue-diamond', 'white-circle', 'purple-triangle', 'red-square', 'green-circle', 'yellow-diamond', 'blue-diamond', 'white-circle'],
-    ['white-circle', 'purple-triangle', 'red-square', 'green-circle', 'yellow-diamond', 'blue-diamond', 'white-circle', 'purple-triangle'],
-    ['purple-triangle', 'red-square', 'green-circle', 'yellow-diamond', 'blue-diamond', 'white-circle', 'purple-triangle', 'red-square'],
-    ['red-square', 'green-circle', 'yellow-diamond', 'blue-diamond', 'white-circle', 'purple-triangle', 'red-square', 'green-circle'],
+    ['green-octagon', 'yellow-diamond', 'blue-teardrop', 'purple-triangle', 'blue-teardrop', 'silver-octagon', 'purple-triangle', 'red-square'],
+    ['green-octagon', 'red-square', 'purple-triangle', 'red-square', 'silver-octagon', 'purple-triangle', 'red-square', 'green-octagon'],
+    ['purple-triangle', 'purple-triangle', 'red-square', 'blue-teardrop', 'purple-triangle', 'red-square', 'green-octagon', 'yellow-diamond'],
+    ['yellow-diamond', 'blue-teardrop', 'silver-octagon', 'yellow-diamond', 'red-square', 'green-octagon', 'yellow-diamond', 'blue-teardrop'],
+    ['blue-teardrop', 'silver-octagon', 'purple-triangle', 'red-square', 'green-octagon', 'yellow-diamond', 'blue-teardrop', 'silver-octagon'],
+    ['silver-octagon', 'purple-triangle', 'red-square', 'green-octagon', 'yellow-diamond', 'blue-teardrop', 'silver-octagon', 'purple-triangle'],
+    ['purple-triangle', 'red-square', 'green-octagon', 'yellow-diamond', 'blue-teardrop', 'silver-octagon', 'purple-triangle', 'red-square'],
+    ['red-square', 'green-octagon', 'yellow-diamond', 'blue-teardrop', 'silver-octagon', 'purple-triangle', 'red-square', 'green-octagon'],
   ];
   // the only valid move is swapping (1,2)<->(2,2), completing a vertical run at column 2
 

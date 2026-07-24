@@ -1,11 +1,5 @@
 import { Given, Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
-import path from 'node:path';
-import { pathToFileURL } from 'node:url';
-
-const PROBE_HTML_URL = pathToFileURL(
-  path.join(import.meta.dirname, '..', 'support', 'render-probe.html')
-).href;
 
 // The real target is 80% of viewport height, but computeCellSize() floors to a whole
 // pixel and quantizes to a multiple of 8 cells, so the rendered ratio is always
@@ -16,13 +10,6 @@ const TARGET_HEIGHT_RATIO = 0.8;
 
 Given('the viewport is {int} by {int}', async function (width, height) {
   await this.page.setViewportSize({ width, height });
-});
-
-Given('a single {string} gem is drawn in isolation at cell size {int}', async function (gemType, cellSize) {
-  await this.page.goto(PROBE_HTML_URL);
-  await this.page.waitForFunction(() => typeof window.__drawSingleGem === 'function');
-  await this.page.evaluate(({ gem, size }) => window.__drawSingleGem(gem, size), { gem: gemType, size: cellSize });
-  this.probeGemType = gemType;
 });
 
 Then("the board's height is about 80% of the viewport height", async function () {

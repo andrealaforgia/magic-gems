@@ -1,6 +1,6 @@
-Feature: Neon board renders (B1)
+Feature: Board renders (B1)
   As a player opening Magic Gems for the first time
-  I want the board to render as a complete, randomized, glowing 8x8 grid
+  I want the board to render as a complete, randomized 8x8 grid
   So that I see a coherent playfield the moment the page loads
 
   @E1
@@ -20,25 +20,15 @@ Feature: Neon board renders (B1)
     Given I open "index.html" directly as a file:// URL with no server or build step
     Then all 64 cells contain exactly one recognizable gem colour each
 
-  @E4 @E5
-  Scenario Outline: Each gem type is a distinguishable neon-glowing shape
-    Given a single "<gem>" gem is drawn in isolation
-    Then it is rendered as a "<shape>" filled with its own distinct colour
-    And a soft glow halo fades outward from its edge, not a flat cutoff
-
-    Examples:
-      | gem             | shape    |
-      | purple-triangle | triangle |
-      | red-square      | square   |
-      | green-circle    | circle   |
-      | yellow-diamond  | diamond  |
-      | blue-diamond    | diamond  |
-      | white-circle    | circle   |
-
-  @E4
-  Scenario: All six gem types appear on the board and are distinguishable from one another
-    Given I open "index.html" directly as a file:// URL with no server or build step
-    Then the board's 64 cells show gem colours that map to all six known gem types
+  # E4/E5 ("each gem type is a distinguishable neon-glowing shape", tested via
+  # isolated vector-path/glow probes) and the "all six gem types" scenario below it
+  # are both retired per SG1 (sprite re-skin, commit history around SPEC 2/9.1):
+  # gems are no longer vector-drawn shapes with a neon glow, so shape/glow probing
+  # no longer applies, and the type count changed from six to seven. SG1's own
+  # feature file (test/features/sprite-reskin.feature) owns the current
+  # distinguishability and exact-identity-count claims; retired here rather than
+  # perpetually updated, per the same reasoning already applied to this file's own
+  # E7/E8 below.
 
   @E6
   Scenario: The initial arrangement is randomized and match-free

@@ -17,9 +17,9 @@ const { hasMatch, applySwap } = loadMagicGems([
 // (see test/unit/resolution.test.js for the full proof). Verified directly against
 // hasMatch/hasAnyValidMove before being relied on here.
 const STUCK_BOARD = [
-  ['purple-triangle', 'red-square', 'green-circle'],
-  ['red-square', 'green-circle', 'purple-triangle'],
-  ['green-circle', 'purple-triangle', 'red-square'],
+  ['purple-triangle', 'red-square', 'green-octagon'],
+  ['red-square', 'green-octagon', 'purple-triangle'],
+  ['green-octagon', 'purple-triangle', 'red-square'],
 ];
 
 function findAdjacentSwap(grid, wantMatch) {

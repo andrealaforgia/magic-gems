@@ -5,7 +5,7 @@
   const SWAP_DURATION_MS = 400;
   const FALL_DURATION_MS = 400;
 
-  function boot() {
+  async function boot() {
     const {
       generateBoard,
       drawBoard,
@@ -23,6 +23,7 @@
       GEM_COLORS,
       clampProgress,
       interpolatePoint,
+      loadGemSprites,
     } = global.MagicGems;
     const canvas = document.getElementById('board');
     const cellSize = computeCellSize(window.innerWidth, window.innerHeight, BOARD_SIZE);
@@ -30,6 +31,7 @@
     canvas.height = BOARD_SIZE * cellSize;
 
     const ctx = canvas.getContext('2d');
+    const sprites = await loadGemSprites();
     let board = ensurePlayable(generateBoard());
     let interaction = createInteractionState();
     let fragments = [];
@@ -98,13 +100,13 @@
 
     function renderSwapPhase(anim, progress) {
       const hidden = new Set([`${anim.a.row},${anim.a.col}`, `${anim.b.row},${anim.b.col}`]);
-      drawBoard(ctx, anim.board, cellSize, hidden);
+      drawBoard(ctx, anim.board, cellSize, sprites, hidden);
       const posA = cellCenter(anim.a.row, anim.a.col);
       const posB = cellCenter(anim.b.row, anim.b.col);
       const spriteA = interpolatePoint(posA.x, posA.y, posB.x, posB.y, progress);
       const spriteB = interpolatePoint(posB.x, posB.y, posA.x, posA.y, progress);
-      drawGem(ctx, anim.gemAtA, spriteA.x, spriteA.y, cellSize);
-      drawGem(ctx, anim.gemAtB, spriteB.x, spriteB.y, cellSize);
+      drawGem(ctx, anim.gemAtA, spriteA.x, spriteA.y, cellSize, sprites);
+      drawGem(ctx, anim.gemAtB, spriteB.x, spriteB.y, cellSize, sprites);
     }
 
     function renderCascadePhase(anim, progress) {
@@ -116,20 +118,20 @@
       }
       for (const e of anim.refillEvents) hidden.add(`${e.row},${e.col}`);
 
-      drawBoard(ctx, anim.boardBeforeStep, cellSize, hidden);
+      drawBoard(ctx, anim.boardBeforeStep, cellSize, sprites, hidden);
 
       for (const e of anim.fallEvents) {
         const from = cellCenter(e.fromRow, e.col);
         const to = cellCenter(e.toRow, e.col);
         const pos = interpolatePoint(from.x, from.y, to.x, to.y, progress);
-        drawGem(ctx, e.gemType, pos.x, pos.y, cellSize);
+        drawGem(ctx, e.gemType, pos.x, pos.y, cellSize, sprites);
       }
       for (const e of anim.refillEvents) {
         const fromX = e.col * cellSize + cellSize / 2;
         const fromY = e.startRow * cellSize + cellSize / 2;
         const to = cellCenter(e.row, e.col);
         const pos = interpolatePoint(fromX, fromY, to.x, to.y, progress);
-        drawGem(ctx, e.gemType, pos.x, pos.y, cellSize);
+        drawGem(ctx, e.gemType, pos.x, pos.y, cellSize, sprites);
       }
     }
 
@@ -142,7 +144,7 @@
           renderCascadePhase(activeAnimation, progress);
         }
       } else {
-        drawBoard(ctx, board, cellSize);
+        drawBoard(ctx, board, cellSize, sprites);
       }
       drawInteraction(ctx, interaction, cellSize);
       drawFragments(ctx, fragments);
@@ -196,6 +198,7 @@
     global.MagicGems.isAnimating = () => activeAnimation !== null || animationQueue.length > 0;
     global.MagicGems.getAnimationPhase = () => (activeAnimation ? activeAnimation.kind : null);
     global.MagicGems.getLastCommitSteps = () => lastCommitSteps;
+    global.MagicGems.getSpriteImages = () => sprites;
   }
 
   document.addEventListener('DOMContentLoaded', boot);

@@ -14,10 +14,11 @@ function countCells(board) {
 }
 
 // A deterministic, provably match-free 8x8 fixture: cell value cycles diagonally
-// through all 6 gem types, so any 3 consecutive cells in a row or column always take
-// 3 different residues mod 6 (3 < 6, no wraparound) — never a coincidental run of 3.
-// Unlike generateBoard() + a 3-cell overwrite, this can never mask a broken detector
-// behind an unrelated, incidental match elsewhere in the grid.
+// through all known gem types, so any 3 consecutive cells in a row or column always
+// take 3 different residues mod GEM_TYPES.length (3 < length, no wraparound) — never
+// a coincidental run of 3. Unlike generateBoard() + a 3-cell overwrite, this can
+// never mask a broken detector behind an unrelated, incidental match elsewhere in
+// the grid.
 function buildMatchFreeBoard() {
   const board = [];
   for (let row = 0; row < SIZE; row++) {

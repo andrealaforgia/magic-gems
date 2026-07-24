@@ -11,17 +11,18 @@ This document is the single normative reference. Behaviours cite it by section.
   the path `/magic-gems`.
 
 ## 2. The gems
-Six distinct gem types, each a geometric shape drawn with a neon glow effect:
-- 2.1 Purple triangle, pointing up.
-- 2.2 Red square.
-- 2.3 Green circle.
-- 2.4 Yellow diamond: an equilateral diamond — a rhombus with four equal sides
-  (a square rotated 45°).
-- 2.5 Blue diamond, pointing down, with the silhouette of a real cut gemstone
-  (visually distinct from the equilateral yellow diamond).
-- 2.6 White circle (visually distinct from the green circle).
-- 2.7 A gem's identity is the (shape + colour) pair; the six pairs above are the
-  only gem types. Future sprites may replace the shapes without changing identity.
+Seven distinct gem types, each rendered from a pre-rendered sprite image — a
+glossy, faceted 3D gemstone. The seven identities are:
+- 2.1 Blue teardrop.
+- 2.2 Green octagon.
+- 2.3 Orange hexagon.
+- 2.4 Purple triangle.
+- 2.5 Red square.
+- 2.6 Silver octagon.
+- 2.7 Yellow diamond.
+- 2.8 A gem's identity is the sprite it depicts (its shape + colour); these seven
+  are the only gem types. The sprite art ships with the game as image assets in
+  the game folder, one asset set per identity.
 
 ## 3. The board & layout
 - 3.1 The playfield is an 8×8 grid of gems.
@@ -66,7 +67,8 @@ Six distinct gem types, each a geometric shape drawn with a neon glow effect:
   at least one possible match, so play never dead-ends.
 
 ## 9. Visual effects
-- 9.1 Gems are rendered with a neon effect (glow).
+- 9.1 Gems are rendered from their sprite images; there is no neon glow — the
+  glossy sprite art carries the visual weight on its own.
 - 9.2 When gems are removed (each time a row or column run is completed and
   cleared), every removed gem plays a shatter effect and breaks apart. The effect
   must be visually appealing.
