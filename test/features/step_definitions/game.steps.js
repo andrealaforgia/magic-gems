@@ -41,7 +41,7 @@ function findAdjacentSwap(grid, wantMatch) {
   throw new Error(`could not find an adjacent swap on the live board with wantMatch=${wantMatch}`);
 }
 
-function directionKey(from, to) {
+export function directionKey(from, to) {
   if (to.row === from.row + 1) return 'ArrowDown';
   if (to.row === from.row - 1) return 'ArrowUp';
   if (to.col === from.col + 1) return 'ArrowRight';
@@ -49,7 +49,7 @@ function directionKey(from, to) {
   throw new Error(`cells are not orthogonally adjacent: ${JSON.stringify(from)} -> ${JSON.stringify(to)}`);
 }
 
-async function moveCursorTo(page, from, to) {
+export async function moveCursorTo(page, from, to) {
   const verticalKey = to.row > from.row ? 'ArrowDown' : 'ArrowUp';
   for (let i = 0; i < Math.abs(to.row - from.row); i++) await page.keyboard.press(verticalKey);
   const horizontalKey = to.col > from.col ? 'ArrowRight' : 'ArrowLeft';
