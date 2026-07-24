@@ -3,7 +3,7 @@ Feature: Scoring system (SCORE)
   I want a running score that rewards fast, big, and chained clears
   So that I have a sense of progress and skillful play
 
-  @E1
+  @E1 @e2e
   Scenario: The score starts at 0 and only ever increases over play
     Given I open "index.html" directly as a file:// URL with no server or build step
     Then the score is displayed and reads exactly 0
@@ -12,7 +12,12 @@ Feature: Scoring system (SCORE)
     When I commit 3 matching swaps in a row, each settling before the next
     Then the score has not decreased since it was recorded
 
-  @E2
+  # @component: these call the live page's own resolveCascade/scoring functions
+  # directly with a constructed board, not driven purely through the keyboard -
+  # there's no keyboard-only way to force an exact run length on demand. Still the
+  # real, unmodified production functions main.js itself calls, just exercised at
+  # the module boundary rather than end-to-end through the UI.
+  @E2 @component
   Scenario Outline: Base points scale with run length as (run length - 2) x 50
     Given I open "index.html" directly as a file:// URL with no server or build step
     Then a real completion of a <length>-run on the live page contributes exactly <basePoints> base points before any multiplier
@@ -23,24 +28,27 @@ Feature: Scoring system (SCORE)
       | 4      | 100        |
       | 5      | 150        |
 
-  @E3
+  @E3 @component
   Scenario: Two runs clearing together sum their base points before any multiplier
     Given I open "index.html" directly as a file:// URL with no server or build step
     Then a real completion clearing a 3-run and a 4-run together on the live page sums to exactly 150 base points
 
-  @E4
+  @E4 @E7 @e2e
   Scenario: The time multiplier counts down by 1 per elapsed second, floored at 0, and resets after each completion
     Given I open "index.html" directly as a file:// URL with no server or build step
     Then the live page's time multiplier for a 30s gap reads exactly 4970
     And the live page's time multiplier for a 5000s gap reads exactly 0
     And the live page's time multiplier for a 6000s gap reads exactly 0
+    # E7: displayed near the score, updating live and continuously between
+    # completions - the step below samples it twice, a short real interval apart
+    # with nothing else happening, and requires it to have visibly ticked down.
     And the time multiplier reads lower after a short real interval, live and continuously
     Given I record the current score
     And I locate an adjacent swap that would produce a match on the live board
     When I commit that swap
     Then the time multiplier reset to x5000 at the moment of that commit's completion
 
-  @E5
+  @E5 @component
   Scenario: The combo factor follows 2^(k-1) within a chain and resets to x1 on each new swap
     Given I open "index.html" directly as a file:// URL with no server or build step
     Then the live page's combo factor for chain position 1 reads exactly 1
@@ -48,7 +56,7 @@ Feature: Scoring system (SCORE)
     And the live page's combo factor for chain position 3 reads exactly 4
     And the live page's combo factor for chain position 4 reads exactly 8
 
-  @E6
+  @E6 @component
   Scenario: Both frozen worked examples reproduce exactly
     Given I open "index.html" directly as a file:// URL with no server or build step
     Then the live page reproduces the frozen worked example: a lone 3-run, 30s gap, scores exactly 2485

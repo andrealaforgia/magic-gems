@@ -9,6 +9,37 @@ function readMultiplierValue(page) {
   return page.evaluate(() => Number(document.getElementById('multiplier').textContent.replace('x', '')));
 }
 
+// Injects a single shared board-builder into the page once per scenario (idempotent
+// - later calls are a no-op), rather than repeating the same board-construction
+// block inside every step's own page.evaluate. Runs are carved into the same
+// match-free diagonal pattern this project's own unit tests use (verified, the same
+// way test/unit/resolution.test.js's own fixtures are, not to accidentally extend
+// via GEM_TYPES.length's own wraparound).
+async function ensureBoardBuilder(page) {
+  await page.evaluate(() => {
+    if (window.__buildBoardWithRuns) return;
+    window.__buildBoardWithRuns = function (runs) {
+      const { GEM_TYPES } = window.MagicGems;
+      const size = 8;
+      const board = Array.from({ length: size }, (_, row) =>
+        Array.from({ length: size }, (_, col) => GEM_TYPES[(row + col) % GEM_TYPES.length])
+      );
+      for (const { row, startCol, length, valueIndex } of runs) {
+        for (let col = startCol; col < startCol + length; col++) {
+          board[row][col] = GEM_TYPES[valueIndex];
+        }
+      }
+      return board;
+    };
+  });
+}
+
+const LONE_RUN_SPEC = (length) => [{ row: 0, startCol: 2, length, valueIndex: 2 }];
+const TWO_RUN_SPEC = (lengthA, lengthB) => [
+  { row: 0, startCol: 2, length: lengthA, valueIndex: 2 },
+  { row: 6, startCol: 0, length: lengthB, valueIndex: 1 },
+];
+
 Then('the score reads exactly {int}', async function (expected) {
   assert.equal(await readScore(this.page), expected);
 });
@@ -54,21 +85,15 @@ Then('the time multiplier reset to x5000 at the moment of that commit\'s complet
 
 // Verifies the base-points-per-run-length claim (SPEC 10.3/10.4) using the live
 // page's own unmodified resolveCascade/scoring functions - a real, executed call
-// against production code, not a re-derivation of the formula. Boards are built
-// from the same match-free diagonal pattern this project's own unit tests use, with
-// a run of the requested length carved in (verified not to accidentally extend, the
-// same way test/unit/resolution.test.js's own fixtures are).
+// against production code, not a re-derivation of the formula.
 Then('a real completion of a {int}-run on the live page contributes exactly {int} base points before any multiplier', async function (length, expectedBase) {
-  const result = await this.page.evaluate(({ length }) => {
-    const { GEM_TYPES, resolveCascade, summedBasePoints } = window.MagicGems;
-    const size = 8;
-    const board = Array.from({ length: size }, (_, row) =>
-      Array.from({ length: size }, (_, col) => GEM_TYPES[(row + col) % GEM_TYPES.length])
-    );
-    for (let col = 2; col < 2 + length; col++) board[0][col] = GEM_TYPES[2];
+  await ensureBoardBuilder(this.page);
+  const result = await this.page.evaluate((runs) => {
+    const { resolveCascade, summedBasePoints } = window.MagicGems;
+    const board = window.__buildBoardWithRuns(runs);
     const { steps } = resolveCascade(board);
     return { runLengths: steps[0].runLengths, base: summedBasePoints(steps[0].runLengths) };
-  }, { length });
+  }, LONE_RUN_SPEC(length));
 
   assert.deepEqual(result.runLengths, [length], `expected a single run of length ${length}, got ${JSON.stringify(result.runLengths)}`);
   assert.equal(result.base, expectedBase);
@@ -78,17 +103,13 @@ Then('a real completion of a {int}-run on the live page contributes exactly {int
 // any multiplier - proven directly against the live page's own resolveCascade, not
 // treated as two separate completions.
 Then('a real completion clearing a {int}-run and a {int}-run together on the live page sums to exactly {int} base points', async function (lengthA, lengthB, expectedBase) {
-  const result = await this.page.evaluate(({ lengthA, lengthB }) => {
-    const { GEM_TYPES, resolveCascade, summedBasePoints } = window.MagicGems;
-    const size = 8;
-    const board = Array.from({ length: size }, (_, row) =>
-      Array.from({ length: size }, (_, col) => GEM_TYPES[(row + col) % GEM_TYPES.length])
-    );
-    for (let col = 2; col < 2 + lengthA; col++) board[0][col] = GEM_TYPES[2];
-    for (let col = 0; col < lengthB; col++) board[6][col] = GEM_TYPES[1];
+  await ensureBoardBuilder(this.page);
+  const result = await this.page.evaluate((runs) => {
+    const { resolveCascade, summedBasePoints } = window.MagicGems;
+    const board = window.__buildBoardWithRuns(runs);
     const { steps } = resolveCascade(board);
     return { stepCount: steps.length, runLengths: steps[0].runLengths, base: summedBasePoints(steps[0].runLengths) };
-  }, { lengthA, lengthB });
+  }, TWO_RUN_SPEC(lengthA, lengthB));
 
   assert.equal(result.stepCount, 1, 'both runs must clear together in a single completion, not two separate ones');
   assert.deepEqual([...result.runLengths].sort(), [lengthA, lengthB].sort());
@@ -98,36 +119,29 @@ Then('a real completion clearing a {int}-run and a {int}-run together on the liv
 // SPEC 10.7.1: the two frozen worked examples, reproduced exactly through the live
 // page's own real resolveCascade + scoring functions (not a re-implementation).
 Then('the live page reproduces the frozen worked example: a lone {int}-run, {int}s gap, scores exactly {int}', async function (length, gapSeconds, expectedScore) {
-  const result = await this.page.evaluate(({ length, gapSeconds }) => {
-    const { GEM_TYPES, resolveCascade, summedBasePoints, computeTimeMultiplier, comboFactorForChainIndex, computeCompletionScore } = window.MagicGems;
-    const size = 8;
-    const board = Array.from({ length: size }, (_, row) =>
-      Array.from({ length: size }, (_, col) => GEM_TYPES[(row + col) % GEM_TYPES.length])
-    );
-    for (let col = 2; col < 2 + length; col++) board[0][col] = GEM_TYPES[2];
+  await ensureBoardBuilder(this.page);
+  const result = await this.page.evaluate(({ runs, gapSeconds }) => {
+    const { resolveCascade, summedBasePoints, computeTimeMultiplier, comboFactorForChainIndex, computeCompletionScore } = window.MagicGems;
+    const board = window.__buildBoardWithRuns(runs);
     const { steps } = resolveCascade(board);
     const base = summedBasePoints(steps[0].runLengths);
     const timeMultiplier = computeTimeMultiplier(gapSeconds * 1000);
     return computeCompletionScore(base, timeMultiplier, comboFactorForChainIndex(1));
-  }, { length, gapSeconds });
+  }, { runs: LONE_RUN_SPEC(length), gapSeconds });
 
   assert.equal(result, expectedScore);
 });
 
 Then('the live page reproduces the frozen worked example: a {int}-run and {int}-run together, {int}s gap, first in chain, scores exactly {int}', async function (lengthA, lengthB, gapSeconds, expectedScore) {
-  const result = await this.page.evaluate(({ lengthA, lengthB, gapSeconds }) => {
-    const { GEM_TYPES, resolveCascade, summedBasePoints, computeTimeMultiplier, comboFactorForChainIndex, computeCompletionScore } = window.MagicGems;
-    const size = 8;
-    const board = Array.from({ length: size }, (_, row) =>
-      Array.from({ length: size }, (_, col) => GEM_TYPES[(row + col) % GEM_TYPES.length])
-    );
-    for (let col = 2; col < 2 + lengthA; col++) board[0][col] = GEM_TYPES[2];
-    for (let col = 0; col < lengthB; col++) board[6][col] = GEM_TYPES[1];
+  await ensureBoardBuilder(this.page);
+  const result = await this.page.evaluate(({ runs, gapSeconds }) => {
+    const { resolveCascade, summedBasePoints, computeTimeMultiplier, comboFactorForChainIndex, computeCompletionScore } = window.MagicGems;
+    const board = window.__buildBoardWithRuns(runs);
     const { steps } = resolveCascade(board);
     const base = summedBasePoints(steps[0].runLengths);
     const timeMultiplier = computeTimeMultiplier(gapSeconds * 1000);
     return computeCompletionScore(base, timeMultiplier, comboFactorForChainIndex(1));
-  }, { lengthA, lengthB, gapSeconds });
+  }, { runs: TWO_RUN_SPEC(lengthA, lengthB), gapSeconds });
 
   assert.equal(result, expectedScore);
 });

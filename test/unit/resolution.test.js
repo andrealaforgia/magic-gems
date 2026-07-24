@@ -73,10 +73,9 @@ test('applySwap exchanges exactly the two given cells and leaves the rest untouc
 
 test('findMatchedCells marks every cell of a run, including runs longer than 3', () => {
   const board = buildMatchFreeBoard();
-  // Row 0's diagonal values are [0,1,2,3,4,5,0,1] (period 6 wraps at col 6) - using
-  // GEM_TYPES[0] here would silently extend into col 6, which already holds that
-  // same value from the wrap. GEM_TYPES[2] differs from both neighbours (col1=1,
-  // col6=0), so the run really is exactly 4 long.
+  // Row 0's diagonal values are [0,1,2,3,4,5,6,0] (period 7, GEM_TYPES.length -
+  // wraps at col 7, not col 6). GEM_TYPES[2] differs from both neighbours
+  // (col1=1, col6=6), so the run really is exactly 4 long.
   board[0][2] = GEM_TYPES[2];
   board[0][3] = GEM_TYPES[2];
   board[0][4] = GEM_TYPES[2];
