@@ -8,6 +8,7 @@
 </head>
 <body>
   <div id="game">
+    <div id="autoplay-indicator" class="autoplay-indicator">Autoplaying...</div>
     <div id="hud">
       <span id="score">Score: 0</span>
       <div id="multiplier-bar" class="multiplier-bar">
@@ -15,7 +16,8 @@
       </div>
     </div>
     <canvas id="board"></canvas>
-    <div id="audio-hint" class="audio-hint">S — TOGGLE AUDIO</div>
+    <div id="audio-hint" class="control-hint">S — TOGGLE AUDIO</div>
+    <div id="autoplay-hint" class="control-hint">A — TOGGLE AUTOPLAY</div>
     <div id="audio-toast" class="audio-toast"></div>
   </div>
   <script src="src/gems.js"></script>
@@ -25,6 +27,7 @@
   <script src="src/board.js"></script>
   <script src="src/interaction.js"></script>
   <script src="src/resolution.js"></script>
+  <script src="src/autoplay.js"></script>
   <script src="src/shatter.js"></script>
   <script src="src/animation.js"></script>
   <script src="src/scoring.js"></script>

@@ -60,6 +60,7 @@ glossy, faceted 3D gemstone. The seven identities are:
 - 6.5 The swap is applied only if it produces at least one match of 3+; otherwise
   the swap is reverted and the selection is cancelled (an invalid move cancels).
 - 6.6 ESC cancels the current selection at any point.
+- 6.7 Pressing A toggles autoplay on/off (see §12).
 
 ## 7. Resolution loop
 - 7.1 On a committed valid swap, all matched runs clear.
@@ -185,3 +186,22 @@ happens on the board.
     centre of the screen while it shows.
 - 11.6 An instruction line is shown at the bottom of the gem grid stating that S
   toggles audio on/off, rendered in the game's display font (9.4).
+
+## 12. Autoplay
+A hands-off demo mode in which the game plays itself.
+
+- 12.1 Pressing the A key toggles autoplay on/off; it defaults to off. An
+  instruction line at the bottom of the gem grid states that A toggles autoplay,
+  shown alongside the audio hint (11.6), in the game's display font (9.4).
+- 12.2 While autoplay is ON, the game plays itself by emulating a player: it moves
+  the cursor to a gem, selects it (6.2), designates an orthogonally-adjacent gem
+  (6.3), and commits a swap (6.4) that completes a match. It only makes valid moves
+  that create a run of 3+ (6.5), so runs clear and play keeps progressing — there is
+  always at least one valid move available (8.3). The emulated actions play at a
+  visible, deliberate pace so the autoplay can be watched, not instantly.
+- 12.3 While autoplay is ON, the game ignores normal player input — cursor
+  movement, selection, swap-target designation, and cancel are not acted on.
+  Pressing A again turns autoplay OFF and returns control to the player.
+- 12.4 While autoplay is ON, a blinking "Autoplaying..." indicator is shown centred
+  at the top of the grid (above the score), in the game's display font (9.4). It
+  disappears when autoplay is turned off.

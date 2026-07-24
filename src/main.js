@@ -5,6 +5,7 @@
   const SWAP_DURATION_MS = 400;
   const FALL_DURATION_MS = 400;
   const REVIVE_SPIN_DURATION_MS = 700;
+  const AUTOPLAY_STEP_MS = 450;
 
   async function boot() {
     const {
@@ -36,11 +37,13 @@
       soundsForKeydown,
       soundsForCascadeStep,
       reviveSpinFrameIndex,
+      planAutoplaySteps,
     } = global.MagicGems;
     const canvas = document.getElementById('board');
     const scoreEl = document.getElementById('score');
     const multiplierFillEl = document.getElementById('multiplier-fill');
     const audioToastEl = document.getElementById('audio-toast');
+    const autoplayIndicatorEl = document.getElementById('autoplay-indicator');
     const cellSize = computeCellSize(window.innerWidth, window.innerHeight, BOARD_SIZE);
     canvas.width = BOARD_SIZE * cellSize;
     canvas.height = BOARD_SIZE * cellSize;
@@ -277,14 +280,13 @@
       showAudioToast(nowMuted ? 'SOUND OFF' : 'SOUND ON');
     }
 
-    document.addEventListener('keydown', (event) => {
-      if (event.key.toLowerCase() === 's') {
-        toggleAudio();
-        return;
-      }
-      const next = handleGameKey({ board, interaction }, event.key);
+    // Shared by real keydown input and autoplay's own emulated key presses
+    // (SPEC 12.2), so a self-played move resolves through exactly the same
+    // scoring/sound/animation/revive pipeline as a real one - no special-casing.
+    function dispatchGameKey(key) {
+      const next = handleGameKey({ board, interaction }, key);
       if (next.board !== board || next.interaction !== interaction) {
-        soundsForKeydown(event.key, interaction, next).forEach((name) => sound.play(name));
+        soundsForKeydown(key, interaction, next).forEach((name) => sound.play(name));
         board = next.board;
         interaction = next.interaction;
         lastCommitSteps = next.steps;
@@ -292,6 +294,62 @@
         advanceQueue();
         render();
       }
+    }
+
+    let autoplayEnabled = false;
+    let autoplayQueue = [];
+    let autoplayTimer = null;
+    // Test-observability only (SPEC 12.2's "watchable pace" claim needs a real
+    // timestamp trail to verify against, not just that moves eventually happen).
+    const autoplayKeyLog = [];
+
+    function isBoardBusy() {
+      return activeAnimation !== null || animationQueue.length > 0;
+    }
+
+    function runAutoplayStep() {
+      if (!autoplayEnabled) return;
+      if (autoplayQueue.length === 0) {
+        // Wait for any swap/cascade/revive already in flight to fully settle
+        // before planning the next move, so autoplay's own moves never
+        // interleave mid-animation (SPEC 12.2's "watchable pace").
+        if (isBoardBusy()) {
+          autoplayTimer = setTimeout(runAutoplayStep, AUTOPLAY_STEP_MS);
+          return;
+        }
+        autoplayQueue = planAutoplaySteps(board, interaction.cursor);
+      }
+      const key = autoplayQueue.shift();
+      if (key !== undefined) {
+        autoplayKeyLog.push({ key, ts: performance.now() });
+        dispatchGameKey(key);
+      }
+      autoplayTimer = setTimeout(runAutoplayStep, AUTOPLAY_STEP_MS);
+    }
+
+    function toggleAutoplay() {
+      autoplayEnabled = !autoplayEnabled;
+      autoplayIndicatorEl.classList.toggle('active', autoplayEnabled);
+      clearTimeout(autoplayTimer);
+      if (autoplayEnabled) {
+        autoplayQueue = [];
+        autoplayTimer = setTimeout(runAutoplayStep, AUTOPLAY_STEP_MS);
+      }
+    }
+
+    document.addEventListener('keydown', (event) => {
+      const key = event.key.toLowerCase();
+      if (key === 's') {
+        toggleAudio();
+        return;
+      }
+      if (key === 'a') {
+        toggleAutoplay();
+        return;
+      }
+      // SPEC 12.3: normal input is ignored outright while autoplay drives the game.
+      if (autoplayEnabled) return;
+      dispatchGameKey(event.key);
     });
 
     // Observability seam for tests: animation/shatter state is real, time-based
@@ -303,6 +361,9 @@
     global.MagicGems.getSpriteImages = () => sprites;
     global.MagicGems.getSoundLog = () => sound.getLog();
     global.MagicGems.isAudioMuted = () => sound.isMuted();
+    global.MagicGems.isAutoplayOn = () => autoplayEnabled;
+    global.MagicGems.getInteractionState = () => interaction;
+    global.MagicGems.getAutoplayKeyLog = () => autoplayKeyLog.slice();
   }
 
   document.addEventListener('DOMContentLoaded', boot);

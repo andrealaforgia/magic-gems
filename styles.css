@@ -64,12 +64,34 @@ body {
   background: #0a0a12;
 }
 
-.audio-hint {
+.control-hint {
   color: #8a8a95;
   font-family: 'Press Start 2P', monospace;
   font-size: 0.7rem;
   text-align: center;
   margin-top: 0.6rem;
+}
+
+@keyframes autoplay-blink {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+
+.autoplay-indicator {
+  color: #f2f6ff;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 1rem;
+  text-align: center;
+  margin-bottom: 0.6rem;
+  visibility: hidden;
+}
+
+/* Only animates while shown (SPEC 12.4) - a hidden element still "running" the
+   animation would leave it mid-cycle if toggled back on, so the whole rule,
+   including the blink, is gated on this one class. */
+.autoplay-indicator.active {
+  visibility: visible;
+  animation: autoplay-blink 1s step-start infinite;
 }
 
 .audio-toast {

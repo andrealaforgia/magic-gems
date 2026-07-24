@@ -1,5 +1,5 @@
 export default {
-  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js', 'src/animation.js', 'src/sprite-layout.js', 'src/render.js', 'src/scoring.js', 'src/multiplier-bar.js', 'src/audio-cues.js', 'src/spin.js'],
+  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js', 'src/animation.js', 'src/sprite-layout.js', 'src/render.js', 'src/scoring.js', 'src/multiplier-bar.js', 'src/audio-cues.js', 'src/spin.js', 'src/autoplay.js'],
   testRunner: 'command',
   commandRunner: { command: 'npm run test:unit' },
   reporters: ['clear-text', 'progress'],
@@ -231,3 +231,21 @@ export default {
 // unreachable in real play) - not chased further, since closing them would mean
 // applying the identical fixture-engineering effort to a path no board this
 // game has ever produced needs.
+//
+// (AUTOPLAY) src/autoplay.js (new file - findValidMove's own cell-to-cursor path
+// and the aim direction, SPEC 12.2): 1 equivalent UMD-wrapper survivor. Real
+// gaps this run found and fixed, not waived: directionKey originally had
+// ArrowUp/ArrowLeft branches that were genuinely unreachable dead code (the
+// only caller, findValidMove, always returns its pair in raster order - down or
+// right of its first cell, never up or left) - simplified to the two branches
+// that matter rather than leaving untestable code around; and pathKeys' own
+// vertical/horizontal direction choice was only tested from one direction,
+// leaving 15 survivors - fixed with fixtures approaching the same target move
+// from below, from the right, and from directly on its own row/column. Two
+// `>` -> `>=` survivors on that same ternary are a true equivalent: the chosen
+// key is only ever consumed when the two coordinates actually differ (the
+// movement loop runs zero times otherwise), and at every point they differ `>`
+// and `>=` agree - confirmed by reasoning through every call site, not
+// hand-waved. src/resolution.js's own new findValidMove (SPEC 12.2, returns the
+// pair hasAnyValidMove only confirmed existed) reuses the exact same search
+// shape already hardened for hasAnyValidMove - no new survivors of its own.

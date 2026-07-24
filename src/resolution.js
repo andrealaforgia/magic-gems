@@ -158,6 +158,27 @@
     return false;
   }
 
+  // SPEC 12.2: same search as hasAnyValidMove, but returns the actual pair to
+  // swap (raster order, first found) rather than just whether one exists - what
+  // autoplay needs to actually emulate the move, not merely confirm one is possible.
+  function findValidMove(board) {
+    const size = board.length;
+    for (let row = 0; row < size; row++) {
+      for (let col = 0; col < size; col++) {
+        const a = { row, col };
+        if (col + 1 < size) {
+          const b = { row, col: col + 1 };
+          if (hasMatch(applySwap(board, a, b))) return { a, b };
+        }
+        if (row + 1 < size) {
+          const b = { row: row + 1, col };
+          if (hasMatch(applySwap(board, a, b))) return { a, b };
+        }
+      }
+    }
+    return null;
+  }
+
   // SPEC 8.3: exhaustively tries every (cell, gem type) substitution, in raster
   // order, and returns the first one that creates a valid move without itself
   // being an immediate match - never a whole-board reshuffle, and provably the
@@ -255,6 +276,7 @@
   global.MagicGems.refillBoard = refillBoard;
   global.MagicGems.resolveCascade = resolveCascade;
   global.MagicGems.hasAnyValidMove = hasAnyValidMove;
+  global.MagicGems.findValidMove = findValidMove;
   global.MagicGems.ensurePlayable = ensurePlayable;
   global.MagicGems.tryReviveTwoCells = tryReviveTwoCells;
   global.MagicGems.reviveByIncrementalChange = reviveByIncrementalChange;

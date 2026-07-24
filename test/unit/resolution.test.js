@@ -12,6 +12,7 @@ const {
   refillBoard,
   resolveCascade,
   hasAnyValidMove,
+  findValidMove,
   ensurePlayable,
   tryReviveTwoCells,
   reviveByIncrementalChange,
@@ -467,6 +468,25 @@ test('hasAnyValidMove is true when a specific adjacent swap would create a match
   assert.equal(hasMatch(board), false, 'sanity: fixture itself has no pre-existing match');
 
   assert.equal(hasAnyValidMove(board), true);
+});
+
+test('findValidMove returns null when no valid move exists (SPEC 12.2)', () => {
+  assert.equal(findValidMove(buildStuckBoard()), null);
+});
+
+test('findValidMove returns a real, orthogonally-adjacent pair whose swap actually creates a match (SPEC 12.2)', () => {
+  const board = buildMatchFreeBoard();
+  board[0][2] = GEM_TYPES[0];
+  board[1][2] = GEM_TYPES[0];
+  board[2][2] = GEM_TYPES[1];
+  board[2][1] = GEM_TYPES[0];
+
+  const move = findValidMove(board);
+  assert.ok(move, 'expected a move to be found');
+  assert.equal(hasMatch(applySwap(board, move.a, move.b)), true, 'the returned pair must actually produce a match when swapped');
+  const dr = Math.abs(move.a.row - move.b.row);
+  const dc = Math.abs(move.a.col - move.b.col);
+  assert.ok((dr === 1 && dc === 0) || (dr === 0 && dc === 1), 'the pair must be orthogonally adjacent');
 });
 
 // These next two fixtures are fully hand-specified, not diagonal-derived: an earlier
