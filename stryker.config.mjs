@@ -225,12 +225,19 @@ export default {
 // buildStuckBoard's very first candidate happened to already satisfy the
 // postcondition by coincidence - fixed properly, not waived, by adding
 // buildStuckBoardRequiringSearch, a second fixture picked so the first
-// candidate is genuinely rejected and the search must advance. The same
-// accept-style survivors remain in reviveByIncrementalChange (the
-// absolute-last-resort tier beyond even the two-cell pass, practically
-// unreachable in real play) - not chased further, since closing them would mean
-// applying the identical fixture-engineering effort to a path no board this
-// game has ever produced needs.
+// candidate is genuinely rejected and the search must advance. A different
+// survivor remains in reviveByIncrementalChange - not the same class, checked
+// directly (QA review, commit bd3a398): `if (gemType === original) continue`
+// weakened to `if (false) continue` survives against both fixtures above, since
+// it's a no-op-guard mutation the algorithm's own convergence absorbs (trying
+// the cell's already-current type again just re-picks the same value, wasting
+// one iteration, not corrupting the result) - not a first-candidate-coincidence
+// case a new fixture would fix. Closing it for real would need a different
+// assertion (every reported changedCells entry actually differs from the
+// board's original value at that cell), not a fixture swap. Still not chased
+// further - the absolute-last-resort tier beyond even the two-cell pass is
+// practically unreachable in real play - but stated accurately now rather than
+// conflated with the fix above.
 //
 // (AUTOPLAY) src/autoplay.js (new file - findValidMove's own cell-to-cursor path
 // and the aim direction, SPEC 12.2): 1 equivalent UMD-wrapper survivor. Real
