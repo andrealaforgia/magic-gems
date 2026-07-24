@@ -71,12 +71,10 @@ Feature: The core match-3 play loop (B3)
     And the shatter animation has settled
     Then the classified gem grid differs from the recorded one
 
-  @E8
-  Scenario: A board with no valid moves automatically reshuffles into a playable arrangement
-    Given I open "index.html" directly as a file:// URL with no server or build step
-    When I apply the live page's own ensurePlayable to a known stuck board
-    Then the reshuffled result has no pre-existing match
-    And the reshuffled result has at least one valid move
+  # E8 (superseded by REVIVE, test/features/revive.feature): a board with no valid
+  # moves no longer reshuffles the whole board - it revives in place via the
+  # fewest possible cell changes. Retired here rather than left asserting a
+  # mechanism (whole-board reshuffle) the game no longer uses.
 
   # E9 ("every previous rendering guarantee still holds after a swap settles")
   # retired per QA test-design review (commit 034b6bf, Farley Index 7.9): its 4

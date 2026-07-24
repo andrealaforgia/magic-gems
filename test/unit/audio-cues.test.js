@@ -50,19 +50,19 @@ test('Escape has no dedicated cue, even when it actually cancelled a selection',
 
 test('a matched commit plays swap', () => {
   const prev = { selection: { row: 0, col: 0 } };
-  const next = { swapAnimation: { matched: true }, reshuffled: false, interaction: {} };
+  const next = { swapAnimation: { matched: true }, revived: false, interaction: {} };
   assert.deepEqual(soundsForKeydown(' ', prev, next), ['swap']);
 });
 
 test('an unmatched (reverted) commit plays invalid, not swap', () => {
   const prev = { selection: { row: 0, col: 0 } };
-  const next = { swapAnimation: { matched: false }, reshuffled: false, interaction: {} };
+  const next = { swapAnimation: { matched: false }, revived: false, interaction: {} };
   assert.deepEqual(soundsForKeydown(' ', prev, next), ['invalid']);
 });
 
 test('a commit that leaves the board unplayable also plays reshuffle, after swap (SPEC 8.3)', () => {
   const prev = { selection: { row: 0, col: 0 } };
-  const next = { swapAnimation: { matched: true }, reshuffled: true, interaction: {} };
+  const next = { swapAnimation: { matched: true }, revived: true, interaction: {} };
   assert.deepEqual(soundsForKeydown(' ', prev, next), ['swap', 'reshuffle']);
 });
 

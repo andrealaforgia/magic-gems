@@ -2,23 +2,39 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadMagicGems } from '../support/load-src.js';
 
-const { spriteUrl, GEM_TYPES } = loadMagicGems([
+const { spriteUrl, FRAME_COUNT, GEM_TYPES } = loadMagicGems([
   new URL('../../src/gems.js', import.meta.url),
+  new URL('../../src/spin.js', import.meta.url),
   new URL('../../src/sprites.js', import.meta.url),
 ]);
 
-const ASSET_PATH_PATTERN = /^assets\/gems\/([a-z-]+)\/frame-00\.png$/;
+const ASSET_PATH_PATTERN = /^assets\/gems\/([a-z-]+)\/frame-(\d{2})\.png$/;
 
-test('spriteUrl resolves to the gem\'s own face-on frame-00 asset, scoped to its own folder', () => {
+test('spriteUrl defaults to the face-on frame-00 asset when no frame is requested', () => {
   for (const gemType of GEM_TYPES) {
     const url = spriteUrl(gemType);
-    const match = url.match(ASSET_PATH_PATTERN);
-    assert.ok(match, `spriteUrl(${gemType}) = "${url}" doesn't match the expected asset path shape`);
-    assert.equal(match[1], gemType, 'the path must be scoped to the requested gem\'s own folder');
+    assert.equal(url, `assets/gems/${gemType}/frame-00.png`);
   }
 });
 
-test('spriteUrl gives every gem type its own distinct asset path', () => {
-  const urls = GEM_TYPES.map(spriteUrl);
-  assert.equal(new Set(urls).size, GEM_TYPES.length, 'expected a distinct sprite path per gem type');
+test('spriteUrl resolves to a path scoped to the gem\'s own folder with a round-tripping, two-digit frame number', () => {
+  for (const gemType of GEM_TYPES) {
+    for (let frame = 0; frame < FRAME_COUNT; frame++) {
+      const url = spriteUrl(gemType, frame);
+      const match = url.match(ASSET_PATH_PATTERN);
+      assert.ok(match, `spriteUrl(${gemType}, ${frame}) = "${url}" doesn't match the expected asset path shape`);
+      assert.equal(match[1], gemType, 'the path must be scoped to the requested gem\'s own folder');
+      assert.equal(Number(match[2]), frame, 'the embedded frame number must round-trip to the requested frame index');
+    }
+  }
+});
+
+test('spriteUrl gives every (gem type, frame) pair its own distinct asset path', () => {
+  const urls = [];
+  for (const gemType of GEM_TYPES) {
+    for (let frame = 0; frame < FRAME_COUNT; frame++) {
+      urls.push(spriteUrl(gemType, frame));
+    }
+  }
+  assert.equal(new Set(urls).size, GEM_TYPES.length * FRAME_COUNT, 'expected a distinct path per (gem type, frame) pair');
 });

@@ -82,7 +82,7 @@ Then('every active fragment carries a real crop of the cleared gem\'s own sprite
     const fragments = window.MagicGems.getActiveFragments();
     const sprites = window.MagicGems.getSpriteImages();
     return fragments.map((f) => {
-      const gemType = Object.keys(sprites).find((type) => sprites[type] === f.sprite);
+      const gemType = Object.keys(sprites).find((type) => sprites[type][0] === f.sprite);
       const inBounds =
         !!f.sprite &&
         f.sx >= 0 &&

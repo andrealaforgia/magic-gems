@@ -85,7 +85,8 @@ test('committing a swap that produces no match reverts the board and cancels the
   assert.deepEqual(next.swapAnimation.b, { row: 0, col: 1 });
   assert.strictEqual(next.swapAnimation.preSwapBoard, board);
   assert.equal(next.swapAnimation.matched, false);
-  assert.equal(next.reshuffled, false, 'a reverted (no-match) swap never triggers a reshuffle check');
+  assert.equal(next.revived, false, 'a reverted (no-match) swap never triggers a revive check');
+  assert.deepEqual(next.changedCells, [], 'a reverted swap must report no changed cells');
 });
 
 test('committing a swap that produces a match clears it, settles the board, and returns to plain cursor mode', () => {
@@ -121,10 +122,10 @@ test('committing a swap that produces a match clears it, settles the board, and 
   assert.strictEqual(next.swapAnimation.preSwapBoard, board);
   assert.equal(next.swapAnimation.matched, true);
   // An 8x8 board with 7 gem types settling from a real cascade is never actually
-  // left stuck (astronomically unlikely) - ensurePlayable's own reshuffle-vs-not
-  // branches are independently proven in board.test.js; this just checks commit()
-  // surfaces whichever one it took.
-  assert.equal(next.reshuffled, false);
+  // left stuck (astronomically unlikely) - ensurePlayable's own revive-vs-not
+  // branches are independently proven in resolution.test.js; this just checks
+  // commit() surfaces whichever one it took.
+  assert.equal(next.revived, false);
 
   assert.ok(next.steps.length >= 1);
   const clearEvents = next.steps.flatMap((s) => s.clearEvents);
@@ -137,7 +138,7 @@ test('committing a swap that produces a match clears it, settles the board, and 
   }
 });
 
-test('committing a match that settles into a board with no valid moves left reshuffles (SPEC 8.3), reported via reshuffled:true', () => {
+test('committing a match that settles into a board with no valid moves left revives it in place (SPEC 8.3), reported via revived:true', () => {
   // The board below (a 3x3, small enough to fully control) has no pre-existing
   // match. Swapping (2,0)<->(2,1) completes a vertical run of 3 at column 0, which
   // clears and refills; the refill's own random draws are pinned (via randomQueue)
@@ -145,8 +146,8 @@ test('committing a match that settles into a board with no valid moves left resh
   // post-refill board - [[T0,T3,T4],[T1,T5,T6],[T2,T2,T1]], not the fixture below -
   // has been hand-verified to admit no match-producing adjacent swap at all across
   // all 12 of its possible swaps, i.e. genuinely stuck, not just unlucky - so
-  // ensurePlayable must reshuffle it.
-  const { GEM_TYPES: TYPES, hasMatch: hasMatch3, handleGameKey: handleGameKey3 } = loadMagicGems(
+  // ensurePlayable must revive it (never a whole-board reshuffle, SPEC 8.3).
+  const { GEM_TYPES: TYPES, hasMatch: hasMatch3, hasAnyValidMove: hasAnyValidMove3, handleGameKey: handleGameKey3 } = loadMagicGems(
     [
       new URL('../../src/gems.js', import.meta.url),
       new URL('../../src/board.js', import.meta.url),
@@ -169,8 +170,33 @@ test('committing a match that settles into a board with no valid moves left resh
     target: { row: 2, col: 1 },
   };
   const next = handleGameKey3({ board, interaction }, ' ');
+  const stuckBoard = [
+    [TYPES[0], TYPES[3], TYPES[4]],
+    [TYPES[1], TYPES[5], TYPES[6]],
+    [TYPES[2], TYPES[2], TYPES[1]],
+  ];
 
   assert.equal(next.swapAnimation.matched, true, 'sanity: the swap must actually clear column 0');
-  assert.equal(next.reshuffled, true);
-  assert.equal(next.board.length, 8, 'the reshuffle replacement is a fresh full-size board');
+  assert.equal(next.revived, true);
+  assert.equal(next.board.length, 3, 'never a whole-board reshuffle - the board keeps its own size');
+  // This exact fixture is known solvable with a single cell change - a real
+  // orchestration bug (e.g. falling through to the two-cell fallback even when
+  // the one-cell pass already succeeded) would still leave the board playable,
+  // just via a non-minimal change, so the count itself is the only thing that
+  // can catch that class of bug.
+  assert.equal(next.changedCells.length, 1, 'expected exactly one changed cell for this fixture');
+  for (const { row, col, gemType } of next.changedCells) {
+    assert.equal(next.board[row][col], gemType, 'the changed cell must actually hold the type the revive reports');
+  }
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 3; col++) {
+      if (next.changedCells.some((c) => c.row === row && c.col === col)) continue;
+      assert.equal(
+        next.board[row][col],
+        stuckBoard[row][col],
+        `expected cell (${row},${col}) to be untouched by the revive`
+      );
+    }
+  }
+  assert.equal(hasAnyValidMove3(next.board), true, 'the revived board must have at least one valid move');
 });

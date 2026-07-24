@@ -48,7 +48,7 @@ function createCtxSpy() {
 test('drawGem draws the gem sprite via drawImage, centred and scaled per computeSpriteDrawRect', () => {
   const ctx = createCtxSpy();
   const sprite = { naturalWidth: 50, naturalHeight: 40 };
-  drawGem(ctx, 'red-square', 120, 80, 60, { 'red-square': sprite });
+  drawGem(ctx, 'red-square', 120, 80, 60, { 'red-square': [sprite] });
 
   const drawnSprite = ctx.calls.find((c) => c[0] === 'drawImage' && c[1][0] === sprite);
   assert.ok(drawnSprite, 'must draw the real sprite image, not a vector path');
@@ -61,9 +61,25 @@ test('drawGem draws the gem sprite via drawImage, centred and scaled per compute
   assert.equal(height, expected.height);
 });
 
+test('drawGem defaults to the face-on frame (index 0) when no frame is requested', () => {
+  const ctx = createCtxSpy();
+  const frames = Array.from({ length: 15 }, () => ({ naturalWidth: 50, naturalHeight: 50 }));
+  drawGem(ctx, 'red-square', 0, 0, 60, { 'red-square': frames });
+  const [drawn] = ctx.calls.filter((c) => c[0] === 'drawImage').map((c) => c[1]);
+  assert.equal(drawn[0], frames[0]);
+});
+
+test('drawGem draws whichever rotation frame is requested (SPEC 8.3.1)', () => {
+  const ctx = createCtxSpy();
+  const frames = Array.from({ length: 15 }, () => ({ naturalWidth: 50, naturalHeight: 50 }));
+  drawGem(ctx, 'red-square', 0, 0, 60, { 'red-square': frames }, 7);
+  const [drawn] = ctx.calls.filter((c) => c[0] === 'drawImage').map((c) => c[1]);
+  assert.equal(drawn[0], frames[7]);
+});
+
 test('drawGem never applies a glow effect', () => {
   const ctx = createCtxSpy();
-  drawGem(ctx, 'red-square', 0, 0, 60, { 'red-square': { naturalWidth: 50, naturalHeight: 50 } });
+  drawGem(ctx, 'red-square', 0, 0, 60, { 'red-square': [{ naturalWidth: 50, naturalHeight: 50 }] });
 
   const nonZeroGlow = ctx.calls.filter((c) => c[0] === 'set:shadowBlur' && c[1] > 0);
   assert.equal(nonZeroGlow.length, 0, 'drawGem must never set a nonzero shadowBlur');
@@ -74,8 +90,8 @@ test('drawGem never applies a glow effect', () => {
 test('drawBoard paints cell backgrounds, then draws every occupied cell and skips empty ones', () => {
   const ctx = createCtxSpy();
   const sprites = {
-    'red-square': { naturalWidth: 50, naturalHeight: 50 },
-    'yellow-diamond': { naturalWidth: 50, naturalHeight: 50 },
+    'red-square': [{ naturalWidth: 50, naturalHeight: 50 }],
+    'yellow-diamond': [{ naturalWidth: 50, naturalHeight: 50 }],
   };
   const board = [
     ['red-square', null],
@@ -96,14 +112,14 @@ test('drawBoard paints cell backgrounds, then draws every occupied cell and skip
   assert.equal(drawnSprites.length, 2, 'expected exactly the two occupied cells\' sprites to be drawn');
   assert.deepEqual(
     new Set(drawnSprites),
-    new Set([sprites['red-square'], sprites['yellow-diamond']]),
+    new Set([sprites['red-square'][0], sprites['yellow-diamond'][0]]),
     'expected exactly the two occupied cells\' own sprites to be drawn, in any order'
   );
 });
 
 test('drawBoard\'s cell backgrounds together cover exactly the board\'s own pixel dimensions, no gaps or overlap', () => {
   const ctx = createCtxSpy();
-  const sprites = { 'red-square': { naturalWidth: 50, naturalHeight: 50 } };
+  const sprites = { 'red-square': [{ naturalWidth: 50, naturalHeight: 50 }] };
   const cellSize = 40;
   const board = [
     ['red-square', 'red-square'],
@@ -121,7 +137,7 @@ test('drawBoard\'s cell backgrounds together cover exactly the board\'s own pixe
 
 test('drawBoard paints the even-parity (0,0) cell dark and its odd-parity neighbour (0,1) light', () => {
   const ctx = createCtxSpy();
-  const sprites = { 'red-square': { naturalWidth: 50, naturalHeight: 50 } };
+  const sprites = { 'red-square': [{ naturalWidth: 50, naturalHeight: 50 }] };
   const cellSize = 40;
   const board = [
     ['red-square', 'red-square'],
@@ -148,7 +164,7 @@ test('drawBoard paints the even-parity (0,0) cell dark and its odd-parity neighb
 
 test('drawBoard alternates cell background shade so no two orthogonal neighbours share a shade (SPEC 3.5)', () => {
   const ctx = createCtxSpy();
-  const sprites = { 'red-square': { naturalWidth: 50, naturalHeight: 50 } };
+  const sprites = { 'red-square': [{ naturalWidth: 50, naturalHeight: 50 }] };
   const cellSize = 40;
   const size = 4;
   const board = Array.from({ length: size }, () => Array.from({ length: size }, () => 'red-square'));
@@ -196,7 +212,7 @@ test('drawBoard centres each gem on its own cell, not a neighbour\'s', () => {
     [null, null],
     [null, 'red-square'],
   ];
-  drawBoard(ctx, board, cellSize, { 'red-square': sprite });
+  drawBoard(ctx, board, cellSize, { 'red-square': [sprite] });
   const [[, x, y, width, height]] = ctx.calls.filter((c) => c[0] === 'drawImage').map((c) => c[1]);
   assert.equal(x + width / 2, 1 * cellSize + cellSize / 2, 'expected the gem centred on column 1');
   assert.equal(y + height / 2, 1 * cellSize + cellSize / 2, 'expected the gem centred on row 1');
@@ -204,7 +220,7 @@ test('drawBoard centres each gem on its own cell, not a neighbour\'s', () => {
 
 test('drawBoard skips cells marked hidden', () => {
   const ctx = createCtxSpy();
-  const sprites = { 'red-square': { naturalWidth: 50, naturalHeight: 50 } };
+  const sprites = { 'red-square': [{ naturalWidth: 50, naturalHeight: 50 }] };
 
   drawBoard(ctx, [['red-square']], 40, sprites, new Set(['0,0']));
 
@@ -213,7 +229,7 @@ test('drawBoard skips cells marked hidden', () => {
 
 test('drawBoard still paints a cell\'s background even when its gem is hidden (SPEC 3.5)', () => {
   const ctx = createCtxSpy();
-  const sprites = { 'red-square': { naturalWidth: 50, naturalHeight: 50 } };
+  const sprites = { 'red-square': [{ naturalWidth: 50, naturalHeight: 50 }] };
 
   drawBoard(ctx, [['red-square']], 40, sprites, new Set(['0,0']));
 

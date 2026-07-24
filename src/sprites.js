@@ -1,13 +1,16 @@
 (function (global) {
   'use strict';
 
-  const { GEM_TYPES } = global.MagicGems;
+  const { GEM_TYPES, FRAME_COUNT } = global.MagicGems;
   const SPRITE_BASE_PATH = 'assets/gems';
-  // Gems rest completely still (SPEC 9.1) - only the face-on frame is ever shown.
-  const FACE_FRAME_FILE = 'frame-00.png';
 
-  function spriteUrl(gemType) {
-    return `${SPRITE_BASE_PATH}/${gemType}/${FACE_FRAME_FILE}`;
+  // Gems otherwise rest completely still (SPEC 9.1) showing only frame-00, the
+  // face-on view - but REVIVE's one-off highlight spin (8.3.1) needs the full
+  // rotation set for whichever gem it lands on, so every frame is loaded upfront
+  // rather than fetching the rest lazily mid-highlight.
+  function spriteUrl(gemType, frameIndex = 0) {
+    const frameFile = `frame-${String(frameIndex).padStart(2, '0')}.png`;
+    return `${SPRITE_BASE_PATH}/${gemType}/${frameFile}`;
   }
 
   function loadImage(url) {
@@ -20,11 +23,15 @@
   }
 
   async function loadGemSprites(gemTypes = GEM_TYPES) {
-    const images = await Promise.all(gemTypes.map((gemType) => loadImage(spriteUrl(gemType))));
     const sprites = {};
-    gemTypes.forEach((gemType, i) => {
-      sprites[gemType] = images[i];
-    });
+    await Promise.all(
+      gemTypes.map(async (gemType) => {
+        const frameIndices = Array.from({ length: FRAME_COUNT }, (_, i) => i);
+        sprites[gemType] = await Promise.all(
+          frameIndices.map((frameIndex) => loadImage(spriteUrl(gemType, frameIndex)))
+        );
+      })
+    );
     return sprites;
   }
 

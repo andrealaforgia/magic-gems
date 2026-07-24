@@ -72,8 +72,19 @@ glossy, faceted 3D gemstone. The seven identities are:
 - 8.1 The game keeps a running score (see §10). Scoring is purely additive — it
   does not change how the game ends.
 - 8.2 The game runs infinitely; there is no game-over.
-- 8.3 If the board ever has no possible valid move, it auto-reshuffles, guaranteeing
-  at least one possible match, so play never dead-ends.
+- 8.3 If the board ever reaches a state with no possible valid move, the game does
+  NOT reshuffle the whole board. Instead it revives play by changing a SINGLE gem to
+  a type that creates at least one possible valid move. For example, in a line
+  reading `X X Y Z`, changing the `Z` to an `X` gives `X X Y X`, from which one swap
+  brings three `X`s together. After the change at least one valid move exists, so
+  play never dead-ends (8.2).
+  - 8.3.1 The single changed cell is highlighted so the player can see what changed:
+    the new gem briefly spins in place, cycling through its rotation frames (the
+    per-gem rotation sprites bundled with the game), then comes to rest static like
+    the other gems.
+  - 8.3.2 In the rare case where no single-gem change can create a valid move, the
+    game changes the fewest additional gems needed to guarantee one. A whole-board
+    reshuffle is never used.
 
 ## 9. Visual effects
 - 9.1 Gems are rendered from their sprite images; there is no neon glow — the

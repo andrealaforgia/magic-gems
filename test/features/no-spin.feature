@@ -14,7 +14,7 @@ Feature: Gems rest completely still (SG-NOSPIN)
     Then every cell on the board shows an identical appearance across repeated samples over a real interval
 
   # E3 (seven sprite identities, correct centring/scaling, no pre-existing match,
-  # and all play - swap with revert, gravity, refill, cascade, auto-reshuffle) is
+  # and all play - swap with revert, gravity, refill, cascade, auto-revive) is
   # the pre-existing sprite-reskin/board/game suite - unmodified by this behaviour,
   # which only removes the now-retired idle-rotation render path. Not re-derived
   # here.

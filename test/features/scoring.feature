@@ -63,7 +63,7 @@ Feature: Scoring system (SCORE)
     And the live page reproduces the frozen worked example: a 3-run and 4-run together, 30s gap, first in chain, scores exactly 405
 
   # E8 (scoring is purely additive; endless play, and all previously-delivered play
-  # - swap with revert-on-no-match, gravity, refill, cascade, auto-reshuffle -
+  # - swap with revert-on-no-match, gravity, refill, cascade, auto-revive -
   # continues to work) is every pre-existing sprite-reskin/board/game/shatter/no-spin
   # scenario, all still green with scoring now active. Not re-derived here.
 

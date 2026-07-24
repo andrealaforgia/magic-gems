@@ -31,7 +31,7 @@ Feature: Visual presentation polish (DISPLAY-POLISH)
 
   # E4 (seven static sprite gems, sprite-slice shatter, full scoring maths including
   # both frozen worked examples, and endless play - swap with revert-on-no-match,
-  # gravity, refill, cascade, auto-reshuffle) is every pre-existing sprite-reskin/
+  # gravity, refill, cascade, auto-revive) is every pre-existing sprite-reskin/
   # scoring/board/game/shatter/no-spin scenario, all still green with this visual
   # polish applied. Not re-derived here.
 

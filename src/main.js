@@ -4,6 +4,7 @@
   const BOARD_SIZE = 8;
   const SWAP_DURATION_MS = 400;
   const FALL_DURATION_MS = 400;
+  const REVIVE_SPIN_DURATION_MS = 700;
 
   async function boot() {
     const {
@@ -34,6 +35,7 @@
       createSoundPlayer,
       soundsForKeydown,
       soundsForCascadeStep,
+      reviveSpinFrameIndex,
     } = global.MagicGems;
     const canvas = document.getElementById('board');
     const scoreEl = document.getElementById('score');
@@ -45,7 +47,7 @@
 
     const ctx = canvas.getContext('2d');
     const sprites = await loadGemSprites();
-    let board = ensurePlayable(generateBoard());
+    let board = ensurePlayable(generateBoard()).board;
     let interaction = createInteractionState();
     let fragments = [];
     let animationQueue = [];
@@ -82,7 +84,7 @@
     function spawnFragments(clearEvents) {
       for (const { row, col, gemType } of clearEvents) {
         const { x, y } = cellCenter(row, col);
-        const sprite = sprites[gemType];
+        const sprite = sprites[gemType][0];
         // originRow/originCol are additive test-observability metadata (unused by
         // rendering) so tests can verify which cell a fragment came from without
         // inferring it from a position that drifts over time.
@@ -113,6 +115,10 @@
       return { kind: 'cascade', duration: FALL_DURATION_MS, chainPosition, ...step };
     }
 
+    function buildRevivePhase(finalBoard, changedCells) {
+      return { kind: 'revive', duration: REVIVE_SPIN_DURATION_MS, board: finalBoard, changedCells };
+    }
+
     function buildQueue(result) {
       const queue = [];
       if (result.swapAnimation) {
@@ -129,6 +135,11 @@
       result.steps.forEach((step, i) => {
         queue.push(buildCascadePhase(step, i + 1));
       });
+      // SPEC 8.3.1: the revive highlight plays last, after any cascade has fully
+      // settled - result.board is already the final, post-revive board by this point.
+      if (result.revived) {
+        queue.push(buildRevivePhase(result.board, result.changedCells));
+      }
       return queue;
     }
 
@@ -180,11 +191,23 @@
       }
     }
 
+    function renderRevivePhase(anim, progress) {
+      const hidden = new Set(anim.changedCells.map((c) => `${c.row},${c.col}`));
+      drawBoard(ctx, anim.board, cellSize, sprites, hidden);
+      const frameIndex = reviveSpinFrameIndex(progress);
+      for (const { row, col } of anim.changedCells) {
+        const { x, y } = cellCenter(row, col);
+        drawGem(ctx, anim.board[row][col], x, y, cellSize, sprites, frameIndex);
+      }
+    }
+
     function render() {
       if (activeAnimation) {
         const progress = clampProgress(activeAnimation.elapsedMs, activeAnimation.duration);
         if (activeAnimation.kind === 'swap') {
           renderSwapPhase(activeAnimation, progress);
+        } else if (activeAnimation.kind === 'revive') {
+          renderRevivePhase(activeAnimation, progress);
         } else {
           renderCascadePhase(activeAnimation, progress);
         }

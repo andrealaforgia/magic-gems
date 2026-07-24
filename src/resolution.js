@@ -5,7 +5,6 @@
   const { hasMatch } = global.MagicGems;
 
   const CASCADE_SAFETY_LIMIT = 20;
-  const RESHUFFLE_SAFETY_LIMIT = 1000;
 
   function randomGem() {
     return GEM_TYPES[Math.floor(Math.random() * GEM_TYPES.length)];
@@ -159,14 +158,94 @@
     return false;
   }
 
-  function ensurePlayable(board) {
-    if (hasAnyValidMove(board)) return board;
-    const { generateBoard } = global.MagicGems;
-    let candidate = generateBoard();
-    for (let i = 0; i < RESHUFFLE_SAFETY_LIMIT && !hasAnyValidMove(candidate); i++) {
-      candidate = generateBoard();
+  // SPEC 8.3: exhaustively tries every (cell, gem type) substitution, in raster
+  // order, and returns the first one that creates a valid move without itself
+  // being an immediate match - never a whole-board reshuffle, and provably the
+  // smallest possible change (one cell) whenever one exists.
+  function tryReviveSingleCell(board) {
+    const size = board.length;
+    for (let row = 0; row < size; row++) {
+      for (let col = 0; col < size; col++) {
+        const original = board[row][col];
+        for (const gemType of GEM_TYPES) {
+          if (gemType === original) continue;
+          const candidate = board.map((r) => r.slice());
+          candidate[row][col] = gemType;
+          if (!hasMatch(candidate) && hasAnyValidMove(candidate)) {
+            return { board: candidate, changedCells: [{ row, col, gemType }] };
+          }
+        }
+      }
     }
-    return candidate;
+    return null;
+  }
+
+  // SPEC 8.3.2: the rare degenerate fallback if no single cell can do it -
+  // exhaustively tries every pair of cells and every pair of gem types, so
+  // whatever it finds is still the smallest change possible (two cells) given
+  // that one alone already provably isn't enough. More expensive than the
+  // single-cell pass, but this is a one-off event, never a per-frame cost.
+  function tryReviveTwoCells(board) {
+    const size = board.length;
+    const cells = [];
+    for (let row = 0; row < size; row++) {
+      for (let col = 0; col < size; col++) cells.push({ row, col });
+    }
+
+    for (let i = 0; i < cells.length; i++) {
+      for (let j = i + 1; j < cells.length; j++) {
+        const cellA = cells[i];
+        const cellB = cells[j];
+        for (const typeA of GEM_TYPES) {
+          for (const typeB of GEM_TYPES) {
+            const candidate = board.map((r) => r.slice());
+            candidate[cellA.row][cellA.col] = typeA;
+            candidate[cellB.row][cellB.col] = typeB;
+            if (!hasMatch(candidate) && hasAnyValidMove(candidate)) {
+              return {
+                board: candidate,
+                changedCells: [
+                  { row: cellA.row, col: cellA.col, gemType: typeA },
+                  { row: cellB.row, col: cellB.col, gemType: typeB },
+                ],
+              };
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  // Absolute last resort, practically unreachable (no board this game has ever
+  // produced needs more than a two-cell revive) - keeps changing one further
+  // cell at a time until a valid move exists, rather than looping forever if
+  // both smaller passes above somehow failed.
+  function reviveByIncrementalChange(board) {
+    const size = board.length;
+    let candidate = board.map((r) => r.slice());
+    const changedCells = [];
+    for (let i = 0; i < size * size; i++) {
+      const row = Math.floor(i / size);
+      const col = i % size;
+      const original = candidate[row][col];
+      for (const gemType of GEM_TYPES) {
+        if (gemType === original) continue;
+        const attempt = candidate.map((r) => r.slice());
+        attempt[row][col] = gemType;
+        if (hasMatch(attempt)) continue;
+        candidate = attempt;
+        changedCells.push({ row, col, gemType });
+        if (hasAnyValidMove(candidate)) return { board: candidate, changedCells };
+        break;
+      }
+    }
+    throw new Error('reviveByIncrementalChange: exhausted every cell without finding a valid move');
+  }
+
+  function ensurePlayable(board) {
+    if (hasAnyValidMove(board)) return { board, changedCells: [] };
+    return tryReviveSingleCell(board) || tryReviveTwoCells(board) || reviveByIncrementalChange(board);
   }
 
   global.MagicGems.applySwap = applySwap;
@@ -177,4 +256,6 @@
   global.MagicGems.resolveCascade = resolveCascade;
   global.MagicGems.hasAnyValidMove = hasAnyValidMove;
   global.MagicGems.ensurePlayable = ensurePlayable;
+  global.MagicGems.tryReviveTwoCells = tryReviveTwoCells;
+  global.MagicGems.reviveByIncrementalChange = reviveByIncrementalChange;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -10,7 +10,7 @@ Then('each of the seven gem identities is backed by its real frame-00 sprite ima
   const spriteInfo = await this.page.evaluate((gemTypes) => {
     const sprites = window.MagicGems.getSpriteImages();
     return gemTypes.map((gemType) => {
-      const img = sprites[gemType];
+      const img = sprites[gemType][0];
       return {
         gemType,
         loaded: !!img,
@@ -36,12 +36,12 @@ Then('each of the seven gem identities is backed by its real frame-00 sprite ima
 });
 
 Then(
-  "the reshuffled result's cells are all one of the seven sprite gem identities, never a retired one",
+  "the revived result's cells are all one of the seven sprite gem identities, never a retired one",
   async function () {
-    for (const cell of this.reshuffledResult.flat()) {
+    for (const cell of this.revivedResult.flat()) {
       assert.ok(
         GEM_TYPES.includes(cell),
-        `reshuffled cell holds "${cell}", which is not one of the seven sprite gem identities`
+        `revived cell holds "${cell}", which is not one of the seven sprite gem identities`
       );
     }
   }

@@ -26,16 +26,16 @@ Feature: Sprite re-skin, static (SG1)
   # it inspects the actual draw calls rather than inferring intent from pixels.
 
   @E2 @E3
-  Scenario: The board's gem identities are exactly the seven sprite gems, holding across a reload and a forced reshuffle
+  Scenario: The board's gem identities are exactly the seven sprite gems, holding across a reload and a forced revive
     Given I open "index.html" directly as a file:// URL with no server or build step
     Then the board's 64 cells show gem colours that map to all seven known gem types
     When I open "index.html" again as a fresh file:// page load
     Then the board's 64 cells show gem colours that map to all seven known gem types
     When I apply the live page's own ensurePlayable to a known stuck board
-    Then the reshuffled result's cells are all one of the seven sprite gem identities, never a retired one
+    Then the revived result's cells are all one of the seven sprite gem identities, never a retired one
 
   # E4 (no pre-existing match on a fresh load), E5 (a valid swap clears/gravity/
-  # refills/cascades; an invalid swap reverts) and E6 (auto-reshuffle guarantees a
+  # refills/cascades; an invalid swap reverts) and E6 (auto-revive guarantees a
   # move) are the pre-existing B1/B3 guarantees (board-renders.feature @E6,
   # game-match-loop.feature @E1/@E2/@E4/@E5/@E7/@E8/@E10) - unmodified by this
   # re-skin, and already exercising the seven sprite identities transparently now

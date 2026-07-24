@@ -13,6 +13,8 @@ const {
   resolveCascade,
   hasAnyValidMove,
   ensurePlayable,
+  tryReviveTwoCells,
+  reviveByIncrementalChange,
 } = loadMagicGems([
   new URL('../../src/gems.js', import.meta.url),
   new URL('../../src/board.js', import.meta.url),
@@ -501,14 +503,78 @@ test('ensurePlayable leaves an already-playable board untouched', () => {
   board[2][2] = GEM_TYPES[1];
   board[2][1] = GEM_TYPES[0];
 
-  const result = ensurePlayable(board);
-  assert.deepEqual(result, board);
+  const { board: result, changedCells } = ensurePlayable(board);
+  assert.strictEqual(result, board);
+  assert.deepEqual(changedCells, []);
 });
 
-test('ensurePlayable reshuffles a stuck board into a new, match-free, playable arrangement', () => {
-  const stuck = buildStuckBoard();
-  const result = ensurePlayable(stuck);
+// Applying a function's own reported changedCells onto the original board must
+// exactly reproduce its returned board - catches a changedCells entry that's
+// hollow/wrong (e.g. missing fields) even though the returned board is correct.
+function applyChanges(board, changedCells) {
+  const next = board.map((r) => r.slice());
+  for (const { row, col, gemType } of changedCells) next[row][col] = gemType;
+  return next;
+}
 
-  assert.equal(hasMatch(result), false, 'reshuffled board must be match-free');
-  assert.equal(hasAnyValidMove(result), true, 'reshuffled board must have at least one valid move');
+test('ensurePlayable revives a stuck board in place with a single minimal change, never a whole-board reshuffle (SPEC 8.3)', () => {
+  const stuck = buildStuckBoard();
+  const { board: result, changedCells } = ensurePlayable(stuck);
+
+  assert.equal(result.length, stuck.length, 'must keep the board\'s own size - never replaced by a fresh reshuffle');
+  // This fixture is known solvable with one cell - the count itself is what
+  // would catch an orchestration bug that falls through to a larger, non-minimal
+  // fallback even though the smallest pass already succeeded.
+  assert.equal(changedCells.length, 1, 'expected exactly one changed cell for this fixture');
+  assert.deepEqual(applyChanges(stuck, changedCells), result, 'changedCells must fully account for the diff from the original board');
+  assert.equal(hasMatch(result), false, 'the revived board must not itself contain an immediate match');
+  assert.equal(hasAnyValidMove(result), true, 'the revived board must have at least one valid move');
+});
+
+test('tryReviveTwoCells (the SPEC 8.3.2 fallback) finds a minimal two-cell change', () => {
+  const stuck = buildStuckBoard();
+  const result = tryReviveTwoCells(stuck);
+
+  assert.ok(result, 'expected a two-cell revive to be found');
+  assert.equal(result.changedCells.length, 2);
+  assert.deepEqual(applyChanges(stuck, result.changedCells), result.board, 'changedCells must fully account for the diff from the original board');
+  assert.equal(hasMatch(result.board), false);
+  assert.equal(hasAnyValidMove(result.board), true);
+});
+
+test('reviveByIncrementalChange (the absolute last-resort fallback) always finds a valid-move-enabling board', () => {
+  const stuck = buildStuckBoard();
+  const { board: result, changedCells } = reviveByIncrementalChange(stuck);
+
+  assert.equal(hasMatch(result), false);
+  assert.equal(hasAnyValidMove(result), true);
+  assert.deepEqual(applyChanges(stuck, changedCells), result, 'changedCells must fully account for the diff from the original board');
+  assert.ok(
+    changedCells.length >= 1 && changedCells.length <= stuck.length * stuck.length,
+    'expected a bounded number of changes'
+  );
+});
+
+// A revive function handed the caller's own board (e.g. game.js's committed
+// board, still referenced elsewhere for animation) must never mutate it in
+// place - only ever return a new one.
+test('tryReviveTwoCells never mutates its input board', () => {
+  const stuck = buildStuckBoard();
+  const snapshot = JSON.stringify(stuck);
+  tryReviveTwoCells(stuck);
+  assert.equal(JSON.stringify(stuck), snapshot, 'the input board must not be mutated');
+});
+
+test('reviveByIncrementalChange never mutates its input board', () => {
+  const stuck = buildStuckBoard();
+  const snapshot = JSON.stringify(stuck);
+  reviveByIncrementalChange(stuck);
+  assert.equal(JSON.stringify(stuck), snapshot, 'the input board must not be mutated');
+});
+
+test('ensurePlayable never mutates its input board', () => {
+  const stuck = buildStuckBoard();
+  const snapshot = JSON.stringify(stuck);
+  ensurePlayable(stuck);
+  assert.equal(JSON.stringify(stuck), snapshot, 'the input board must not be mutated');
 });

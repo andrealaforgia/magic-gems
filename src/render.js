@@ -3,8 +3,8 @@
 
   const { computeSpriteDrawRect, GEM_SPRITE_FIT_RATIO } = global.MagicGems;
 
-  function drawGem(ctx, gem, cx, cy, cellSize, sprites) {
-    const sprite = sprites[gem];
+  function drawGem(ctx, gem, cx, cy, cellSize, sprites, frameIndex = 0) {
+    const sprite = sprites[gem][frameIndex];
     const rect = computeSpriteDrawRect(
       sprite.naturalWidth,
       sprite.naturalHeight,

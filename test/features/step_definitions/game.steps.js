@@ -16,7 +16,7 @@ const { hasMatch, applySwap } = loadMagicGems([
 // cells in a row/column to match, which no single swap of this fixture can produce
 // (see test/unit/resolution.test.js for the full proof). Verified directly against
 // hasMatch/hasAnyValidMove before being relied on here.
-const STUCK_BOARD = [
+export const STUCK_BOARD = [
   ['purple-triangle', 'red-square', 'green-octagon'],
   ['red-square', 'green-octagon', 'purple-triangle'],
   ['green-octagon', 'purple-triangle', 'red-square'],
@@ -85,24 +85,45 @@ Given('the shatter animation has settled', async function () {
 });
 
 When('I apply the live page\'s own ensurePlayable to a known stuck board', async function () {
-  this.reshuffledResult = await this.page.evaluate(
+  const result = await this.page.evaluate(
     (stuckBoard) => window.MagicGems.ensurePlayable(stuckBoard),
     STUCK_BOARD
   );
+  this.revivedResult = result.board;
+  this.revivedChangedCells = result.changedCells;
 });
 
-Then('the reshuffled result has no pre-existing match', async function () {
+Then('the revived result has no pre-existing match', async function () {
   const result = await this.page.evaluate(
     (board) => window.MagicGems.hasMatch(board),
-    this.reshuffledResult
+    this.revivedResult
   );
   assert.equal(result, false);
 });
 
-Then('the reshuffled result has at least one valid move', async function () {
+Then('the revived result has at least one valid move', async function () {
   const result = await this.page.evaluate(
     (board) => window.MagicGems.hasAnyValidMove(board),
-    this.reshuffledResult
+    this.revivedResult
   );
   assert.equal(result, true);
+});
+
+Then('the revived result is never a whole-board reshuffle', async function () {
+  assert.equal(this.revivedResult.length, STUCK_BOARD.length, 'expected the board to keep its own size');
+  assert.ok(this.revivedChangedCells.length >= 1, 'expected at least one changed cell');
+  assert.ok(
+    this.revivedChangedCells.length < STUCK_BOARD.length * STUCK_BOARD.length,
+    'expected fewer changed cells than the whole board'
+  );
+  for (let row = 0; row < STUCK_BOARD.length; row++) {
+    for (let col = 0; col < STUCK_BOARD.length; col++) {
+      if (this.revivedChangedCells.some((c) => c.row === row && c.col === col)) continue;
+      assert.equal(
+        this.revivedResult[row][col],
+        STUCK_BOARD[row][col],
+        `expected cell (${row},${col}) to be untouched by the revive`
+      );
+    }
+  }
 });

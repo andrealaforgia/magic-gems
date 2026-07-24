@@ -11,12 +11,15 @@
 
   // Decides which bundled cues (SPEC 11.2) a real keydown result calls for, without
   // touching the DOM/Audio itself - kept pure so every combination is cheaply
-  // unit-testable, including the reshuffle case (11.2.8), which is too rare to
-  // reliably provoke through live play.
+  // unit-testable, including the revive case (11.2.8), which is too rare to
+  // reliably provoke through live play. Still keyed off reshuffle.ogg/'reshuffle'
+  // (the sound identity predates REVIVE, which replaced the whole-board reshuffle
+  // it was named for with a single-gem change) - reused rather than re-asseted,
+  // since the underlying event it announces ("the board needed a fix") is the same.
   function soundsForKeydown(key, prevInteraction, next) {
     if (next.swapAnimation) {
       const sounds = [next.swapAnimation.matched ? 'swap' : 'invalid'];
-      if (next.reshuffled) sounds.push('reshuffle');
+      if (next.revived) sounds.push('reshuffle');
       return sounds;
     }
     if (key === ' ') {
