@@ -1,23 +1,12 @@
 import { Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
 
-const BUNDLED_SOUNDS = [
-  'cursor-move',
-  'select',
-  'swap',
-  'invalid',
-  'shatter',
-  'drop',
-  'reshuffle',
-  'score',
-  'cascade-1',
-  'cascade-2',
-  'cascade-3',
-  'cascade-4',
-];
-
 async function soundLog(page) {
   return page.evaluate(() => window.MagicGems.getSoundLog());
+}
+
+function bundledSoundNames(page) {
+  return page.evaluate(() => window.MagicGems.BUNDLED_SOUND_NAMES);
 }
 
 Then('the sound log includes {string}', async function (name) {
@@ -31,10 +20,10 @@ Then('the sound log does not include {string}', async function (name) {
 });
 
 Then('every entry in the sound log is one of the bundled discrete event sounds', async function () {
-  const log = await soundLog(this.page);
+  const [log, bundled] = await Promise.all([soundLog(this.page), bundledSoundNames(this.page)]);
   assert.ok(log.length > 0, 'expected at least one sound to have played by now');
   for (const name of log) {
-    assert.ok(BUNDLED_SOUNDS.includes(name), `"${name}" is not one of the bundled discrete event sounds - ${JSON.stringify(log)}`);
+    assert.ok(bundled.includes(name), `"${name}" is not one of the bundled discrete event sounds - ${JSON.stringify(log)}`);
   }
 });
 

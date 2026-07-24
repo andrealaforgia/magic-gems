@@ -138,12 +138,14 @@ test('committing a swap that produces a match clears it, settles the board, and 
 });
 
 test('committing a match that settles into a board with no valid moves left reshuffles (SPEC 8.3), reported via reshuffled:true', () => {
-  // A 3x3 board (small enough to fully control): swapping (2,0)<->(2,1) completes a
-  // vertical run of 3 at column 0, which clears and refills. The refill's own random
-  // draws are pinned (via randomQueue) so column 0 comes back as three distinct
-  // types; combined with the untouched columns 1-2, the resulting 3x3 board has been
-  // hand-verified to admit no match-producing adjacent swap at all - i.e. genuinely
-  // stuck, not just unlucky - so ensurePlayable must reshuffle it.
+  // The board below (a 3x3, small enough to fully control) has no pre-existing
+  // match. Swapping (2,0)<->(2,1) completes a vertical run of 3 at column 0, which
+  // clears and refills; the refill's own random draws are pinned (via randomQueue)
+  // so column 0 comes back as three distinct types. The RESULTING post-swap,
+  // post-refill board - [[T0,T3,T4],[T1,T5,T6],[T2,T2,T1]], not the fixture below -
+  // has been hand-verified to admit no match-producing adjacent swap at all across
+  // all 12 of its possible swaps, i.e. genuinely stuck, not just unlucky - so
+  // ensurePlayable must reshuffle it.
   const { GEM_TYPES: TYPES, hasMatch: hasMatch3, handleGameKey: handleGameKey3 } = loadMagicGems(
     [
       new URL('../../src/gems.js', import.meta.url),

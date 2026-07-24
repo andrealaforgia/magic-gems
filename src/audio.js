@@ -57,4 +57,5 @@
 
   global.MagicGems = global.MagicGems || {};
   global.MagicGems.createSoundPlayer = createSoundPlayer;
+  global.MagicGems.BUNDLED_SOUND_NAMES = Object.keys(SOUND_FILES);
 })(typeof window !== 'undefined' ? window : globalThis);
