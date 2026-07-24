@@ -133,11 +133,13 @@ quickly and in bigger, chained clears.
 - 10.8 The current time multiplier (10.5) is shown at the top of the grid, to the
   right of the score, as a horizontal gradient bar that occupies ALL the remaining
   horizontal space from the score across to the grid's right border. Its filled
-  length represents the multiplier as a fraction of its 300 maximum (full at 300,
-  shrinking as it counts down toward 0 between completions), depleting from right to
-  left. The bar is coloured with a gradient running right to left from green through
-  yellow to red. The bar is sized to be clearly visible and prominent — a generous
-  height, not a thin sliver.
+  length represents the multiplier as a fraction of its 300 maximum. The bar is full
+  at 300 and, as the multiplier counts down toward 0, it empties from the RIGHT: the
+  right end recedes leftward (it decreases right-to-left), so the remaining filled
+  portion is anchored at the left edge and the last sliver to disappear is on the
+  left. The bar is coloured with a green → yellow → red gradient. It is enclosed in
+  a THICK WHITE box (border) around its full extent. The bar is sized to be clearly
+  visible and prominent — a generous height, not a thin sliver.
 
 ## 11. Sound
 The game plays short sound effects that respond to what the player does and what
@@ -165,8 +167,10 @@ happens on the board.
 - 11.4 There is no background music track (sound effects only) in this version.
 - 11.5 Pressing the S key toggles all audio on/off. When off, no sounds play; when
   toggled back on, sounds resume. Audio defaults to on.
-  - 11.5.1 Each time audio is toggled, a large semi-transparent black text — "Sound
-    ON" or "Sound OFF" to match the new state — briefly appears centred on the
-    screen and then fades away, in the game's display font (9.4).
+  - 11.5.1 Each time audio is toggled, a large WHITE text — "Sound ON" or "Sound
+    OFF" to match the new state — briefly appears centred on the screen and then
+    fades away, in the game's display font (9.4). The text is very large and
+    prominent (about three times the size of an ordinary UI label), dominating the
+    centre of the screen while it shows.
 - 11.6 An instruction line is shown at the bottom of the gem grid stating that S
   toggles audio on/off, rendered in the game's display font (9.4).

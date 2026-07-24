@@ -58,10 +58,10 @@ Feature: An S-key mute toggle and its on-screen hint (AUDIO-TOGGLE)
   Scenario: Toggling audio shows fading feedback text, both directions
     Given I open "index.html" directly as a file:// URL with no server or build step
     When I press "s"
-    Then the "SOUND OFF" toast is visible in the pixel font
+    Then the "SOUND OFF" toast is visible, large and white, in the pixel font
     And the audio toast fades away
     When I press "s"
-    Then the "SOUND ON" toast is visible in the pixel font
+    Then the "SOUND ON" toast is visible, large and white, in the pixel font
     And the audio toast fades away
 
   @E6 @integration
@@ -70,7 +70,7 @@ Feature: An S-key mute toggle and its on-screen hint (AUDIO-TOGGLE)
     Then the audio instruction line reads "S — TOGGLE AUDIO" in the pixel font, below the grid
     When I press "s"
     Then audio is muted
-    And the "SOUND OFF" toast is visible in the pixel font
+    And the "SOUND OFF" toast is visible, large and white, in the pixel font
     And the audio toast fades away
     And I locate an adjacent swap that would produce a match on the live board
     When I commit that swap
@@ -79,5 +79,5 @@ Feature: An S-key mute toggle and its on-screen hint (AUDIO-TOGGLE)
     Then the board contains no horizontal or vertical run of 3 or more identical gems
     When I press "s"
     Then audio is unmuted
-    And the "SOUND ON" toast is visible in the pixel font
+    And the "SOUND ON" toast is visible, large and white, in the pixel font
     And the audio toast fades away

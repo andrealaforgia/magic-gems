@@ -30,18 +30,26 @@ Then('the audio instruction line reads {string} in the pixel font, below the gri
   assert.ok(result.isBelowGrid, 'expected the instruction line to sit below the grid');
 });
 
-Then('the {string} toast is visible in the pixel font', async function (expectedText) {
+Then('the {string} toast is visible, large and white, in the pixel font', async function (expectedText) {
   const result = await this.page.evaluate(() => {
     const toastEl = document.getElementById('audio-toast');
+    const style = getComputedStyle(toastEl);
     return {
       text: toastEl.textContent,
-      opacity: Number(getComputedStyle(toastEl).opacity),
-      fontFamily: getComputedStyle(toastEl).fontFamily,
+      opacity: Number(style.opacity),
+      fontFamily: style.fontFamily,
+      color: style.color,
+      fontSizePx: parseFloat(style.fontSize),
     };
   });
   assert.equal(result.text, expectedText);
   assert.ok(result.opacity > 0.9, `expected the toast to be visible, opacity was ${result.opacity}`);
   assert.ok(result.fontFamily.includes('Press Start 2P'), `expected the pixel font, got "${result.fontFamily}"`);
+  assert.equal(result.color, 'rgb(255, 255, 255)', `expected white text, got "${result.color}"`);
+  // SPEC 11.5.1: about 3x an ordinary UI label - the previous toast size (1.5rem,
+  // 24px at the default root size) tripled is 72px; 60px is a safe lower bound
+  // that still confirms a real, large jump rather than a marginal size tweak.
+  assert.ok(result.fontSizePx >= 60, `expected a large, ~3x-sized toast, got ${result.fontSizePx}px`);
 });
 
 Then('the audio toast fades away', async function () {
