@@ -31,7 +31,7 @@ Then('the score is rendered in the "Press Start 2P" pixel font, left-aligned', a
 Then('the multiplier bar\'s fill and colour are proportional and shift through green, yellow, and red at high, middle, and low values', async function () {
   const result = await this.page.evaluate(() => {
     const { multiplierFraction, multiplierBarColor, TIME_MULTIPLIER_START } = window.MagicGems;
-    return [5000, 2500, 0].map((multiplier) => {
+    return [TIME_MULTIPLIER_START, TIME_MULTIPLIER_START / 2, 0].map((multiplier) => {
       const fraction = multiplierFraction(multiplier, TIME_MULTIPLIER_START);
       return { multiplier, fraction, color: multiplierBarColor(fraction) };
     });

@@ -46,6 +46,11 @@ body {
   border: 1px solid #333;
   border-radius: 4px;
   overflow: hidden;
+  /* Depletes right to left (SPEC 10.8, BONUS-TUNE): the fill is pushed against
+     this container's right edge, so shrinking its width opens up empty space on
+     the left instead of the right. */
+  display: flex;
+  justify-content: flex-end;
 }
 
 .multiplier-fill {

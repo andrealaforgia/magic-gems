@@ -2,7 +2,7 @@
   'use strict';
 
   const BASE_POINTS_PER_EXTRA_LENGTH = 50;
-  const TIME_MULTIPLIER_START = 5000;
+  const TIME_MULTIPLIER_START = 300;
   const SCORE_DIVISOR = 100;
 
   function runBasePoints(runLength) {
