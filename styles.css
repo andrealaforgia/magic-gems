@@ -44,14 +44,14 @@ body {
   min-width: 0;
   height: 32px;
   background: #1a1a1a;
-  border: 1px solid #333;
+  border: 4px solid #ffffff;
   border-radius: 4px;
   overflow: hidden;
-  /* Depletes right to left (SPEC 10.8, BONUS-TUNE): the fill is pushed against
-     this container's right edge, so shrinking its width opens up empty space on
-     the left instead of the right. */
+  /* Depletes left to right - i.e. the fill stays anchored at this container's
+     LEFT edge and recedes at its right end as it shrinks (SPEC 10.8, BAR-FRAME -
+     reverses the right-anchored direction BONUS-TUNE had introduced). */
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 .multiplier-fill {
