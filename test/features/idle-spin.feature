@@ -21,10 +21,11 @@ Feature: Continuous idle spin (SG2)
   # single-frame step - never a special case, so there's nothing for a jump/pop to
   # come from.
 
-  @E2
-  Scenario: The idle rotation pace is slow and gentle, not a fast whirl
-    Given I open "index.html" directly as a file:// URL with no server or build step
-    Then the gem at cell 0,0 advances through only a modest few rotation frames over a one-second interval
+  # E2 ("slow and gentle, not a fast whirl") is superseded by SG2-SPEED
+  # (test/features/idle-spin-speed.feature): SPEC 9.1.1 was deliberately amended to
+  # decouple the idle-spin pace from 9.3's slower transition pace, replacing "slow
+  # and gentle" with "a lively ~1.5s per rotation." Retired here rather than left
+  # asserting a pace the spec no longer calls for.
 
   # E4 (still only the seven sprite identities, still centred/scaled, still
   # match-free on a fresh fill) and E5 (swap/clear/gravity/refill/cascade/

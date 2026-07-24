@@ -10,8 +10,17 @@ test('FRAME_COUNT matches the shipped 15-frame rotation sequence', () => {
   assert.equal(FRAME_COUNT, 15);
 });
 
-test('FRAME_DURATION_MS is a deliberately slow, gentle pace (well over 200ms per frame)', () => {
-  assert.ok(FRAME_DURATION_MS >= 200);
+// SPEC 9.1.1 (updated, SG2-SPEED): a lively idle turn, roughly one full rotation
+// every 1.5 seconds - deliberately decoupled from 9.3's slower transition pace.
+const TARGET_ROTATION_MS = 1500;
+const ROTATION_TOLERANCE_MS = 150;
+
+test('a full rotation cycle takes roughly 1.5 seconds (SPEC 9.1.1)', () => {
+  const rotationMs = FRAME_DURATION_MS * FRAME_COUNT;
+  assert.ok(
+    Math.abs(rotationMs - TARGET_ROTATION_MS) <= ROTATION_TOLERANCE_MS,
+    `expected a full rotation to take about ${TARGET_ROTATION_MS}ms, took ${rotationMs}ms`
+  );
 });
 
 test('currentFrameIndex always returns a value within the valid frame range', () => {

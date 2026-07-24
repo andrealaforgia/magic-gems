@@ -3,10 +3,9 @@
 
   // Matches the shipped rotation sequence (frame-00..14.png per identity).
   const FRAME_COUNT = 15;
-  // A slow, deliberate idle turn (SPEC 9.1.1/9.3), consistent with this project's
-  // other animated transitions (SWAP/FALL_DURATION_MS in main.js) rather than a
-  // fast whirl.
-  const FRAME_DURATION_MS = 350;
+  // A lively idle turn - roughly one full rotation every 1.5 seconds (SPEC 9.1.1)
+  // - deliberately decoupled from the slower transition pace of SPEC 9.3.
+  const FRAME_DURATION_MS = 100;
 
   // Coprime-ish multipliers spread each cell's starting point across the cycle so
   // neighbouring cells rarely land on the same frame at the same moment (SPEC
