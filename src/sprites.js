@@ -1,12 +1,13 @@
 (function (global) {
   'use strict';
 
-  const { GEM_TYPES, FRAME_COUNT } = global.MagicGems;
+  const { GEM_TYPES } = global.MagicGems;
   const SPRITE_BASE_PATH = 'assets/gems';
+  // Gems rest completely still (SPEC 9.1) - only the face-on frame is ever shown.
+  const FACE_FRAME_FILE = 'frame-00.png';
 
-  function spriteUrl(gemType, frameIndex) {
-    const frameFile = `frame-${String(frameIndex).padStart(2, '0')}.png`;
-    return `${SPRITE_BASE_PATH}/${gemType}/${frameFile}`;
+  function spriteUrl(gemType) {
+    return `${SPRITE_BASE_PATH}/${gemType}/${FACE_FRAME_FILE}`;
   }
 
   function loadImage(url) {
@@ -19,15 +20,11 @@
   }
 
   async function loadGemSprites(gemTypes = GEM_TYPES) {
+    const images = await Promise.all(gemTypes.map((gemType) => loadImage(spriteUrl(gemType))));
     const sprites = {};
-    await Promise.all(
-      gemTypes.map(async (gemType) => {
-        const frameIndices = Array.from({ length: FRAME_COUNT }, (_, i) => i);
-        sprites[gemType] = await Promise.all(
-          frameIndices.map((frameIndex) => loadImage(spriteUrl(gemType, frameIndex)))
-        );
-      })
-    );
+    gemTypes.forEach((gemType, i) => {
+      sprites[gemType] = images[i];
+    });
     return sprites;
   }
 

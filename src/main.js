@@ -24,7 +24,6 @@
       clampProgress,
       interpolatePoint,
       loadGemSprites,
-      currentFrameIndex,
     } = global.MagicGems;
     const canvas = document.getElementById('board');
     const cellSize = computeCellSize(window.innerWidth, window.innerHeight, BOARD_SIZE);
@@ -47,7 +46,7 @@
     function spawnFragments(clearEvents) {
       for (const { row, col, gemType } of clearEvents) {
         const { x, y } = cellCenter(row, col);
-        const sprite = sprites[gemType][0];
+        const sprite = sprites[gemType];
         // originRow/originCol are additive test-observability metadata (unused by
         // rendering) so tests can verify which cell a fragment came from without
         // inferring it from a position that drifts over time.
@@ -139,7 +138,7 @@
       }
     }
 
-    function render(nowMs) {
+    function render() {
       if (activeAnimation) {
         const progress = clampProgress(activeAnimation.elapsedMs, activeAnimation.duration);
         if (activeAnimation.kind === 'swap') {
@@ -148,34 +147,37 @@
           renderCascadePhase(activeAnimation, progress);
         }
       } else {
-        // Gems only spin while the board is at rest (SPEC 9.1.1) - a swap/cascade
-        // in flight above draws its own gems on a static frame instead.
-        drawBoard(ctx, board, cellSize, sprites, undefined, (row, col) => currentFrameIndex(nowMs, row, col));
+        drawBoard(ctx, board, cellSize, sprites);
       }
       drawInteraction(ctx, interaction, cellSize);
       drawFragments(ctx, fragments);
     }
 
-    render(performance.now());
+    render();
 
     let lastFrameTimeMs = null;
 
     function tick(frameTimeMs) {
-      if (lastFrameTimeMs !== null) {
-        const dtMs = frameTimeMs - lastFrameTimeMs;
-        if (fragments.length > 0) {
-          fragments = pruneOffscreen(updateFragments(fragments, dtMs / 1000), canvas.height);
-        }
-        if (activeAnimation) {
-          activeAnimation.elapsedMs += dtMs;
-          if (activeAnimation.elapsedMs >= activeAnimation.duration) {
-            activeAnimation = null;
+      const isActive = fragments.length > 0 || activeAnimation !== null || animationQueue.length > 0;
+      if (isActive) {
+        if (lastFrameTimeMs !== null) {
+          const dtMs = frameTimeMs - lastFrameTimeMs;
+          if (fragments.length > 0) {
+            fragments = pruneOffscreen(updateFragments(fragments, dtMs / 1000), canvas.height);
           }
+          if (activeAnimation) {
+            activeAnimation.elapsedMs += dtMs;
+            if (activeAnimation.elapsedMs >= activeAnimation.duration) {
+              activeAnimation = null;
+            }
+          }
+          advanceQueue();
+          render();
         }
-        advanceQueue();
+        lastFrameTimeMs = frameTimeMs;
+      } else {
+        lastFrameTimeMs = null;
       }
-      lastFrameTimeMs = frameTimeMs;
-      render(frameTimeMs);
       requestAnimationFrame(tick);
     }
 
@@ -189,7 +191,7 @@
         lastCommitSteps = next.steps;
         animationQueue = animationQueue.concat(buildQueue(next));
         advanceQueue();
-        render(performance.now());
+        render();
       }
     });
 

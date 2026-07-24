@@ -17,9 +17,9 @@ Feature: Sprite-slice shatter (SG3)
   # moves. E3 (varied break from clear to clear) is gem-shatter.feature's own @E5
   # (different fragment velocity patterns between two shatters) - same reasoning.
   # E4 (only matched gems shatter, fallen/refilled ones don't) is B4r's @E1/@E2.
-  # E5 (slow, deliberate pace) is B4r's @E3/@E4. E6 (spin and play unaffected) is
-  # every pre-existing sprite-reskin/idle-spin/board/game/shatter scenario, all
-  # still green against this change. None re-derived here.
+  # E5 (slow, deliberate pace) is B4r's @E3/@E4. E6 (play unaffected) is every
+  # pre-existing sprite-reskin/board/game/shatter scenario, all still green against
+  # this change. None re-derived here.
 
   @E7 @integration
   Scenario: A full fresh-load play cycle completes correctly with real sprite-slice shatter throughout
@@ -32,4 +32,3 @@ Feature: Sprite-slice shatter (SG3)
     When the shatter animation has settled
     Then the board contains no horizontal or vertical run of 3 or more identical gems
     And all 64 cells contain exactly one recognizable gem colour each
-    And the gem at cell 0,0 shows a different rotation frame after a short real interval
