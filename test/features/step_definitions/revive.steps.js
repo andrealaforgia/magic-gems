@@ -6,7 +6,7 @@ Then('exactly one cell was changed by the revive', async function () {
   assert.equal(this.revivedChangedCells.length, 1, `expected exactly one changed cell, got ${JSON.stringify(this.revivedChangedCells)}`);
 });
 
-Then('the live page\'s incremental revive fallback finds a valid move within a bounded number of changes', async function () {
+Then('the live page\'s two-cell revive fallback finds a valid move with a minimal two-cell change', async function () {
   const result = await this.page.evaluate(
     (stuckBoard) => window.MagicGems.tryReviveTwoCells(stuckBoard),
     STUCK_BOARD

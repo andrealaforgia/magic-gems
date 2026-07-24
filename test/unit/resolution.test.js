@@ -51,6 +51,22 @@ function buildStuckBoard() {
   ];
 }
 
+// A second stuck Latin square (same shape as buildStuckBoard, shifted to a
+// different 3 of the 7 types) chosen so tryReviveTwoCells's very first candidate
+// (cells (0,0)/(0,1), the first two GEM_TYPES) is genuinely rejected - it leaves
+// the board still stuck (hasAnyValidMove false), forcing the search to actually
+// advance past it. buildStuckBoard's own first candidate happens to already
+// satisfy the postcondition (verified directly), which is exactly why a mutant
+// that accepts unconditionally survived against it (QA review, commit 57dd1d6) -
+// this fixture is the fix, not another copy of the same blind spot.
+function buildStuckBoardRequiringSearch() {
+  return [
+    [GEM_TYPES[3], GEM_TYPES[4], GEM_TYPES[1]],
+    [GEM_TYPES[4], GEM_TYPES[1], GEM_TYPES[3]],
+    [GEM_TYPES[1], GEM_TYPES[3], GEM_TYPES[4]],
+  ];
+}
+
 test('applySwap exchanges exactly the two given cells and leaves the rest untouched', () => {
   const board = buildMatchFreeBoard();
   const before = JSON.stringify(board);
@@ -532,7 +548,7 @@ test('ensurePlayable revives a stuck board in place with a single minimal change
 });
 
 test('tryReviveTwoCells (the SPEC 8.3.2 fallback) finds a minimal two-cell change', () => {
-  const stuck = buildStuckBoard();
+  const stuck = buildStuckBoardRequiringSearch();
   const result = tryReviveTwoCells(stuck);
 
   assert.ok(result, 'expected a two-cell revive to be found');

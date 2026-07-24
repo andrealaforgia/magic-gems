@@ -36,9 +36,13 @@ Feature: A single-gem revive replaces the whole-board reshuffle (REVIVE)
   # re-derived here.
 
   @E5 @component
-  Scenario: The rare degenerate fallback still never reshuffles the whole board
+  Scenario: When no single cell can revive the board, the smallest two-cell change still never reshuffles the whole board
     Given I open "index.html" directly as a file:// URL with no server or build step
-    Then the live page's incremental revive fallback finds a valid move within a bounded number of changes
+    Then the live page's two-cell revive fallback finds a valid move with a minimal two-cell change
+  # There's a further, absolute-last-resort fallback beyond this two-cell pass
+  # (reviveByIncrementalChange) for the case where even two cells aren't enough -
+  # practically unreachable by any board this game has ever produced, so it's
+  # covered at the unit level only (test/unit/resolution.test.js), not here.
 
   @E6 @integration
   Scenario: Normal play continues to work correctly with the revive mechanism in place

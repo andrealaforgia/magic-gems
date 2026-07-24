@@ -215,15 +215,19 @@ export default {
 // genuine equivalents too, verified by hand: candidate is only ever mutated
 // through a freshly-cloned `attempt` immediately downstream, so the aliasing
 // never actually reaches a caller-visible board - confirmed by injecting each
-// mutation directly and re-running the full suite. One real gap this pass found
-// and fixed: `tryReviveTwoCells`'s own top-level clone WAS reachable (no
-// downstream re-clone protects it), so removing it silently mutated the
-// caller's board in place - caught by adding an explicit "never mutates its
-// input" test (present for all three revive functions now). Not fully chased
-// down: a handful of survivors on the accept-condition itself
-// (`if (!hasMatch(...) && hasAnyValidMove(...))` weakened to `if (true)`) still
-// happen to satisfy the postcondition checks (no match, has a valid move) for
-// the specific fixtures tested, since the very first candidate a broken
-// always-accept mutant lands on can coincidentally already be valid - a
-// property-based-testing limitation, not a known product defect, and out of
-// scope to fully close given how deep in the fallback path this sits.
+// mutation directly and re-running the full suite. Two real gaps this pass found
+// and fixed (QA review, commit 57dd1d6): `tryReviveTwoCells`'s own top-level
+// clone WAS reachable (no downstream re-clone protects it), so removing it
+// silently mutated the caller's board in place - caught by adding an explicit
+// "never mutates its input" test (present for all three revive functions now).
+// And `tryReviveTwoCells`'s own accept condition (`if (!hasMatch(...) &&
+// hasAnyValidMove(...))` weakened to `if (true)`) survived because
+// buildStuckBoard's very first candidate happened to already satisfy the
+// postcondition by coincidence - fixed properly, not waived, by adding
+// buildStuckBoardRequiringSearch, a second fixture picked so the first
+// candidate is genuinely rejected and the search must advance. The same
+// accept-style survivors remain in reviveByIncrementalChange (the
+// absolute-last-resort tier beyond even the two-cell pass, practically
+// unreachable in real play) - not chased further, since closing them would mean
+// applying the identical fixture-engineering effort to a path no board this
+// game has ever produced needs.
