@@ -14,10 +14,14 @@ Feature: Visual presentation polish (DISPLAY-POLISH)
     Then the multiplier bar's fill and colour are proportional and shift through green, yellow, and red at high, middle, and low values
 
   @E2 @e2e
-  Scenario: The multiplier bar visibly fills and depletes on the live page
+  Scenario: The multiplier bar visibly fills the header on the live page
     Given I open "index.html" directly as a file:// URL with no server or build step
     Then the multiplier bar fills all the remaining width beside the score, at a generous height, and is full and green on a fresh load
-    And the multiplier bar's fill width visibly decreases after a short real interval
+
+  # The bar's fill visibly shrinking over a real interval (E2) is covered by
+  # scoring.feature's own timing scenario, at the same already-justified real wait
+  # it uses to prove the multiplier value itself ticks down (QA warning, commit
+  # 3c8f3b5) - not re-derived here with a second, independent sleep.
 
   @E3
   Scenario: Every grid cell shows a checkerboard background, with gems still visible on top

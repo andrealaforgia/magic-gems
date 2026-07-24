@@ -74,17 +74,6 @@ Then('the multiplier bar fills all the remaining width beside the score, at a ge
   assert.ok(result.barHeight >= 24, `expected a generous bar height, got ${result.barHeight}px`);
 });
 
-Then('the multiplier bar\'s fill width visibly decreases after a short real interval', async function () {
-  const readWidth = () => this.page.evaluate(() => document.getElementById('multiplier-fill').style.width);
-  const before = await readWidth();
-  await this.page.waitForTimeout(1100);
-  const after = await readWidth();
-  assert.ok(
-    parseFloat(after) < parseFloat(before),
-    `expected the bar's fill width to decrease after ~1s, was ${before}, still ${after}`
-  );
-});
-
 // SPEC 3.5: every cell has a solid checkerboard background, sampled well away from
 // the centred gem sprite so this reads the background specifically, not whichever
 // gem happens to be sitting on it. Whichever cell(s) currently show a cursor/

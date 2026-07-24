@@ -177,9 +177,20 @@ Then('the live page\'s combo factor for chain position {int} reads exactly {int}
 // already has stored. A flaky-but-fast check is a worse trade than a slow-but-
 // reliable one; this stays on a real wait until there's a way to install the fake
 // clock *before* the page's own timing state exists (e.g. before navigation).
+function readMultiplierFillWidth(page) {
+  return page.evaluate(() => document.getElementById('multiplier-fill').getBoundingClientRect().width);
+}
+
+// Also covers DISPLAY-POLISH's E2 (the bar's fill width visibly shrinks over the
+// same real interval, SPEC 10.8) at this one already-justified wait point, rather
+// than a second independent sleep asserting the same underlying time-driven claim
+// on a different surface (QA warning, commit 3c8f3b5) - the bar's proportionality
+// to the multiplier value is separately proven sleep-free by display-polish's own
+// @component scenario.
 Then('the time multiplier reads lower after a short real interval, live and continuously', async function () {
-  const before = await readMultiplierValue(this.page);
+  const before = { value: await readMultiplierValue(this.page), width: await readMultiplierFillWidth(this.page) };
   await this.page.waitForTimeout(1100);
-  const after = await readMultiplierValue(this.page);
-  assert.ok(after < before, `expected the multiplier to visibly count down over ~1s, was ${before}, still ${after}`);
+  const after = { value: await readMultiplierValue(this.page), width: await readMultiplierFillWidth(this.page) };
+  assert.ok(after.value < before.value, `expected the multiplier to visibly count down over ~1s, was ${before.value}, still ${after.value}`);
+  assert.ok(after.width < before.width, `expected the bar's fill width to visibly shrink over ~1s, was ${before.width}px, still ${after.width}px`);
 });

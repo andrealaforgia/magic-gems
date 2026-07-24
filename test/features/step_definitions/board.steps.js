@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { VIEWPORT_CENTER_TOLERANCE_RATIO } from '../support/pixel-utils.js';
 import { waitForBoardReady, classifiedGrid } from '../support/board-reader.js';
 import { loadMagicGems } from '../../support/load-src.js';
+import { findHighlight } from './interaction.steps.js';
 
 const PROJECT_ROOT = path.resolve(import.meta.dirname, '..', '..', '..');
 const INDEX_HTML_URL = pathToFileURL(path.join(PROJECT_ROOT, 'index.html')).href;
@@ -24,18 +25,43 @@ const { hasMatch } = loadMagicGems([
 // own antialiasing fringe from a genuine cell boundary without either missing the
 // fringe or swallowing real boundaries (verified empirically: this broke at more
 // than one board size). Rather than scanning a whole line (fragile) or trusting
-// divisibility alone (not independently empirical), this samples the exact centres
-// of one cell and its right/below neighbours - at row/col index 3, far from the
-// default cursor ring at cell (0,0) - and confirms each neighbour's own colour
-// differs from it. Every orthogonally-adjacent pair of cells alternates between two
+// divisibility alone (not independently empirical), this samples one cell and its
+// right/below neighbours' own corners and confirms each neighbour's colour differs
+// from it. Every orthogonally-adjacent pair of cells alternates between two
 // distinct checkerboard shades (SPEC 3.5), so two real, distinct cells existing
 // there shows up directly as two different sampled colours - a structural signal,
-// not an assumption - while staying immune to the highlight-overlap problem since
-// it never samples near cell (0,0)'s edges.
+// not an assumption. Cursor/selection/target can highlight any cell depending on
+// interaction state (not just a fixed default), so the pair sampled is picked
+// dynamically to dodge whichever cells currently show a highlight ring, rather than
+// assuming a fixed "safe" index (QA warning, commit 3c8f3b5).
 async function measureGridDimensions(page) {
-  const SAFE_INDEX = 3;
+  const [cursor, selection, target] = await Promise.all([
+    findHighlight(page, 'cursor'),
+    findHighlight(page, 'selection'),
+    findHighlight(page, 'target'),
+  ]);
+  const highlighted = new Set([...cursor, ...selection, ...target].map(({ row, col }) => `${row},${col}`));
+  const isHighlighted = (row, col) => highlighted.has(`${row},${col}`);
+
+  let horizontalPair = null;
+  let verticalPair = null;
+  for (let row = 0; row < BOARD_SIZE && (!horizontalPair || !verticalPair); row++) {
+    for (let col = 0; col < BOARD_SIZE; col++) {
+      if (isHighlighted(row, col)) continue;
+      if (!horizontalPair && col + 1 < BOARD_SIZE && !isHighlighted(row, col + 1)) {
+        horizontalPair = { row, col };
+      }
+      if (!verticalPair && row + 1 < BOARD_SIZE && !isHighlighted(row + 1, col)) {
+        verticalPair = { row, col };
+      }
+    }
+  }
+  if (!horizontalPair || !verticalPair) {
+    throw new Error('could not find an unhighlighted adjacent cell pair to sample');
+  }
+
   const [{ width, height, distinctNeighbours }, grid] = await Promise.all([
-    page.evaluate(({ size, safeIndex }) => {
+    page.evaluate(({ size, horizontalPair, verticalPair }) => {
       const canvas = document.getElementById('board');
       const ctx = canvas.getContext('2d');
       const cellSize = canvas.width / size;
@@ -47,18 +73,21 @@ async function measureGridDimensions(page) {
       const cornerOf = (row, col) => [col * cellSize + 2, row * cellSize + 2];
       const sample = ([x, y]) => Array.from(ctx.getImageData(Math.round(x), Math.round(y), 1, 1).data);
       const differs = (a, b) => a[0] !== b[0] || a[1] !== b[1] || a[2] !== b[2];
-      const origin = sample(cornerOf(safeIndex, safeIndex));
-      const rightNeighbour = sample(cornerOf(safeIndex, safeIndex + 1));
-      const belowNeighbour = sample(cornerOf(safeIndex + 1, safeIndex));
       return {
         width: canvas.width,
         height: canvas.height,
         distinctNeighbours: {
-          horizontal: differs(origin, rightNeighbour),
-          vertical: differs(origin, belowNeighbour),
+          horizontal: differs(
+            sample(cornerOf(horizontalPair.row, horizontalPair.col)),
+            sample(cornerOf(horizontalPair.row, horizontalPair.col + 1))
+          ),
+          vertical: differs(
+            sample(cornerOf(verticalPair.row, verticalPair.col)),
+            sample(cornerOf(verticalPair.row + 1, verticalPair.col))
+          ),
         },
       };
-    }, { size: BOARD_SIZE, safeIndex: SAFE_INDEX }),
+    }, { size: BOARD_SIZE, horizontalPair, verticalPair }),
     classifiedGrid(page),
   ]);
   return {

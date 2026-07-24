@@ -6,6 +6,7 @@ Feature: A redundant SPACE does not cancel the current selection (FIX-SELECT)
   @E1
   Scenario: A second SPACE with no target designated leaves the selection unchanged
     Given I open "index.html" directly as a file:// URL with no server or build step
+    And the cursor highlight is at cell 0,0
     When I press "Space"
     And I press "Space"
     Then the selection highlight is at cell 0,0
@@ -13,6 +14,7 @@ Feature: A redundant SPACE does not cancel the current selection (FIX-SELECT)
   @E2
   Scenario: Repeated redundant SPACE presses never cancel the selection
     Given I open "index.html" directly as a file:// URL with no server or build step
+    And the cursor highlight is at cell 0,0
     When I press "Space"
     And I press "Space"
     And I press "Space"
