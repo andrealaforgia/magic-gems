@@ -19,6 +19,7 @@
   function createSoundPlayer() {
     const cache = {};
     const log = [];
+    let muted = false;
 
     function elementFor(name) {
       if (cache[name]) return cache[name];
@@ -37,7 +38,10 @@
     // every sound here is triggered from a keydown handler or its direct
     // consequences, so no separate unlock step is needed - only defend against
     // playback failing (blocked, unsupported, file missing) by swallowing it.
+    // SPEC 11.5: muting stops sounds at the source - nothing is even attempted
+    // (and nothing new is logged), not just silenced after the fact.
     function play(name) {
+      if (muted) return;
       log.push(name);
       const el = elementFor(name);
       if (!el) return;
@@ -52,7 +56,11 @@
       }
     }
 
-    return { play, getLog: () => log.slice() };
+    function setMuted(value) {
+      muted = value;
+    }
+
+    return { play, getLog: () => log.slice(), setMuted, isMuted: () => muted };
   }
 
   global.MagicGems = global.MagicGems || {};

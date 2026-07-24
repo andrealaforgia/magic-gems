@@ -165,5 +165,8 @@ happens on the board.
 - 11.4 There is no background music track (sound effects only) in this version.
 - 11.5 Pressing the S key toggles all audio on/off. When off, no sounds play; when
   toggled back on, sounds resume. Audio defaults to on.
+  - 11.5.1 Each time audio is toggled, a large semi-transparent black text — "Sound
+    ON" or "Sound OFF" to match the new state — briefly appears centred on the
+    screen and then fades away, in the game's display font (9.4).
 - 11.6 An instruction line is shown at the bottom of the gem grid stating that S
   toggles audio on/off, rendered in the game's display font (9.4).

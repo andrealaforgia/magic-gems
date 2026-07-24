@@ -1,7 +1,7 @@
 import { Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
 
-async function soundLog(page) {
+export async function soundLog(page) {
   return page.evaluate(() => window.MagicGems.getSoundLog());
 }
 
@@ -17,6 +17,11 @@ Then('the sound log includes {string}', async function (name) {
 Then('the sound log does not include {string}', async function (name) {
   const log = await soundLog(this.page);
   assert.ok(!log.includes(name), `expected the sound log NOT to include "${name}", got ${JSON.stringify(log)}`);
+});
+
+Then('the sound log is empty', async function () {
+  const log = await soundLog(this.page);
+  assert.equal(log.length, 0, `expected no sounds to have played, got ${JSON.stringify(log)}`);
 });
 
 Then('every entry in the sound log is one of the bundled discrete event sounds', async function () {

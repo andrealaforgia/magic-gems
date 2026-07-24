@@ -38,6 +38,7 @@
     const canvas = document.getElementById('board');
     const scoreEl = document.getElementById('score');
     const multiplierFillEl = document.getElementById('multiplier-fill');
+    const audioToastEl = document.getElementById('audio-toast');
     const cellSize = computeCellSize(window.innerWidth, window.innerHeight, BOARD_SIZE);
     canvas.width = BOARD_SIZE * cellSize;
     canvas.height = BOARD_SIZE * cellSize;
@@ -233,7 +234,31 @@
 
     requestAnimationFrame(tick);
 
+    // SPEC 11.5.1: shown instantly (via the 'visible' class, which has its own
+    // zero-duration transition) then faded via the base rule's transition once
+    // 'visible' is removed - a later toggle mid-fade restarts the same cycle
+    // cleanly rather than stacking timers.
+    const AUDIO_TOAST_VISIBLE_MS = 800;
+    let audioToastTimeout = null;
+
+    function showAudioToast(text) {
+      clearTimeout(audioToastTimeout);
+      audioToastEl.textContent = text;
+      audioToastEl.classList.add('visible');
+      audioToastTimeout = setTimeout(() => audioToastEl.classList.remove('visible'), AUDIO_TOAST_VISIBLE_MS);
+    }
+
+    function toggleAudio() {
+      const nowMuted = !sound.isMuted();
+      sound.setMuted(nowMuted);
+      showAudioToast(nowMuted ? 'SOUND OFF' : 'SOUND ON');
+    }
+
     document.addEventListener('keydown', (event) => {
+      if (event.key.toLowerCase() === 's') {
+        toggleAudio();
+        return;
+      }
       const next = handleGameKey({ board, interaction }, event.key);
       if (next.board !== board || next.interaction !== interaction) {
         soundsForKeydown(event.key, interaction, next).forEach((name) => sound.play(name));
@@ -254,6 +279,7 @@
     global.MagicGems.getLastCommitSteps = () => lastCommitSteps;
     global.MagicGems.getSpriteImages = () => sprites;
     global.MagicGems.getSoundLog = () => sound.getLog();
+    global.MagicGems.isAudioMuted = () => sound.isMuted();
   }
 
   document.addEventListener('DOMContentLoaded', boot);
