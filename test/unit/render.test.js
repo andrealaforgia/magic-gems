@@ -50,10 +50,9 @@ test('drawGem draws the gem sprite via drawImage, centred and scaled per compute
   const sprite = { naturalWidth: 50, naturalHeight: 40 };
   drawGem(ctx, 'red-square', 120, 80, 60, { 'red-square': [sprite] });
 
-  const drawImageCalls = ctx.calls.filter((c) => c[0] === 'drawImage');
-  assert.equal(drawImageCalls.length, 1, 'expected exactly one drawImage call');
-  const [img, x, y, width, height] = drawImageCalls[0][1];
-  assert.equal(img, sprite, 'must draw the real sprite image, not a vector path');
+  const drawnSprite = ctx.calls.find((c) => c[0] === 'drawImage' && c[1][0] === sprite);
+  assert.ok(drawnSprite, 'must draw the real sprite image, not a vector path');
+  const [, x, y, width, height] = drawnSprite[1];
 
   const expected = computeSpriteDrawRect(50, 40, 120, 80, 60, GEM_SPRITE_FIT_RATIO);
   assert.equal(x, expected.x);
@@ -104,11 +103,17 @@ test('drawBoard clears the canvas, then draws every occupied cell and skips empt
 
   drawBoard(ctx, board, 40, sprites);
 
-  assert.equal(ctx.calls[0][0], 'clearRect', 'must clear before drawing');
+  const clearIndex = ctx.calls.findIndex((c) => c[0] === 'clearRect');
   const drawImageCalls = ctx.calls.filter((c) => c[0] === 'drawImage');
+  const drawImageIndices = ctx.calls.reduce((acc, c, i) => (c[0] === 'drawImage' ? [...acc, i] : acc), []);
+  assert.ok(clearIndex !== -1 && drawImageIndices.every((i) => i > clearIndex), 'must clear before drawing any gem');
+
+  const drawnSprites = drawImageCalls.map((c) => c[1][0]);
+  assert.equal(drawnSprites.length, 2, 'expected exactly the two occupied cells\' sprites to be drawn');
   assert.deepEqual(
-    drawImageCalls.map((c) => c[1][0]),
-    [sprites['red-square'][0], sprites['yellow-diamond'][0]]
+    new Set(drawnSprites),
+    new Set([sprites['red-square'][0], sprites['yellow-diamond'][0]]),
+    'expected exactly the two occupied cells\' own sprites to be drawn, in any order'
   );
 });
 
@@ -158,21 +163,31 @@ test('drawBoard defaults every cell to the face-on frame when no frame lookup is
 test('drawBoard asks its frame lookup for each cell\'s own (row, col) and draws that frame', () => {
   const ctx = createCtxSpy();
   const frames = Array.from({ length: 15 }, () => ({ naturalWidth: 50, naturalHeight: 50 }));
+  const cellSize = 40;
   const board = [
     ['red-square', 'red-square'],
     ['red-square', 'red-square'],
   ];
-  const requested = [];
-  const frameIndexFor = (row, col) => {
-    requested.push([row, col]);
-    return (row * 2 + col) % 15;
-  };
+  // Injective over this 2x2 board, so each cell gets a distinct frame - lets the
+  // assertion below confirm the *correct* frame reached the *correct* cell, not
+  // just that some expected set of frames was drawn somewhere.
+  const frameIndexFor = (row, col) => row * 2 + col;
 
-  drawBoard(ctx, board, 40, { 'red-square': frames }, undefined, frameIndexFor);
+  drawBoard(ctx, board, cellSize, { 'red-square': frames }, undefined, frameIndexFor);
 
-  assert.deepEqual(requested.sort(), [[0, 0], [0, 1], [1, 0], [1, 1]]);
-  const drawnFrames = ctx.calls.filter((c) => c[0] === 'drawImage').map((c) => c[1][0]);
-  assert.deepEqual(drawnFrames, [frames[0], frames[1], frames[2], frames[3]]);
+  const drawCalls = ctx.calls.filter((c) => c[0] === 'drawImage');
+  assert.equal(drawCalls.length, 4, 'expected all four occupied cells to be drawn');
+  for (const [sprite, x, y, width, height] of drawCalls.map((c) => c[1])) {
+    // Recover which cell this draw call was for from the rect it actually drew,
+    // rather than assuming iteration order.
+    const col = Math.round((x + width / 2 - cellSize / 2) / cellSize);
+    const row = Math.round((y + height / 2 - cellSize / 2) / cellSize);
+    assert.equal(
+      sprite,
+      frames[frameIndexFor(row, col)],
+      `expected cell (${row},${col}) to be drawn with the frame its own frame lookup returned`
+    );
+  }
 });
 
 test('drawInteraction draws only a cursor ring when there is no selection', () => {

@@ -8,10 +8,18 @@ const { spriteUrl, FRAME_COUNT, GEM_TYPES } = loadMagicGems([
   new URL('../../src/sprites.js', import.meta.url),
 ]);
 
-test('spriteUrl resolves each frame of a gem\'s rotation sequence to its own asset', () => {
-  assert.equal(spriteUrl('red-square', 0), 'assets/gems/red-square/frame-00.png');
-  assert.equal(spriteUrl('red-square', 9), 'assets/gems/red-square/frame-09.png');
-  assert.equal(spriteUrl('blue-teardrop', 14), 'assets/gems/blue-teardrop/frame-14.png');
+const ASSET_PATH_PATTERN = /^assets\/gems\/([a-z-]+)\/frame-(\d{2})\.png$/;
+
+test('spriteUrl resolves to a path scoped to the gem\'s own folder with a round-tripping, two-digit frame number', () => {
+  for (const gemType of GEM_TYPES) {
+    for (let frame = 0; frame < FRAME_COUNT; frame++) {
+      const url = spriteUrl(gemType, frame);
+      const match = url.match(ASSET_PATH_PATTERN);
+      assert.ok(match, `spriteUrl(${gemType}, ${frame}) = "${url}" doesn't match the expected asset path shape`);
+      assert.equal(match[1], gemType, 'the path must be scoped to the requested gem\'s own folder');
+      assert.equal(Number(match[2]), frame, 'the embedded frame number must round-trip to the requested frame index');
+    }
+  }
 });
 
 test('spriteUrl gives every (gem type, frame) pair its own distinct asset path', () => {

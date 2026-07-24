@@ -79,9 +79,10 @@ glossy, faceted 3D gemstone. The seven identities are:
   - 9.2.1 The break is varied: gems do not all shatter identically — each break
     differs (e.g. randomised fragment paths / spread), so repeated clears never
     look the same.
-  - 9.2.2 The fragments are small pieces of the broken gem (e.g. miniature versions
-    of it, or pixel-like shards) that fall down the screen, drifting somewhat
-    randomly, and disappear once they pass beyond the lower border of the screen.
+  - 9.2.2 The fragments are pieces cut from the broken gem's own sprite image — the
+    gem appears to break apart into shards of itself. The pieces fall down the
+    screen, drifting somewhat randomly, and disappear once they pass beyond the
+    lower border of the screen.
   - 9.2.3 The shatter effect applies ONLY to gems that are removed as part of a
     completed match (the cleared run). Gems that merely fall to fill gaps (7.2) or
     drop in to refill from the top (7.3) do NOT shatter — they simply move into

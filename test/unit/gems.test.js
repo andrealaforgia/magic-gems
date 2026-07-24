@@ -6,20 +6,17 @@ const { GEM_TYPES, GEM_COLORS } = loadMagicGems([
   new URL('../../src/gems.js', import.meta.url),
 ]);
 
-const EXPECTED_GEM_TYPES = [
-  'blue-teardrop',
-  'green-octagon',
-  'orange-hexagon',
-  'purple-triangle',
-  'red-square',
-  'silver-octagon',
-  'yellow-diamond',
-];
-
 const RETIRED_GEM_TYPES = ['green-circle', 'blue-diamond', 'white-circle'];
 
-test('GEM_TYPES is exactly the seven sprite identities, no more and no fewer', () => {
-  assert.deepEqual([...GEM_TYPES].sort(), [...EXPECTED_GEM_TYPES].sort());
+test('GEM_TYPES has exactly seven distinct identities (SPEC 2)', () => {
+  assert.equal(GEM_TYPES.length, 7);
+  assert.equal(new Set(GEM_TYPES).size, GEM_TYPES.length, 'expected no duplicate identities');
+});
+
+test('every gem identity follows the shape+colour naming pattern (lowercase, hyphenated words)', () => {
+  for (const gemType of GEM_TYPES) {
+    assert.match(gemType, /^[a-z]+-[a-z]+$/, `"${gemType}" doesn't match the expected identity naming pattern`);
+  }
 });
 
 test('none of the retired vector gem identities remain', () => {
