@@ -164,6 +164,16 @@ Then('the live page\'s combo factor for chain position {int} reads exactly {int}
   assert.equal(result, expected);
 });
 
+// Uses a real wait, deliberately, not Playwright's fake clock: installing
+// page.clock on this page *after* it's already booted (main.js has already
+// captured real performance.now() values into lastCompletionTimeMs) produces
+// inconsistent results across runs (verified empirically: the same
+// install()+fastForward(1100) sequence read back x4999 on one run and x5000 on
+// the next, with no code change in between) - almost certainly the fake clock's
+// own epoch not lining up with whatever real performance.now() reading main.js
+// already has stored. A flaky-but-fast check is a worse trade than a slow-but-
+// reliable one; this stays on a real wait until there's a way to install the fake
+// clock *before* the page's own timing state exists (e.g. before navigation).
 Then('the time multiplier reads lower after a short real interval, live and continuously', async function () {
   const before = await readMultiplierValue(this.page);
   await this.page.waitForTimeout(1100);
