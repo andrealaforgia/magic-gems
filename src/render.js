@@ -84,19 +84,23 @@
     }
   }
 
-  const FRAGMENT_SIZE = 6;
+  // Large enough that a cropped sliver of real sprite art is still legible as a
+  // piece of that gem (SPEC 9.2.2), not just a coloured speck.
+  const FRAGMENT_SIZE = 10;
 
   function drawFragments(ctx, fragments) {
     for (const fragment of fragments) {
-      ctx.save();
-      ctx.fillStyle = fragment.color;
-      ctx.fillRect(
+      ctx.drawImage(
+        fragment.sprite,
+        fragment.sx,
+        fragment.sy,
+        fragment.sw,
+        fragment.sh,
         fragment.x - FRAGMENT_SIZE / 2,
         fragment.y - FRAGMENT_SIZE / 2,
         FRAGMENT_SIZE,
         FRAGMENT_SIZE
       );
-      ctx.restore();
     }
   }
 

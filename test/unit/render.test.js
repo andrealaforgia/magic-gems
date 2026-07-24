@@ -229,21 +229,29 @@ test('HIGHLIGHT_COLORS defines a distinct, non-empty colour for cursor, selectio
   for (const value of values) assert.ok(typeof value === 'string' && value.length > 0);
 });
 
-test('drawFragments draws one filled rect per fragment', () => {
+test('drawFragments draws one sprite-slice image per fragment, not a flat fill', () => {
   const ctx = createCtxSpy();
+  const spriteA = { naturalWidth: 50, naturalHeight: 50 };
+  const spriteB = { naturalWidth: 50, naturalHeight: 50 };
   drawFragments(ctx, [
-    { x: 10, y: 20, color: '#fff' },
-    { x: 30, y: 40, color: '#000' },
+    { x: 10, y: 20, sprite: spriteA, sx: 0, sy: 0, sw: 12, sh: 25 },
+    { x: 30, y: 40, sprite: spriteB, sx: 12, sy: 0, sw: 12, sh: 25 },
   ]);
-  assert.equal(ctx.calls.filter((c) => c[0] === 'fillRect').length, 2);
+  const drawImageCalls = ctx.calls.filter((c) => c[0] === 'drawImage');
+  assert.equal(drawImageCalls.length, 2);
+  assert.deepEqual(drawImageCalls.map((c) => c[1][0]), [spriteA, spriteB]);
+  assert.equal(ctx.calls.filter((c) => c[0] === 'fillRect').length, 0, 'must not fall back to a flat fill');
 });
 
-test('drawFragments centres each fragment\'s rect on its own position', () => {
+test('drawFragments crops the fragment\'s own source tile and centres it on its own position', () => {
   const ctx = createCtxSpy();
-  drawFragments(ctx, [{ x: 100, y: 200, color: '#fff' }]);
-  const [[x, y, width, height]] = ctx.calls.filter((c) => c[0] === 'fillRect').map((c) => c[1]);
-  assert.equal(x, 100 - FRAGMENT_SIZE / 2);
-  assert.equal(y, 200 - FRAGMENT_SIZE / 2);
-  assert.equal(width, FRAGMENT_SIZE);
-  assert.equal(height, FRAGMENT_SIZE);
+  const sprite = { naturalWidth: 50, naturalHeight: 50 };
+  drawFragments(ctx, [{ x: 100, y: 200, sprite, sx: 5, sy: 7, sw: 12, sh: 25 }]);
+
+  const [drawn] = ctx.calls.filter((c) => c[0] === 'drawImage').map((c) => c[1]);
+  const [img, sx, sy, sw, sh, dx, dy, dw, dh] = drawn;
+  assert.equal(img, sprite);
+  assert.deepEqual([sx, sy, sw, sh], [5, 7, 12, 25], 'must crop exactly the fragment\'s own source tile, not the whole sprite');
+  assert.equal(dx + dw / 2, 100, 'expected the drawn slice centred on the fragment\'s x position');
+  assert.equal(dy + dh / 2, 200, 'expected the drawn slice centred on the fragment\'s y position');
 });

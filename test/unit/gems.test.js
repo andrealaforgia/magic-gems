@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadMagicGems } from '../support/load-src.js';
 
-const { GEM_TYPES, GEM_COLORS } = loadMagicGems([
+const { GEM_TYPES } = loadMagicGems([
   new URL('../../src/gems.js', import.meta.url),
 ]);
 
@@ -23,8 +23,4 @@ test('none of the retired vector gem identities remain', () => {
   for (const retired of RETIRED_GEM_TYPES) {
     assert.ok(!GEM_TYPES.includes(retired), `retired identity "${retired}" must not appear in GEM_TYPES`);
   }
-});
-
-test('GEM_COLORS has exactly one entry per gem type, no stale or missing entries', () => {
-  assert.deepEqual([...Object.keys(GEM_COLORS)].sort(), [...GEM_TYPES].sort());
 });

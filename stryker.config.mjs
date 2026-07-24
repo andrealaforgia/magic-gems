@@ -149,3 +149,12 @@ export default {
 // set from the start. render.js's drawGem/drawBoard frame-index plumbing (added so a
 // cell can request any of its gem's 15 rotation frames, not just the face-on one) was
 // fully covered by the same run with no new survivors.
+//
+// (SG3) src/shatter.js's new computeSourceTile (dices a shattered gem's own sprite
+// into the fragment grid, replacing the flat-colour fragment fill) and render.js's
+// drawFragments (now crops+draws that tile via drawImage instead of a flat
+// fillRect): 1 equivalent survivor each (the same UMD-wrapper case as every file
+// above). One real gap found and fixed: computeSourceTile's col/row * tileWidth/
+// tileHeight multiplications survived at index 0 (col=0 and row=0 make multiply and
+// divide coincidentally agree at 0) - added a non-corner-tile test (index 5, both
+// axes non-zero) asserting its exact origin.

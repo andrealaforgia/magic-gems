@@ -20,7 +20,7 @@
       createFragments,
       updateFragments,
       pruneOffscreen,
-      GEM_COLORS,
+      computeSourceTile,
       clampProgress,
       interpolatePoint,
       loadGemSprites,
@@ -47,11 +47,14 @@
     function spawnFragments(clearEvents) {
       for (const { row, col, gemType } of clearEvents) {
         const { x, y } = cellCenter(row, col);
+        const sprite = sprites[gemType][0];
         // originRow/originCol are additive test-observability metadata (unused by
         // rendering) so tests can verify which cell a fragment came from without
         // inferring it from a position that drifts over time.
-        const tagged = createFragments(x, y, GEM_COLORS[gemType]).map((f) => ({
+        const tagged = createFragments(x, y).map((f, i) => ({
           ...f,
+          sprite,
+          ...computeSourceTile(i, sprite.naturalWidth, sprite.naturalHeight),
           originRow: row,
           originCol: col,
         }));

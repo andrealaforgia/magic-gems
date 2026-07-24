@@ -7,7 +7,22 @@
   const FALL_SPEED_RANGE = 40; // px/sec, added on top of MIN_FALL_SPEED
   const GRAVITY_ACCEL = 300; // px/sec^2
 
-  function createFragments(centerX, centerY, color) {
+  // How the shattered gem's own sprite is diced into FRAGMENT_COUNT pieces: a
+  // gapless, non-overlapping grid (4x2 = 8) over its full bounding box, so every
+  // pixel of the source art ends up in exactly one fragment (SPEC 9.2.2 - fragments
+  // read as pieces of the gem's own sprite, not an unrelated flat colour).
+  const FRAGMENT_GRID_COLS = 4;
+  const FRAGMENT_GRID_ROWS = 2;
+
+  function computeSourceTile(index, imgWidth, imgHeight) {
+    const col = index % FRAGMENT_GRID_COLS;
+    const row = Math.floor(index / FRAGMENT_GRID_COLS);
+    const tileWidth = imgWidth / FRAGMENT_GRID_COLS;
+    const tileHeight = imgHeight / FRAGMENT_GRID_ROWS;
+    return { sx: col * tileWidth, sy: row * tileHeight, sw: tileWidth, sh: tileHeight };
+  }
+
+  function createFragments(centerX, centerY) {
     const fragments = [];
     for (let i = 0; i < FRAGMENT_COUNT; i++) {
       fragments.push({
@@ -15,7 +30,6 @@
         y: centerY,
         vx: (Math.random() * 2 - 1) * LATERAL_SPEED_RANGE,
         vy: MIN_FALL_SPEED + Math.random() * FALL_SPEED_RANGE,
-        color,
       });
     }
     return fragments;
@@ -41,4 +55,5 @@
   global.MagicGems.createFragments = createFragments;
   global.MagicGems.updateFragments = updateFragments;
   global.MagicGems.pruneOffscreen = pruneOffscreen;
+  global.MagicGems.computeSourceTile = computeSourceTile;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -77,6 +77,33 @@ Then('a selection highlight is present, proving the game accepted input immediat
   assert.equal(found.length, 1, `expected exactly one selection highlight, found ${found.length}`);
 });
 
+Then('every active fragment carries a real crop of the cleared gem\'s own sprite image, not a flat colour', async function () {
+  const fragmentInfo = await this.page.evaluate(() => {
+    const fragments = window.MagicGems.getActiveFragments();
+    const sprites = window.MagicGems.getSpriteImages();
+    return fragments.map((f) => {
+      const gemType = Object.keys(sprites).find((type) => sprites[type][0] === f.sprite);
+      const inBounds =
+        !!f.sprite &&
+        f.sx >= 0 &&
+        f.sy >= 0 &&
+        f.sw > 0 &&
+        f.sh > 0 &&
+        f.sx + f.sw <= f.sprite.naturalWidth + 1e-6 &&
+        f.sy + f.sh <= f.sprite.naturalHeight + 1e-6;
+      return { hasSprite: !!f.sprite, hasColor: 'color' in f, gemType, inBounds };
+    });
+  });
+
+  assert.ok(fragmentInfo.length > 0, 'expected active fragments to inspect');
+  for (const info of fragmentInfo) {
+    assert.ok(info.hasSprite, 'every fragment must carry a real sprite image reference');
+    assert.ok(!info.hasColor, 'no fragment may fall back to a flat colour');
+    assert.ok(info.gemType, 'a fragment\'s sprite must be one of the live page\'s own loaded gem sprites, not an unrelated image');
+    assert.ok(info.inBounds, 'a fragment\'s crop must be a real, in-bounds region of its own sprite');
+  }
+});
+
 Then('an unaffected gem elsewhere on the board still renders a recognizable gem', async function () {
   const palette = await readGemPalette(this.page);
   const rgb = await this.page.evaluate(() => {
