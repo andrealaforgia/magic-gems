@@ -45,16 +45,14 @@
     let activeAnimation = null;
     let lastCommitSteps = [];
     let score = 0;
-    let chainIndex = 1;
     let lastCompletionTimeMs = performance.now();
 
-    function applyCompletionScore(runLengths) {
+    function applyCompletionScore(runLengths, chainPosition) {
       const now = performance.now();
       const timeMultiplier = computeTimeMultiplier(now - lastCompletionTimeMs);
       const base = summedBasePoints(runLengths);
-      const combo = comboFactorForChainIndex(chainIndex);
+      const combo = comboFactorForChainIndex(chainPosition);
       score += computeCompletionScore(base, timeMultiplier, combo);
-      chainIndex += 1;
       lastCompletionTimeMs = now;
       scoreEl.textContent = `Score: ${score}`;
     }
@@ -93,8 +91,8 @@
       };
     }
 
-    function buildCascadePhase(step) {
-      return { kind: 'cascade', duration: FALL_DURATION_MS, ...step };
+    function buildCascadePhase(step, chainPosition) {
+      return { kind: 'cascade', duration: FALL_DURATION_MS, chainPosition, ...step };
     }
 
     function buildQueue(result) {
@@ -106,9 +104,13 @@
           queue.push(buildSwapPhase(applySwap(preSwapBoard, a, b), a, b));
         }
       }
-      for (const step of result.steps) {
-        queue.push(buildCascadePhase(step));
-      }
+      // Each step's chain position (SPEC 10.6) is fixed here, from its own index
+      // within *this* commit's own steps - never a shared counter read later, which
+      // a second swap committed before this chain finishes draining could reset
+      // out from under these still-queued steps.
+      result.steps.forEach((step, i) => {
+        queue.push(buildCascadePhase(step, i + 1));
+      });
       return queue;
     }
 
@@ -118,7 +120,7 @@
       activeAnimation.elapsedMs = 0;
       if (activeAnimation.kind === 'cascade') {
         spawnFragments(activeAnimation.clearEvents);
-        applyCompletionScore(activeAnimation.runLengths);
+        applyCompletionScore(activeAnimation.runLengths, activeAnimation.chainPosition);
       }
     }
 
@@ -216,11 +218,6 @@
     document.addEventListener('keydown', (event) => {
       const next = handleGameKey({ board, interaction }, event.key);
       if (next.board !== board || next.interaction !== interaction) {
-        if (next.swapAnimation) {
-          // A new swap starts a new cascade chain (SPEC 10.6) - resets even if
-          // this swap turns out not to match, since the *next* one starts fresh.
-          chainIndex = 1;
-        }
         board = next.board;
         interaction = next.interaction;
         lastCommitSteps = next.steps;
