@@ -32,6 +32,9 @@ glossy, faceted 3D gemstone. The seven identities are:
 - 3.4 The board is sized to occupy about 80% of the viewport's vertical size
   (height), centred; the gems scale up with the board. It must still fit within
   the viewport (not overflow horizontally on narrow screens).
+- 3.5 Each grid cell has a solid background, and adjacent cells alternate between
+  two shades of dark grey in a checkerboard pattern (like a chessboard) — one
+  darker, one slightly less dark. Gems are drawn on top of these cell backgrounds.
 
 ## 4. Initial state
 - 4.1 The board starts filled with randomly chosen gem types.
@@ -49,6 +52,11 @@ glossy, faceted 3D gemstone. The seven identities are:
 - 6.3 After a selection, an arrow key toward an orthogonally-adjacent cell
   designates the swap target (gem B) and highlights it.
 - 6.4 A second SPACE commits the swap of A and B.
+  - 6.4.1 If SPACE is pressed again while a gem is selected but no adjacent target
+    has been designated (the cursor has not been moved to an adjacent cell), the
+    selection is left unchanged — pressing SPACE on the already-selected gem does
+    NOT cancel it. A selection is cancelled only by ESC (6.6) or by committing an
+    invalid swap (6.5).
 - 6.5 The swap is applied only if it produces at least one match of 3+; otherwise
   the swap is reverted and the selection is cancelled (an invalid move cancels).
 - 6.6 ESC cancels the current selection at any point.
@@ -89,12 +97,18 @@ glossy, faceted 3D gemstone. The seven identities are:
 - 9.3 Animated transitions — the swap, gems falling/refilling (7.2, 7.3), and the
   shatter — play at a slow, deliberate pace, noticeably slower than an instant
   snap, so the motion is clearly visible and appealing.
+- 9.4 All on-screen text in the game — the score and any other UI text (e.g. future
+  player names, timers, and result banners) — is rendered in the "Press Start 2P"
+  arcade pixel font, which ships bundled with the game (SIL Open Font License). This
+  is the game's one display typeface, for a consistent retro look.
 
 ## 10. Scoring
 The game keeps a running score that only ever increases. It rewards clearing gems
 quickly and in bigger, chained clears.
 
-- 10.1 The score starts at 0 and is displayed centred at the top of the gem grid.
+- 10.1 The score starts at 0 and is displayed at the top of the gem grid,
+  left-aligned, rendered in the "Press Start 2P" arcade pixel font, which ships
+  bundled with the game (SIL Open Font License).
 - 10.2 A **completion** is a single resolution step in which one or more matched
   runs clear at the same time.
 - 10.3 Base points for one cleared run = (run length − 2) × 50. So a 3-run = 50,
@@ -116,5 +130,35 @@ quickly and in bigger, chained clears.
     scores `floor(50 × (5000−30) × 1 / 100)` = 2485. A 3-run and a 4-run clearing
     together, same 30-second gap, first in the chain: `floor((50+100) × 4970 × 1
     / 100)` = 7455.
-- 10.8 The current time multiplier (10.5) is shown near the score as live feedback,
-  counting down between completions.
+- 10.8 The current time multiplier (10.5) is shown at the top of the grid, to the
+  right of the score, as a horizontal gradient bar that occupies ALL the remaining
+  horizontal space from the score across to the grid's right border. The bar is
+  coloured with a gradient from green through yellow to red, and its filled length
+  represents the multiplier as a fraction of its 5000 maximum (full at 5000,
+  shrinking as it counts down toward 0 between completions). The bar is sized to be
+  clearly visible and prominent — a generous height, not a thin sliver.
+
+## 11. Sound
+The game plays short sound effects that respond to what the player does and what
+happens on the board.
+
+- 11.1 All audio ships bundled with the game (self-contained folder, 1.3) and is
+  public-domain / CC0-licensed — free to use and redistribute with no attribution
+  required. A credits file records each sound's source and licence.
+- 11.2 A short sound effect plays on each of these events:
+  - 11.2.1 Cursor move (a subtle tick as the cursor moves between cells).
+  - 11.2.2 Gem select (a soft confirm when SPACE selects a gem).
+  - 11.2.3 Valid swap (two gems trading places).
+  - 11.2.4 Invalid swap / revert (a gentle negative tone when a swap makes no match
+    and is undone).
+  - 11.2.5 Match clear / shatter (a satisfying glassy break when a run clears — the
+    core feedback).
+  - 11.2.6 Cascade step (a tone for chained clears that rises in pitch as the chain
+    deepens, mirroring the escalating combo of 10.6).
+  - 11.2.7 Gems falling into place (a soft drop as gems settle after a clear).
+  - 11.2.8 Auto-reshuffle (a shuffle/whoosh when the board reshuffles, 8.3).
+  - 11.2.9 Score award (a reward chime when points are added).
+- 11.3 Audio must not block play: browsers that suspend audio until the first user
+  interaction are accommodated (sound begins once the player first acts), and the
+  game remains fully playable with no sound if audio is unavailable.
+- 11.4 There is no background music track (sound effects only) in this version.

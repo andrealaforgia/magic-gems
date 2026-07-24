@@ -71,7 +71,7 @@ test('drawGem never applies a glow effect', () => {
   assert.equal(shadowColorSets.length, 0, 'drawGem must never set a shadowColor');
 });
 
-test('drawBoard clears the canvas, then draws every occupied cell and skips empty ones', () => {
+test('drawBoard paints cell backgrounds, then draws every occupied cell and skips empty ones', () => {
   const ctx = createCtxSpy();
   const sprites = {
     'red-square': { naturalWidth: 50, naturalHeight: 50 },
@@ -84,12 +84,15 @@ test('drawBoard clears the canvas, then draws every occupied cell and skips empt
 
   drawBoard(ctx, board, 40, sprites);
 
-  const clearIndex = ctx.calls.findIndex((c) => c[0] === 'clearRect');
-  const drawImageCalls = ctx.calls.filter((c) => c[0] === 'drawImage');
+  const fillRectIndices = ctx.calls.reduce((acc, c, i) => (c[0] === 'fillRect' ? [...acc, i] : acc), []);
   const drawImageIndices = ctx.calls.reduce((acc, c, i) => (c[0] === 'drawImage' ? [...acc, i] : acc), []);
-  assert.ok(clearIndex !== -1 && drawImageIndices.every((i) => i > clearIndex), 'must clear before drawing any gem');
+  assert.equal(fillRectIndices.length, 4, 'expected one background fill per cell, including empty ones');
+  assert.ok(
+    Math.max(...fillRectIndices) < Math.min(...drawImageIndices),
+    'every cell background must paint before any gem is drawn on top of it'
+  );
 
-  const drawnSprites = drawImageCalls.map((c) => c[1][0]);
+  const drawnSprites = drawImageIndices.map((i) => ctx.calls[i][1][0]);
   assert.equal(drawnSprites.length, 2, 'expected exactly the two occupied cells\' sprites to be drawn');
   assert.deepEqual(
     new Set(drawnSprites),
@@ -98,16 +101,91 @@ test('drawBoard clears the canvas, then draws every occupied cell and skips empt
   );
 });
 
-test('drawBoard clears exactly the board\'s own pixel dimensions', () => {
+test('drawBoard\'s cell backgrounds together cover exactly the board\'s own pixel dimensions, no gaps or overlap', () => {
   const ctx = createCtxSpy();
   const sprites = { 'red-square': { naturalWidth: 50, naturalHeight: 50 } };
+  const cellSize = 40;
   const board = [
     ['red-square', 'red-square'],
     ['red-square', 'red-square'],
   ];
-  drawBoard(ctx, board, 40, sprites);
-  const [[x, y, width, height]] = ctx.calls.filter((c) => c[0] === 'clearRect').map((c) => c[1]);
-  assert.deepEqual([x, y, width, height], [0, 0, 2 * 40, 2 * 40]);
+  drawBoard(ctx, board, cellSize, sprites);
+
+  const rects = ctx.calls.filter((c) => c[0] === 'fillRect').map((c) => c[1]);
+  assert.equal(rects.length, 4);
+  const totalArea = rects.reduce((sum, [, , w, h]) => sum + w * h, 0);
+  assert.equal(totalArea, 2 * cellSize * (2 * cellSize));
+  const uniqueOrigins = new Set(rects.map(([x, y]) => `${x},${y}`));
+  assert.equal(uniqueOrigins.size, 4, 'expected each cell to get its own distinct background rect');
+});
+
+test('drawBoard paints the even-parity (0,0) cell dark and its odd-parity neighbour (0,1) light', () => {
+  const ctx = createCtxSpy();
+  const sprites = { 'red-square': { naturalWidth: 50, naturalHeight: 50 } };
+  const cellSize = 40;
+  const board = [
+    ['red-square', 'red-square'],
+    ['red-square', 'red-square'],
+  ];
+  drawBoard(ctx, board, cellSize, sprites);
+
+  const shadeAt = {};
+  let pendingFillStyle = null;
+  for (const call of ctx.calls) {
+    if (call[0] === 'set:fillStyle') pendingFillStyle = call[1];
+    if (call[0] === 'fillRect') {
+      const [x, y] = call[1];
+      shadeAt[`${y / cellSize},${x / cellSize}`] = pendingFillStyle;
+    }
+  }
+
+  // Pinned to the actual shipped hex values (a builder-chosen aesthetic, not a
+  // SPEC-given one) so a swapped even/odd assignment or an emptied colour
+  // constant both fail here, not just "some two distinct values were used".
+  assert.equal(shadeAt['0,0'], '#1a1a1a');
+  assert.equal(shadeAt['0,1'], '#242424');
+});
+
+test('drawBoard alternates cell background shade so no two orthogonal neighbours share a shade (SPEC 3.5)', () => {
+  const ctx = createCtxSpy();
+  const sprites = { 'red-square': { naturalWidth: 50, naturalHeight: 50 } };
+  const cellSize = 40;
+  const size = 4;
+  const board = Array.from({ length: size }, () => Array.from({ length: size }, () => 'red-square'));
+  drawBoard(ctx, board, cellSize, sprites);
+
+  // Recover each cell's own fillStyle from whichever value was set immediately
+  // before its fillRect - every fillRect here is a background paint (gems use
+  // drawImage), so this pairs each shade with the cell it was painted for.
+  const shadeAt = {};
+  let pendingFillStyle = null;
+  for (const call of ctx.calls) {
+    if (call[0] === 'set:fillStyle') pendingFillStyle = call[1];
+    if (call[0] === 'fillRect') {
+      const [x, y] = call[1];
+      shadeAt[`${y / cellSize},${x / cellSize}`] = pendingFillStyle;
+    }
+  }
+
+  assert.equal(new Set(Object.values(shadeAt)).size, 2, 'expected exactly two distinct background shades');
+  for (let row = 0; row < size; row++) {
+    for (let col = 0; col < size; col++) {
+      if (col + 1 < size) {
+        assert.notEqual(
+          shadeAt[`${row},${col}`],
+          shadeAt[`${row},${col + 1}`],
+          `expected (${row},${col}) and (${row},${col + 1}) to differ`
+        );
+      }
+      if (row + 1 < size) {
+        assert.notEqual(
+          shadeAt[`${row},${col}`],
+          shadeAt[`${row + 1},${col}`],
+          `expected (${row},${col}) and (${row + 1},${col}) to differ`
+        );
+      }
+    }
+  }
 });
 
 test('drawBoard centres each gem on its own cell, not a neighbour\'s', () => {
@@ -131,6 +209,15 @@ test('drawBoard skips cells marked hidden', () => {
   drawBoard(ctx, [['red-square']], 40, sprites, new Set(['0,0']));
 
   assert.equal(ctx.calls.filter((c) => c[0] === 'drawImage').length, 0);
+});
+
+test('drawBoard still paints a cell\'s background even when its gem is hidden (SPEC 3.5)', () => {
+  const ctx = createCtxSpy();
+  const sprites = { 'red-square': { naturalWidth: 50, naturalHeight: 50 } };
+
+  drawBoard(ctx, [['red-square']], 40, sprites, new Set(['0,0']));
+
+  assert.equal(ctx.calls.filter((c) => c[0] === 'fillRect').length, 1, 'the cell\'s background must still be painted');
 });
 
 test('drawInteraction draws only a cursor ring when there is no selection', () => {

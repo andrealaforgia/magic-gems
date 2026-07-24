@@ -5,8 +5,11 @@ function readScore(page) {
   return page.evaluate(() => Number(document.getElementById('score').textContent.replace('Score: ', '')));
 }
 
+// The bar's real display is its fill width/colour (SPEC 10.8); this reads the
+// precise underlying value from the same data attribute main.js stamps alongside
+// them, rather than recovering it from a CSS percentage (lossy) or a colour.
 function readMultiplierValue(page) {
-  return page.evaluate(() => Number(document.getElementById('multiplier').textContent.replace('x', '')));
+  return page.evaluate(() => Number(document.getElementById('multiplier-fill').dataset.multiplier));
 }
 
 // Injects a single shared board-builder into the page once per scenario (idempotent
@@ -48,7 +51,7 @@ Then('the score is displayed and reads exactly 0', async function () {
   assert.equal(await readScore(this.page), 0);
 });
 
-Then('the time multiplier is displayed and reads exactly x5000', async function () {
+Then('the time multiplier bar is displayed and is full, at exactly 5000', async function () {
   assert.equal(await readMultiplierValue(this.page), 5000);
 });
 
@@ -72,7 +75,7 @@ Then('the score has strictly increased since it was recorded', async function ()
 // well over a real second to fall off-screen, by which point the multiplier has
 // legitimately already ticked down from its just-reset value (SPEC 10.5). Requires
 // "I record the current score" beforehand so there's a prior value to compare against.
-Then('the time multiplier reset to x5000 at the moment of that commit\'s completion', async function () {
+Then('the time multiplier bar reset to full, exactly 5000, at the moment of that commit\'s completion', async function () {
   assert.ok(this.recordedScore !== undefined, 'expected a previously recorded score to compare against');
   await this.page.waitForFunction(
     (scoreBefore) => Number(document.getElementById('score').textContent.replace('Score: ', '')) !== scoreBefore,

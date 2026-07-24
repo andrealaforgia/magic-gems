@@ -10,7 +10,9 @@
   <div id="game">
     <div id="hud">
       <span id="score">Score: 0</span>
-      <span id="multiplier">x5000</span>
+      <div id="multiplier-bar" class="multiplier-bar">
+        <div id="multiplier-fill" class="multiplier-fill"></div>
+      </div>
     </div>
     <canvas id="board"></canvas>
   </div>
@@ -23,6 +25,7 @@
   <script src="src/shatter.js"></script>
   <script src="src/animation.js"></script>
   <script src="src/scoring.js"></script>
+  <script src="src/multiplier-bar.js"></script>
   <script src="src/game.js"></script>
   <script src="src/layout.js"></script>
   <script src="src/render.js"></script>

@@ -7,7 +7,7 @@ Feature: Scoring system (SCORE)
   Scenario: The score starts at 0 and only ever increases over play
     Given I open "index.html" directly as a file:// URL with no server or build step
     Then the score is displayed and reads exactly 0
-    And the time multiplier is displayed and reads exactly x5000
+    And the time multiplier bar is displayed and is full, at exactly 5000
     Given I record the current score
     When I commit 3 matching swaps in a row, each settling before the next
     Then the score has not decreased since it was recorded
@@ -46,7 +46,7 @@ Feature: Scoring system (SCORE)
     Given I record the current score
     And I locate an adjacent swap that would produce a match on the live board
     When I commit that swap
-    Then the time multiplier reset to x5000 at the moment of that commit's completion
+    Then the time multiplier bar reset to full, exactly 5000, at the moment of that commit's completion
 
   @E5 @component
   Scenario: The combo factor follows 2^(k-1) within a chain and resets to x1 on each new swap
@@ -71,11 +71,11 @@ Feature: Scoring system (SCORE)
   Scenario: A full fresh-load play cycle completes correctly with real scoring throughout
     Given I open "index.html" directly as a file:// URL with no server or build step
     Then the score is displayed and reads exactly 0
-    And the time multiplier is displayed and reads exactly x5000
+    And the time multiplier bar is displayed and is full, at exactly 5000
     Given I record the current score
     And I locate an adjacent swap that would produce a match on the live board
     When I commit that swap
-    Then the time multiplier reset to x5000 at the moment of that commit's completion
+    Then the time multiplier bar reset to full, exactly 5000, at the moment of that commit's completion
     And the score has strictly increased since it was recorded
     When the shatter animation has settled
     Then the board contains no horizontal or vertical run of 3 or more identical gems

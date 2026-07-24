@@ -1,5 +1,5 @@
 export default {
-  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js', 'src/animation.js', 'src/sprite-layout.js', 'src/render.js', 'src/scoring.js'],
+  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js', 'src/animation.js', 'src/sprite-layout.js', 'src/render.js', 'src/scoring.js', 'src/multiplier-bar.js'],
   testRunner: 'command',
   commandRunner: { command: 'npm run test:unit' },
   reporters: ['clear-text', 'progress'],
@@ -173,3 +173,17 @@ export default {
 // extended one of its two "3-runs" to length 4 via the diagonal base pattern's own
 // period-7 wraparound - never surfaced before because no prior test checked run
 // length, only that certain cells were marked true).
+//
+// (DISPLAY-POLISH) src/render.js's new drawCellBackgrounds (the checkerboard cell
+// background, SPEC 3.5) and src/multiplier-bar.js (new file - the multiplier's
+// fill fraction and green-to-red colour, SPEC 10.8): 1 equivalent survivor each
+// (the same UMD-wrapper case as every file above), plus one more in render.js:
+// `(row + col) % 2` mutated to `(row - col) % 2` is a true mathematical
+// equivalent, not a gap - for any integers, x and -x always share parity, so
+// `(row - col) % 2` and `(row + col) % 2` agree on every possible input; no test
+// could ever distinguish them. Real gaps found and fixed, not waived: the
+// checkerboard's own two StringLiteral colour constants and the even/odd shade
+// assignment itself (an === -> !== mutation would silently swap which shade goes
+// where, still "alternating", so a same-module-derived comparison can't catch it)
+// both survived until a test pinned the literal shipped hex values at specific,
+// known-parity cell positions.

@@ -8,18 +8,12 @@ export function colorDistance([r1, g1, b1], [r2, g2, b2]) {
 }
 
 // Euclidean RGB distance under which a sampled pixel is confidently one of N
-// candidate palette colours rather than background/antialiasing noise. The seven
-// gem sprites' own sampled colours and the three highlight colours are all >100
-// apart from each other and from the near-black background (~rgb(10,10,18)), so 40
-// leaves comfortable headroom without being loose enough to misclassify across
-// colours.
+// candidate palette colours rather than checkerboard background/antialiasing noise.
+// The seven gem sprites' own sampled colours and the three highlight colours are
+// all >100 apart from each other and from the two dark-grey checkerboard shades
+// (SPEC 3.5), so 40 leaves comfortable headroom without being loose enough to
+// misclassify across colours.
 export const CLASSIFY_TOLERANCE = 40;
-
-// Background is a near-black navy (~rgb(10,10,18), luma ~13). Gem sprites are
-// always much brighter. 30 sits comfortably above background luma and well below
-// any sprite's brightness, so it reliably separates "empty cell" from "cell holds
-// something".
-export const BACKGROUND_LUMA_CEILING = 30;
 
 // How far off exact-center the canvas's on-screen bounding box may sit and still
 // count as "the central part of the viewport" (SPEC 3.2) — 10% of the viewport

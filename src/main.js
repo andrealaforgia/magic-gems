@@ -28,10 +28,13 @@
       computeTimeMultiplier,
       comboFactorForChainIndex,
       computeCompletionScore,
+      TIME_MULTIPLIER_START,
+      multiplierFraction,
+      multiplierBarColor,
     } = global.MagicGems;
     const canvas = document.getElementById('board');
     const scoreEl = document.getElementById('score');
-    const multiplierEl = document.getElementById('multiplier');
+    const multiplierFillEl = document.getElementById('multiplier-fill');
     const cellSize = computeCellSize(window.innerWidth, window.innerHeight, BOARD_SIZE);
     canvas.width = BOARD_SIZE * cellSize;
     canvas.height = BOARD_SIZE * cellSize;
@@ -55,6 +58,16 @@
       score += computeCompletionScore(base, timeMultiplier, combo);
       lastCompletionTimeMs = now;
       scoreEl.textContent = `Score: ${score}`;
+    }
+
+    function updateMultiplierBar(timeMultiplier) {
+      const fraction = multiplierFraction(timeMultiplier, TIME_MULTIPLIER_START);
+      multiplierFillEl.style.width = `${fraction * 100}%`;
+      multiplierFillEl.style.backgroundColor = multiplierBarColor(fraction);
+      // The bar's fill/colour are the real display (SPEC 10.8); this attribute is
+      // just a precise, unrounded readout of the same underlying value for tests -
+      // recovering it from a CSS percentage would lose precision.
+      multiplierFillEl.dataset.multiplier = timeMultiplier;
     }
 
     function cellCenter(row, col) {
@@ -209,7 +222,7 @@
       // parameter, matching the clock applyCompletionScore stamps lastCompletionTimeMs
       // with - mixing the two would read a small negative elapsed on the exact tick
       // a reset happens (frameTimeMs is captured before this tick's own work runs).
-      multiplierEl.textContent = `x${computeTimeMultiplier(performance.now() - lastCompletionTimeMs)}`;
+      updateMultiplierBar(computeTimeMultiplier(performance.now() - lastCompletionTimeMs));
       requestAnimationFrame(tick);
     }
 

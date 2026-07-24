@@ -16,9 +16,24 @@
     ctx.drawImage(sprite, rect.x, rect.y, rect.width, rect.height);
   }
 
+  // Two dark greys, alternated in a checkerboard (SPEC 3.5) - independent of any
+  // cell's gem/hidden state, so the board always shows a full grid of solid
+  // backgrounds even mid-animation, with gems drawn on top of them.
+  const CELL_SHADE_DARK = '#1a1a1a';
+  const CELL_SHADE_LIGHT = '#242424';
+
+  function drawCellBackgrounds(ctx, size, cellSize) {
+    for (let row = 0; row < size; row++) {
+      for (let col = 0; col < size; col++) {
+        ctx.fillStyle = (row + col) % 2 === 0 ? CELL_SHADE_DARK : CELL_SHADE_LIGHT;
+        ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+      }
+    }
+  }
+
   function drawBoard(ctx, board, cellSize, sprites, hiddenCells) {
     const size = board.length;
-    ctx.clearRect(0, 0, size * cellSize, size * cellSize);
+    drawCellBackgrounds(ctx, size, cellSize);
 
     for (let row = 0; row < size; row++) {
       for (let col = 0; col < size; col++) {
