@@ -3,8 +3,8 @@
 
   const { computeSpriteDrawRect, GEM_SPRITE_FIT_RATIO } = global.MagicGems;
 
-  function drawGem(ctx, gem, cx, cy, cellSize, sprites) {
-    const sprite = sprites[gem];
+  function drawGem(ctx, gem, cx, cy, cellSize, sprites, frameIndex = 0) {
+    const sprite = sprites[gem][frameIndex];
     const rect = computeSpriteDrawRect(
       sprite.naturalWidth,
       sprite.naturalHeight,
@@ -16,7 +16,7 @@
     ctx.drawImage(sprite, rect.x, rect.y, rect.width, rect.height);
   }
 
-  function drawBoard(ctx, board, cellSize, sprites, hiddenCells) {
+  function drawBoard(ctx, board, cellSize, sprites, hiddenCells, frameIndexFor) {
     const size = board.length;
     ctx.clearRect(0, 0, size * cellSize, size * cellSize);
 
@@ -27,7 +27,8 @@
         if (gem === null) continue;
         const cx = col * cellSize + cellSize / 2;
         const cy = row * cellSize + cellSize / 2;
-        drawGem(ctx, gem, cx, cy, cellSize, sprites);
+        const frameIndex = frameIndexFor ? frameIndexFor(row, col) : 0;
+        drawGem(ctx, gem, cx, cy, cellSize, sprites, frameIndex);
       }
     }
   }

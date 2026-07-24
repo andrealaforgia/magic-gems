@@ -5,9 +5,9 @@ Feature: Sprite re-skin, static (SG1)
   So that the board reads as a polished, believable set of jewels
 
   @E1 @E7
-  Scenario: Every gem identity renders from its real face-on sprite frame, not a vector shape
+  Scenario: Every gem identity renders from its real rotation-frame sprites, not a vector shape
     Given I open "index.html" directly as a file:// URL with no server or build step
-    Then each of the seven gem identities is backed by its real frame-00 sprite image
+    Then each of the seven gem identities is backed by its own full set of real rotation-frame sprite images
     And all 64 cells contain exactly one recognizable gem colour each
 
   # E1's "centred within its cell on both axes" and "scaling up/down with the

@@ -24,6 +24,7 @@
       clampProgress,
       interpolatePoint,
       loadGemSprites,
+      currentFrameIndex,
     } = global.MagicGems;
     const canvas = document.getElementById('board');
     const cellSize = computeCellSize(window.innerWidth, window.innerHeight, BOARD_SIZE);
@@ -135,7 +136,7 @@
       }
     }
 
-    function render() {
+    function render(nowMs) {
       if (activeAnimation) {
         const progress = clampProgress(activeAnimation.elapsedMs, activeAnimation.duration);
         if (activeAnimation.kind === 'swap') {
@@ -144,37 +145,34 @@
           renderCascadePhase(activeAnimation, progress);
         }
       } else {
-        drawBoard(ctx, board, cellSize, sprites);
+        // Gems only spin while the board is at rest (SPEC 9.1.1) - a swap/cascade
+        // in flight above draws its own gems on a static frame instead.
+        drawBoard(ctx, board, cellSize, sprites, undefined, (row, col) => currentFrameIndex(nowMs, row, col));
       }
       drawInteraction(ctx, interaction, cellSize);
       drawFragments(ctx, fragments);
     }
 
-    render();
+    render(performance.now());
 
     let lastFrameTimeMs = null;
 
     function tick(frameTimeMs) {
-      const isActive = fragments.length > 0 || activeAnimation !== null || animationQueue.length > 0;
-      if (isActive) {
-        if (lastFrameTimeMs !== null) {
-          const dtMs = frameTimeMs - lastFrameTimeMs;
-          if (fragments.length > 0) {
-            fragments = pruneOffscreen(updateFragments(fragments, dtMs / 1000), canvas.height);
-          }
-          if (activeAnimation) {
-            activeAnimation.elapsedMs += dtMs;
-            if (activeAnimation.elapsedMs >= activeAnimation.duration) {
-              activeAnimation = null;
-            }
-          }
-          advanceQueue();
-          render();
+      if (lastFrameTimeMs !== null) {
+        const dtMs = frameTimeMs - lastFrameTimeMs;
+        if (fragments.length > 0) {
+          fragments = pruneOffscreen(updateFragments(fragments, dtMs / 1000), canvas.height);
         }
-        lastFrameTimeMs = frameTimeMs;
-      } else {
-        lastFrameTimeMs = null;
+        if (activeAnimation) {
+          activeAnimation.elapsedMs += dtMs;
+          if (activeAnimation.elapsedMs >= activeAnimation.duration) {
+            activeAnimation = null;
+          }
+        }
+        advanceQueue();
       }
+      lastFrameTimeMs = frameTimeMs;
+      render(frameTimeMs);
       requestAnimationFrame(tick);
     }
 
@@ -188,7 +186,7 @@
         lastCommitSteps = next.steps;
         animationQueue = animationQueue.concat(buildQueue(next));
         advanceQueue();
-        render();
+        render(performance.now());
       }
     });
 

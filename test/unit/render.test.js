@@ -48,7 +48,7 @@ function createCtxSpy() {
 test('drawGem draws the gem sprite via drawImage, centred and scaled per computeSpriteDrawRect', () => {
   const ctx = createCtxSpy();
   const sprite = { naturalWidth: 50, naturalHeight: 40 };
-  drawGem(ctx, 'red-square', 120, 80, 60, { 'red-square': sprite });
+  drawGem(ctx, 'red-square', 120, 80, 60, { 'red-square': [sprite] });
 
   const drawImageCalls = ctx.calls.filter((c) => c[0] === 'drawImage');
   assert.equal(drawImageCalls.length, 1, 'expected exactly one drawImage call');
@@ -62,9 +62,28 @@ test('drawGem draws the gem sprite via drawImage, centred and scaled per compute
   assert.equal(height, expected.height);
 });
 
+test('drawGem defaults to the face-on frame (index 0) when no frame is requested', () => {
+  const ctx = createCtxSpy();
+  const faceOn = { naturalWidth: 50, naturalHeight: 50 };
+  const otherFrame = { naturalWidth: 50, naturalHeight: 50 };
+  drawGem(ctx, 'red-square', 0, 0, 60, { 'red-square': [faceOn, otherFrame] });
+
+  const [img] = ctx.calls.find((c) => c[0] === 'drawImage')[1];
+  assert.equal(img, faceOn);
+});
+
+test('drawGem draws whichever rotation frame is requested', () => {
+  const ctx = createCtxSpy();
+  const frames = Array.from({ length: 15 }, () => ({ naturalWidth: 50, naturalHeight: 50 }));
+  drawGem(ctx, 'red-square', 0, 0, 60, { 'red-square': frames }, 7);
+
+  const [img] = ctx.calls.find((c) => c[0] === 'drawImage')[1];
+  assert.equal(img, frames[7]);
+});
+
 test('drawGem never applies a glow effect', () => {
   const ctx = createCtxSpy();
-  drawGem(ctx, 'red-square', 0, 0, 60, { 'red-square': { naturalWidth: 50, naturalHeight: 50 } });
+  drawGem(ctx, 'red-square', 0, 0, 60, { 'red-square': [{ naturalWidth: 50, naturalHeight: 50 }] });
 
   const nonZeroGlow = ctx.calls.filter((c) => c[0] === 'set:shadowBlur' && c[1] > 0);
   assert.equal(nonZeroGlow.length, 0, 'drawGem must never set a nonzero shadowBlur');
@@ -75,8 +94,8 @@ test('drawGem never applies a glow effect', () => {
 test('drawBoard clears the canvas, then draws every occupied cell and skips empty ones', () => {
   const ctx = createCtxSpy();
   const sprites = {
-    'red-square': { naturalWidth: 50, naturalHeight: 50 },
-    'yellow-diamond': { naturalWidth: 50, naturalHeight: 50 },
+    'red-square': [{ naturalWidth: 50, naturalHeight: 50 }],
+    'yellow-diamond': [{ naturalWidth: 50, naturalHeight: 50 }],
   };
   const board = [
     ['red-square', null],
@@ -89,13 +108,13 @@ test('drawBoard clears the canvas, then draws every occupied cell and skips empt
   const drawImageCalls = ctx.calls.filter((c) => c[0] === 'drawImage');
   assert.deepEqual(
     drawImageCalls.map((c) => c[1][0]),
-    [sprites['red-square'], sprites['yellow-diamond']]
+    [sprites['red-square'][0], sprites['yellow-diamond'][0]]
   );
 });
 
 test('drawBoard clears exactly the board\'s own pixel dimensions', () => {
   const ctx = createCtxSpy();
-  const sprites = { 'red-square': { naturalWidth: 50, naturalHeight: 50 } };
+  const sprites = { 'red-square': [{ naturalWidth: 50, naturalHeight: 50 }] };
   const board = [
     ['red-square', 'red-square'],
     ['red-square', 'red-square'],
@@ -113,7 +132,7 @@ test('drawBoard centres each gem on its own cell, not a neighbour\'s', () => {
     [null, null],
     [null, 'red-square'],
   ];
-  drawBoard(ctx, board, cellSize, { 'red-square': sprite });
+  drawBoard(ctx, board, cellSize, { 'red-square': [sprite] });
   const [[, x, y, width, height]] = ctx.calls.filter((c) => c[0] === 'drawImage').map((c) => c[1]);
   assert.equal(x + width / 2, 1 * cellSize + cellSize / 2, 'expected the gem centred on column 1');
   assert.equal(y + height / 2, 1 * cellSize + cellSize / 2, 'expected the gem centred on row 1');
@@ -121,11 +140,39 @@ test('drawBoard centres each gem on its own cell, not a neighbour\'s', () => {
 
 test('drawBoard skips cells marked hidden', () => {
   const ctx = createCtxSpy();
-  const sprites = { 'red-square': { naturalWidth: 50, naturalHeight: 50 } };
+  const sprites = { 'red-square': [{ naturalWidth: 50, naturalHeight: 50 }] };
 
   drawBoard(ctx, [['red-square']], 40, sprites, new Set(['0,0']));
 
   assert.equal(ctx.calls.filter((c) => c[0] === 'drawImage').length, 0);
+});
+
+test('drawBoard defaults every cell to the face-on frame when no frame lookup is given', () => {
+  const ctx = createCtxSpy();
+  const frames = Array.from({ length: 15 }, () => ({ naturalWidth: 50, naturalHeight: 50 }));
+  drawBoard(ctx, [['red-square']], 40, { 'red-square': frames });
+  const [img] = ctx.calls.find((c) => c[0] === 'drawImage')[1];
+  assert.equal(img, frames[0]);
+});
+
+test('drawBoard asks its frame lookup for each cell\'s own (row, col) and draws that frame', () => {
+  const ctx = createCtxSpy();
+  const frames = Array.from({ length: 15 }, () => ({ naturalWidth: 50, naturalHeight: 50 }));
+  const board = [
+    ['red-square', 'red-square'],
+    ['red-square', 'red-square'],
+  ];
+  const requested = [];
+  const frameIndexFor = (row, col) => {
+    requested.push([row, col]);
+    return (row * 2 + col) % 15;
+  };
+
+  drawBoard(ctx, board, 40, { 'red-square': frames }, undefined, frameIndexFor);
+
+  assert.deepEqual(requested.sort(), [[0, 0], [0, 1], [1, 0], [1, 1]]);
+  const drawnFrames = ctx.calls.filter((c) => c[0] === 'drawImage').map((c) => c[1][0]);
+  assert.deepEqual(drawnFrames, [frames[0], frames[1], frames[2], frames[3]]);
 });
 
 test('drawInteraction draws only a cursor ring when there is no selection', () => {

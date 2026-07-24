@@ -2,20 +2,24 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadMagicGems } from '../support/load-src.js';
 
-const { spriteUrl } = loadMagicGems([
+const { spriteUrl, FRAME_COUNT, GEM_TYPES } = loadMagicGems([
   new URL('../../src/gems.js', import.meta.url),
+  new URL('../../src/spin.js', import.meta.url),
   new URL('../../src/sprites.js', import.meta.url),
 ]);
 
-// This iteration only the face-on frame is used (SG1/E7: gems are static, no idle
-// rotation yet) - locking spriteUrl to frame-00 is what keeps that true.
-test('spriteUrl points at the gem\'s face-on frame-00 asset, not any other frame', () => {
-  assert.equal(spriteUrl('red-square'), 'assets/gems/red-square/frame-00.png');
-  assert.equal(spriteUrl('blue-teardrop'), 'assets/gems/blue-teardrop/frame-00.png');
+test('spriteUrl resolves each frame of a gem\'s rotation sequence to its own asset', () => {
+  assert.equal(spriteUrl('red-square', 0), 'assets/gems/red-square/frame-00.png');
+  assert.equal(spriteUrl('red-square', 9), 'assets/gems/red-square/frame-09.png');
+  assert.equal(spriteUrl('blue-teardrop', 14), 'assets/gems/blue-teardrop/frame-14.png');
 });
 
-test('spriteUrl gives every gem type its own asset path', () => {
-  const { GEM_TYPES } = loadMagicGems([new URL('../../src/gems.js', import.meta.url)]);
-  const urls = GEM_TYPES.map(spriteUrl);
-  assert.equal(new Set(urls).size, GEM_TYPES.length, 'expected a distinct sprite path per gem type');
+test('spriteUrl gives every (gem type, frame) pair its own distinct asset path', () => {
+  const urls = [];
+  for (const gemType of GEM_TYPES) {
+    for (let frame = 0; frame < FRAME_COUNT; frame++) {
+      urls.push(spriteUrl(gemType, frame));
+    }
+  }
+  assert.equal(new Set(urls).size, GEM_TYPES.length * FRAME_COUNT, 'expected a distinct path per (gem type, frame) pair');
 });

@@ -69,6 +69,10 @@ glossy, faceted 3D gemstone. The seven identities are:
 ## 9. Visual effects
 - 9.1 Gems are rendered from their sprite images; there is no neon glow — the
   glossy sprite art carries the visual weight on its own.
+  - 9.1.1 Each gem continuously spins in place — a slow, gentle idle rotation
+    through its full turn — while it rests on the board. Gems are not all in
+    lockstep: their rotations are out of phase, so the board shimmers rather than
+    pulsing as one. The pace is slow and deliberate, consistent with 9.3.
 - 9.2 When gems are removed (each time a row or column run is completed and
   cleared), every removed gem plays a shatter effect and breaks apart. The effect
   must be visually appealing.

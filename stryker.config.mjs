@@ -1,5 +1,5 @@
 export default {
-  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js', 'src/animation.js', 'src/sprite-layout.js', 'src/render.js'],
+  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js', 'src/animation.js', 'src/sprite-layout.js', 'src/render.js', 'src/spin.js'],
   testRunner: 'command',
   commandRunner: { command: 'npm run test:unit' },
   reporters: ['clear-text', 'progress'],
@@ -142,3 +142,10 @@ export default {
 //     B4r's shatter-scope guarantee (only matched cells shatter; falling/refilled ones
 //     never do) depends on, so it was a real, load-bearing gap - fixed by asserting
 //     clearEvents' length and full position set exactly match the matched run, no more.
+//
+// (SG2) src/spin.js: new file this run (the idle-spin behaviour's per-cell rotation
+// frame math). 1 equivalent survivor (the same UMD-wrapper case as every file above).
+// No real gaps - covered by an exhaustive advance-by-one/wraparound/out-of-phase test
+// set from the start. render.js's drawGem/drawBoard frame-index plumbing (added so a
+// cell can request any of its gem's 15 rotation frames, not just the face-on one) was
+// fully covered by the same run with no new survivors.
