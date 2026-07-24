@@ -31,6 +31,9 @@
       TIME_MULTIPLIER_START,
       multiplierFraction,
       multiplierBarColor,
+      createSoundPlayer,
+      soundsForKeydown,
+      soundsForCascadeStep,
     } = global.MagicGems;
     const canvas = document.getElementById('board');
     const scoreEl = document.getElementById('score');
@@ -49,6 +52,7 @@
     let lastCommitSteps = [];
     let score = 0;
     let lastCompletionTimeMs = performance.now();
+    const sound = createSoundPlayer();
 
     function applyCompletionScore(runLengths, chainPosition) {
       const now = performance.now();
@@ -134,6 +138,7 @@
       if (activeAnimation.kind === 'cascade') {
         spawnFragments(activeAnimation.clearEvents);
         applyCompletionScore(activeAnimation.runLengths, activeAnimation.chainPosition);
+        soundsForCascadeStep(activeAnimation).forEach((name) => sound.play(name));
       }
     }
 
@@ -231,6 +236,7 @@
     document.addEventListener('keydown', (event) => {
       const next = handleGameKey({ board, interaction }, event.key);
       if (next.board !== board || next.interaction !== interaction) {
+        soundsForKeydown(event.key, interaction, next).forEach((name) => sound.play(name));
         board = next.board;
         interaction = next.interaction;
         lastCommitSteps = next.steps;
@@ -247,6 +253,7 @@
     global.MagicGems.getAnimationPhase = () => (activeAnimation ? activeAnimation.kind : null);
     global.MagicGems.getLastCommitSteps = () => lastCommitSteps;
     global.MagicGems.getSpriteImages = () => sprites;
+    global.MagicGems.getSoundLog = () => sound.getLog();
   }
 
   document.addEventListener('DOMContentLoaded', boot);

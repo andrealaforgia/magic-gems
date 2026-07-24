@@ -15,11 +15,12 @@
     const swapAnimation = { a: selection, b: target, preSwapBoard: board, matched };
 
     if (!matched) {
-      return { board, interaction: nextInteraction, swapAnimation, steps: [] };
+      return { board, interaction: nextInteraction, swapAnimation, steps: [], reshuffled: false };
     }
 
     const { board: settled, steps } = resolveCascade(swapped);
-    return { board: ensurePlayable(settled), interaction: nextInteraction, swapAnimation, steps };
+    const playable = ensurePlayable(settled);
+    return { board: playable, interaction: nextInteraction, swapAnimation, steps, reshuffled: playable !== settled };
   }
 
   function handleGameKey(gameState, key) {

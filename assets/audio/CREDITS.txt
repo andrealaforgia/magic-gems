@@ -1,0 +1,64 @@
+Magic Gems - Audio Asset Credits
+================================
+
+ALL sound effects in this directory are CC0 / public domain (Creative Commons
+Zero, http://creativecommons.org/publicdomain/zero/1.0/). No attribution is
+required, and commercial use and redistribution are permitted. The credits
+below are given voluntarily to acknowledge the original creators.
+
+Format: Ogg Vorbis (.ogg), 44.1 kHz. Each effect is short (< 1.5 s).
+
+------------------------------------------------------------------------------
+FILE              GAME EVENT                     SOURCE / PACK        AUTHOR      LICENSE
+------------------------------------------------------------------------------
+cursor-move.ogg   Cursor moving between cells    Kenney Interface     Kenney      CC0
+                  (subtle UI tick)               Sounds (tick_001)
+select.ogg        Selecting a gem                Kenney Interface     Kenney      CC0
+                  (soft confirm blip)            Sounds (select_001)
+swap.ogg          Two gems trading places        Kenney Interface     Kenney      CC0
+                  (neutral switch)               Sounds (switch_001)
+invalid.ogg       Invalid move                   Kenney Interface     Kenney      CC0
+                  (gentle error tone)            Sounds (error_002)
+drop.ogg          Gems settling after a clear    Kenney Interface     Kenney      CC0
+                  (soft drop/land)               Sounds (drop_001)
+score.ogg         Points awarded                 Kenney Interface     Kenney      CC0
+                  (reward chime)                 Sounds (confirmation_001)
+shatter.ogg       Match clear                    OGA "75 CC0          rubberduck  CC0
+                  (glassy break/shatter)         breaking/falling/hit
+                                                 sfx" (bfh1_glass_breaking_04)
+reshuffle.ogg     Board reshuffle                OGA "100 CC0 SFX"    rubberduck  CC0
+                  (shuffle/whoosh)               (noise_02, fade env applied)
+cascade-1.ogg     Combo chain, tone 1 (lowest)   Generated (ffmpeg    n/a         CC0 /
+cascade-2.ogg     Combo chain, tone 2            sine synthesis:                  public
+cascade-3.ogg     Combo chain, tone 3            C5/E5/G5/C6 =                    domain
+cascade-4.ogg     Combo chain, tone 4 (highest)  523/659/784/1047 Hz)            by gen.
+------------------------------------------------------------------------------
+
+SOURCES (license verified at each URL, 2026-07-24):
+
+Kenney Interface Sounds - CC0
+  Original:  https://kenney.nl/assets/interface-sounds
+  Mirror:    https://github.com/Calinou/kenney-interface-sounds
+  License:   CC0 1.0 (bundled LICENSE.txt states "Creative Commons Zero, CC0";
+             crediting Kenney is appreciated but not mandatory)
+  Kenney license policy: https://kenney.nl/support
+
+OpenGameArt "75 CC0 breaking / falling / hit sfx" by rubberduck - CC0
+  Page:      https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx
+  Download:  https://opengameart.org/sites/default/files/sfx_breaking_and_falling.zip
+  License:   CC0 (stated on the OGA page)
+
+OpenGameArt "100 CC0 SFX" by rubberduck - CC0
+  Page:      https://opengameart.org/content/100-cc0-sfx
+  Download:  https://opengameart.org/sites/default/files/100-CC0-SFX_0.zip
+  License:   CC0 (stated on the OGA page)
+
+Cascade tones (cascade-1..4.ogg)
+  Generated locally with ffmpeg (pure sine tones, ascending in pitch).
+  Machine-generated tones carry no copyright and are treated as public domain.
+
+NOTES
+  - reshuffle.ogg: source noise_02.ogg had a short fade-in/fade-out volume
+    envelope applied during conversion so it reads as a soft whoosh. This is a
+    trivial edit of a CC0 source and does not affect its CC0 status.
+  - All WAV sources from Kenney were transcoded to Ogg Vorbis with ffmpeg.

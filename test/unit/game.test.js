@@ -85,6 +85,7 @@ test('committing a swap that produces no match reverts the board and cancels the
   assert.deepEqual(next.swapAnimation.b, { row: 0, col: 1 });
   assert.strictEqual(next.swapAnimation.preSwapBoard, board);
   assert.equal(next.swapAnimation.matched, false);
+  assert.equal(next.reshuffled, false, 'a reverted (no-match) swap never triggers a reshuffle check');
 });
 
 test('committing a swap that produces a match clears it, settles the board, and returns to plain cursor mode', () => {
@@ -119,6 +120,11 @@ test('committing a swap that produces a match clears it, settles the board, and 
   assert.deepEqual(next.swapAnimation.b, { row: 2, col: 2 });
   assert.strictEqual(next.swapAnimation.preSwapBoard, board);
   assert.equal(next.swapAnimation.matched, true);
+  // An 8x8 board with 7 gem types settling from a real cascade is never actually
+  // left stuck (astronomically unlikely) - ensurePlayable's own reshuffle-vs-not
+  // branches are independently proven in board.test.js; this just checks commit()
+  // surfaces whichever one it took.
+  assert.equal(next.reshuffled, false);
 
   assert.ok(next.steps.length >= 1);
   const clearEvents = next.steps.flatMap((s) => s.clearEvents);
@@ -129,4 +135,40 @@ test('committing a swap that produces a match clears it, settles the board, and 
   for (const event of clearEvents) {
     assert.ok(GEM_TYPES.includes(event.gemType));
   }
+});
+
+test('committing a match that settles into a board with no valid moves left reshuffles (SPEC 8.3), reported via reshuffled:true', () => {
+  // A 3x3 board (small enough to fully control): swapping (2,0)<->(2,1) completes a
+  // vertical run of 3 at column 0, which clears and refills. The refill's own random
+  // draws are pinned (via randomQueue) so column 0 comes back as three distinct
+  // types; combined with the untouched columns 1-2, the resulting 3x3 board has been
+  // hand-verified to admit no match-producing adjacent swap at all - i.e. genuinely
+  // stuck, not just unlucky - so ensurePlayable must reshuffle it.
+  const { GEM_TYPES: TYPES, hasMatch: hasMatch3, handleGameKey: handleGameKey3 } = loadMagicGems(
+    [
+      new URL('../../src/gems.js', import.meta.url),
+      new URL('../../src/board.js', import.meta.url),
+      new URL('../../src/interaction.js', import.meta.url),
+      new URL('../../src/resolution.js', import.meta.url),
+      new URL('../../src/game.js', import.meta.url),
+    ],
+    { randomQueue: [0.5 / 7, 1.5 / 7, 2.5 / 7] } // selects TYPES[0], TYPES[1], TYPES[2] in turn
+  );
+  const board = [
+    [TYPES[0], TYPES[3], TYPES[4]],
+    [TYPES[0], TYPES[5], TYPES[6]],
+    [TYPES[2], TYPES[0], TYPES[1]],
+  ];
+  assert.equal(hasMatch3(board), false, 'sanity: fixture itself has no pre-existing match');
+
+  const interaction = {
+    cursor: { row: 2, col: 0 },
+    selection: { row: 2, col: 0 },
+    target: { row: 2, col: 1 },
+  };
+  const next = handleGameKey3({ board, interaction }, ' ');
+
+  assert.equal(next.swapAnimation.matched, true, 'sanity: the swap must actually clear column 0');
+  assert.equal(next.reshuffled, true);
+  assert.equal(next.board.length, 8, 'the reshuffle replacement is a fresh full-size board');
 });

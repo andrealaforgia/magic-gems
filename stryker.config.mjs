@@ -1,5 +1,5 @@
 export default {
-  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js', 'src/animation.js', 'src/sprite-layout.js', 'src/render.js', 'src/scoring.js', 'src/multiplier-bar.js'],
+  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js', 'src/animation.js', 'src/sprite-layout.js', 'src/render.js', 'src/scoring.js', 'src/multiplier-bar.js', 'src/audio-cues.js'],
   testRunner: 'command',
   commandRunner: { command: 'npm run test:unit' },
   reporters: ['clear-text', 'progress'],
@@ -187,3 +187,19 @@ export default {
 // where, still "alternating", so a same-module-derived comparison can't catch it)
 // both survived until a test pinned the literal shipped hex values at specific,
 // known-parity cell positions.
+//
+// (FIX-SELECT) No src/ change was needed - selectUnderCursor already no-opped on a
+// redundant SPACE; only new acceptance coverage was added, so mutation testing
+// wasn't re-run for it.
+//
+// (AUDIO) src/audio-cues.js (new file - the cascade-tone clamp, SPEC 11.2.6): 1
+// equivalent UMD-wrapper survivor, same as every file above. src/game.js's new
+// `reshuffled` field: the `playable !== settled` expression initially survived
+// mutation to a hardcoded `false`, a real gap - every existing test only ever
+// exercised the false case. Fixed by constructing a fully deterministic 3x3 board
+// (small enough to hand-verify every one of its 12 possible adjacent swaps fails to
+// match) with a pinned refill (via loadMagicGems's new randomQueue option), proving
+// the true case is both reachable and checked. src/audio.js (the actual Audio
+// element/playback wiring) is intentionally not in this mutate list - like
+// sprites.js and main.js, it's DOM/IO-driven imperative shell verified only by the
+// acceptance suite, not unit-testable in the vm sandbox.

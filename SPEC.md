@@ -115,9 +115,9 @@ quickly and in bigger, chained clears.
   a 4-run = 100, a 5-run = 150, and so on.
 - 10.4 When several runs clear in the same completion (10.2), their base points are
   summed before any multiplier is applied.
-- 10.5 A time multiplier rewards fast play. It resets to 5000 at each completion and
+- 10.5 A time multiplier rewards fast play. It resets to 300 at each completion and
   then counts down by 1 every second, never below 0. At the moment of a completion
-  its value is `5000 − (whole seconds elapsed since the previous completion)`,
+  its value is `300 − (whole seconds elapsed since the previous completion)`,
   floored at 0. For the first completion of the game the elapsed time is measured
   from the start of play.
 - 10.6 A combo factor rewards chains. Within the cascade chain triggered by one
@@ -127,16 +127,17 @@ quickly and in bigger, chained clears.
 - 10.7 Each completion adds to the running score:
   `floor( summed_base (10.4) × time_multiplier (10.5) × combo_factor (10.6) / 100 )`.
   - 10.7.1 Worked examples: a lone 3-run 30 seconds after the previous completion
-    scores `floor(50 × (5000−30) × 1 / 100)` = 2485. A 3-run and a 4-run clearing
-    together, same 30-second gap, first in the chain: `floor((50+100) × 4970 × 1
-    / 100)` = 7455.
+    scores `floor(50 × (300−30) × 1 / 100)` = 135. A 3-run and a 4-run clearing
+    together, same 30-second gap, first in the chain: `floor((50+100) × 270 × 1
+    / 100)` = 405.
 - 10.8 The current time multiplier (10.5) is shown at the top of the grid, to the
   right of the score, as a horizontal gradient bar that occupies ALL the remaining
-  horizontal space from the score across to the grid's right border. The bar is
-  coloured with a gradient from green through yellow to red, and its filled length
-  represents the multiplier as a fraction of its 5000 maximum (full at 5000,
-  shrinking as it counts down toward 0 between completions). The bar is sized to be
-  clearly visible and prominent — a generous height, not a thin sliver.
+  horizontal space from the score across to the grid's right border. Its filled
+  length represents the multiplier as a fraction of its 300 maximum (full at 300,
+  shrinking as it counts down toward 0 between completions), depleting from right to
+  left. The bar is coloured with a gradient running right to left from green through
+  yellow to red. The bar is sized to be clearly visible and prominent — a generous
+  height, not a thin sliver.
 
 ## 11. Sound
 The game plays short sound effects that respond to what the player does and what
@@ -162,3 +163,7 @@ happens on the board.
   interaction are accommodated (sound begins once the player first acts), and the
   game remains fully playable with no sound if audio is unavailable.
 - 11.4 There is no background music track (sound effects only) in this version.
+- 11.5 Pressing the S key toggles all audio on/off. When off, no sounds play; when
+  toggled back on, sounds resume. Audio defaults to on.
+- 11.6 An instruction line is shown at the bottom of the gem grid stating that S
+  toggles audio on/off, rendered in the game's display font (9.4).
