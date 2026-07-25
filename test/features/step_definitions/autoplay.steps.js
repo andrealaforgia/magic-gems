@@ -48,12 +48,6 @@ Then('the autoplay instruction line reads {string} in the pixel font, below the 
 // wait-then-sample pair can still catch a mid-cascade frame. Retries the whole
 // wait+sample within one generous overall deadline rather than trusting any
 // single sample.
-//
-// The overallTimeoutMs budgets passed to this function (15000ms at every call
-// site below) are sized against AUTOPLAY-SPEED's cadence constant
-// (AUTOPLAY_STEP_MS = 107ms in src/main.js), not derived independently - if that
-// constant is retuned again, re-check these budgets still give many multiples of
-// it rather than trusting the old margin (QA test-design review, baseline).
 async function waitForRealCondition(page, checkFn, overallTimeoutMs) {
   const deadline = Date.now() + overallTimeoutMs;
   let lastResult = false;
@@ -67,7 +61,23 @@ async function waitForRealCondition(page, checkFn, overallTimeoutMs) {
   assert.ok(lastResult, 'expected condition to hold on some settled sample within the overall timeout');
 }
 
+// The overallTimeoutMs budgets below are *derived* from AUTOPLAY-SPEED's own
+// live cadence constant (src/main.js's AUTOPLAY_STEP_MS, exported for exactly
+// this purpose) rather than a re-typed literal - a future retune of that
+// constant widens or narrows this budget automatically instead of silently
+// invalidating a comment-only cross-link (QA test-design review, follow-up on
+// commit aa04ada). STEPS_OF_HEADROOM=140 keeps the same ~15s real budget the
+// suite has run with at the current 107ms cadence (140 x 107 = 14980ms).
+const STEPS_OF_HEADROOM = 140;
+
+async function autoplayRealTimeoutMs(page) {
+  const stepMs = await page.evaluate(() => window.MagicGems.AUTOPLAY_STEP_MS);
+  assert.ok(Number.isFinite(stepMs) && stepMs > 0, `expected a real AUTOPLAY_STEP_MS exported from the live page, got ${stepMs}`);
+  return stepMs * STEPS_OF_HEADROOM;
+}
+
 Then('the board settles into a new, match-free arrangement within a generous real timeout', async function () {
+  const overallTimeoutMs = await autoplayRealTimeoutMs(this.page);
   // isAnimating() alone is trivially true-before-anything-starts right after
   // toggling autoplay on (its own first move hasn't been scheduled yet) - wait
   // for real evidence a completion actually happened first (the score leaving
@@ -75,7 +85,7 @@ Then('the board settles into a new, match-free arrangement within a generous rea
   await this.page.waitForFunction(
     () => document.getElementById('score').textContent !== 'Score: 0',
     null,
-    { timeout: 15000 }
+    { timeout: overallTimeoutMs }
   );
   await waitForRealCondition(
     this.page,
@@ -83,7 +93,7 @@ Then('the board settles into a new, match-free arrangement within a generous rea
       const grid = await classifiedGrid(this.page);
       return (await this.page.evaluate((g) => window.MagicGems.hasMatch(g), grid)) === false;
     },
-    15000
+    overallTimeoutMs
   );
 });
 
@@ -94,7 +104,7 @@ Then('the classified gem grid has changed from the one recorded before, within a
       const grid = await classifiedGrid(this.page);
       return JSON.stringify(grid) !== JSON.stringify(this.recordedGemGrid);
     },
-    15000
+    await autoplayRealTimeoutMs(this.page)
   );
 });
 

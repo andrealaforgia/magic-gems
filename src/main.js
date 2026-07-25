@@ -376,6 +376,7 @@
     global.MagicGems.isAutoplayOn = () => autoplayEnabled;
     global.MagicGems.getInteractionState = () => interaction;
     global.MagicGems.getAutoplayKeyLog = () => autoplayKeyLog.slice();
+    global.MagicGems.AUTOPLAY_STEP_MS = AUTOPLAY_STEP_MS;
   }
 
   document.addEventListener('DOMContentLoaded', boot);
