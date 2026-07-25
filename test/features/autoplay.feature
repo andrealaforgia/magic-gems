@@ -18,14 +18,30 @@ Feature: A hands-off demo mode that plays the game itself (AUTOPLAY)
     Then the autoplay instruction line reads "A — TOGGLE AUTOPLAY" in the pixel font, below the grid
 
   @E3 @E4 @e2e
-  Scenario: Autoplay genuinely plays a full move at a watchable pace
+  Scenario: Autoplay genuinely plays a full move, rapidly (AUTOPLAY-SPEED)
     Given I open "index.html" directly as a file:// URL with no server or build step
     And I record the classified gem grid
     When I press "a"
     Then autoplay is on
     And the board settles into a new, match-free arrangement within a generous real timeout
-    And the classified gem grid differs from the recorded one
-    And at least one real interval between two autoplay key presses was not instantaneous
+    And the classified gem grid has changed from the one recorded before, within a generous real timeout
+    And autoplay's own key presses follow one another rapidly, clearly faster than manual play's own pace
+
+  @E3 @e2e
+  Scenario: Autoplay stays coherent across multiple rapid cycles (AUTOPLAY-SPEED)
+    Given I open "index.html" directly as a file:// URL with no server or build step
+    When I press "a"
+    Then autoplay is on
+    And the score strictly increases across at least 3 separate real completions within a generous timeout
+    And the board settles into a new, match-free arrangement within a generous real timeout
+
+  # E2 of AUTOPLAY-SPEED (board transitions may run faster than the deliberate
+  # 9.3 pace specifically during autoplay) is exercised by every scenario above
+  # that waits on a real completion at autoplay's own cadence - none of them need
+  # anywhere near the pre-existing 400ms/700ms manual-pace durations to settle.
+  # E5 of AUTOPLAY-SPEED (manual play keeps its normal deliberate 9.3 pace,
+  # unaffected) is animation-timing.feature's own coverage, untouched by this
+  # refinement since it never toggles autoplay on. Not re-derived here.
 
   @E5
   Scenario: While autoplay is on, normal player input is ignored
@@ -59,14 +75,14 @@ Feature: A hands-off demo mode that plays the game itself (AUTOPLAY)
   # green with autoplay wired in. Not re-derived here.
 
   @E9 @integration
-  Scenario: A full fresh-load play cycle shows the hint, plays itself with feedback, then returns control cleanly
+  Scenario: A full fresh-load play cycle shows the hint, rips through multiple cycles with feedback, then returns control cleanly
     Given I open "index.html" directly as a file:// URL with no server or build step
     Then the autoplay instruction line reads "A — TOGGLE AUTOPLAY" in the pixel font, below the grid
     And the score is displayed and reads exactly 0
     When I press "a"
     Then the autoplay indicator reads "Autoplaying..." above the score, blinking, in the pixel font
+    And the score strictly increases across at least 3 separate real completions within a generous timeout
     And the board settles into a new, match-free arrangement within a generous real timeout
-    Then the score reads greater than 0
     When I press "a"
     Then the autoplay indicator is hidden
     And autoplay is off

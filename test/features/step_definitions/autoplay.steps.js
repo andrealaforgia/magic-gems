@@ -42,31 +42,69 @@ Then('the autoplay instruction line reads {string} in the pixel font, below the 
   assert.ok(result.isBelowGrid, 'expected the autoplay instruction line to sit below the grid');
 });
 
+// Autoplay (unlike a one-off manual commit) never stops on its own - by the
+// time a `!isAnimating()` wait resolves, its own next move may already be
+// under way again at AUTOPLAY-SPEED's much faster cadence, so a single
+// wait-then-sample pair can still catch a mid-cascade frame. Retries the whole
+// wait+sample within one generous overall deadline rather than trusting any
+// single sample.
+async function waitForRealCondition(page, checkFn, overallTimeoutMs) {
+  const deadline = Date.now() + overallTimeoutMs;
+  let lastResult = false;
+  while (Date.now() < deadline) {
+    await page.waitForFunction(() => !window.MagicGems.isAnimating(), null, { timeout: overallTimeoutMs });
+    lastResult = await checkFn();
+    if (lastResult) return;
+  }
+  assert.ok(lastResult, 'expected condition to hold on some settled sample within the overall timeout');
+}
+
 Then('the board settles into a new, match-free arrangement within a generous real timeout', async function () {
   // isAnimating() alone is trivially true-before-anything-starts right after
   // toggling autoplay on (its own first move hasn't been scheduled yet) - wait
   // for real evidence a completion actually happened first (the score leaving
-  // its starting value, true for every fresh-load scenario using this step),
-  // then for any in-flight animation to fully drain.
+  // its starting value, true for every fresh-load scenario using this step).
   await this.page.waitForFunction(
     () => document.getElementById('score').textContent !== 'Score: 0',
     null,
     { timeout: 15000 }
   );
-  await this.page.waitForFunction(() => !window.MagicGems.isAnimating(), null, { timeout: 15000 });
-  const grid = await classifiedGrid(this.page);
-  const noMatch = await this.page.evaluate((g) => window.MagicGems.hasMatch(g), grid);
-  assert.equal(noMatch, false, 'expected the settled board to have no remaining match');
+  await waitForRealCondition(
+    this.page,
+    async () => {
+      const grid = await classifiedGrid(this.page);
+      return (await this.page.evaluate((g) => window.MagicGems.hasMatch(g), grid)) === false;
+    },
+    15000
+  );
 });
 
-Then('at least one real interval between two autoplay key presses was not instantaneous', async function () {
+Then('the classified gem grid has changed from the one recorded before, within a generous real timeout', async function () {
+  await waitForRealCondition(
+    this.page,
+    async () => {
+      const grid = await classifiedGrid(this.page);
+      return JSON.stringify(grid) !== JSON.stringify(this.recordedGemGrid);
+    },
+    15000
+  );
+});
+
+// SPEC 12.2 (re-frozen, AUTOPLAY-SPEED): checked against the previously-delivered
+// watchable pace (450ms between key presses). Some gaps legitimately include a
+// cascade/fall/revive animation settling between moves (longer, and variable
+// with chain depth) - the smallest observed gap is the robust signal instead,
+// reflecting two steps within the very same move with no animation wait between
+// them, i.e. autoplay's own base cadence directly.
+Then('autoplay\'s own key presses follow one another rapidly, clearly faster than manual play\'s own pace', async function () {
   const log = await this.page.evaluate(() => window.MagicGems.getAutoplayKeyLog());
   assert.ok(log.length >= 2, `expected at least two logged autoplay key presses, got ${log.length}`);
   const gaps = [];
   for (let i = 1; i < log.length; i++) gaps.push(log[i].ts - log[i - 1].ts);
+  assert.ok(gaps.every((gap) => gap >= 0), 'expected every gap to be a real, non-negative elapsed time');
   assert.ok(
-    gaps.some((gap) => gap >= 300),
-    `expected at least one real, visible gap (>=300ms) between autoplay key presses, got ${JSON.stringify(gaps)}`
+    Math.min(...gaps) < 200,
+    `expected the fastest observed gap to reflect a brisk cadence well under the previous 450ms pace, got ${JSON.stringify(gaps)}`
   );
 });
 
@@ -83,6 +121,25 @@ Then('injecting an arrow key, SPACE, and Escape right now has no effect on the c
     return { before, after };
   });
   assert.equal(result.after, result.before, 'expected injected input to have no effect on cursor/selection while autoplay is on');
+});
+
+Then('the score strictly increases across at least 3 separate real completions within a generous timeout', async function () {
+  await this.page.evaluate(() => {
+    window.__scoreIncreaseCount = 0;
+    window.__lastSeenScore = 0;
+  });
+  await this.page.waitForFunction(
+    () => {
+      const current = Number(document.getElementById('score').textContent.replace('Score: ', ''));
+      if (current > window.__lastSeenScore) {
+        window.__scoreIncreaseCount++;
+        window.__lastSeenScore = current;
+      }
+      return window.__scoreIncreaseCount >= 3;
+    },
+    null,
+    { timeout: 15000 }
+  );
 });
 
 Then('the score reads greater than 0', async function () {
