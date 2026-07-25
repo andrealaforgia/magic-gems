@@ -51,8 +51,10 @@ Then('the autoplay instruction line reads {string} in the pixel font, below the 
 async function waitForRealCondition(page, checkFn, overallTimeoutMs) {
   const deadline = Date.now() + overallTimeoutMs;
   let lastResult = false;
-  while (Date.now() < deadline) {
-    await page.waitForFunction(() => !window.MagicGems.isAnimating(), null, { timeout: overallTimeoutMs });
+  while (true) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    await page.waitForFunction(() => !window.MagicGems.isAnimating(), null, { timeout: remaining });
     lastResult = await checkFn();
     if (lastResult) return;
   }
