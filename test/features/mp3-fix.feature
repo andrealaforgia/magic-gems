@@ -6,7 +6,7 @@ Feature: Each player fully controls their own side of the match (MP3-FIX)
   # E1: this is the regression this whole behaviour exists to fix - MP3's own
   # E6 only ever proved the HOST (the first page) could play; the joiner (the
   # second page) was never exercised and turned out not to work live.
-  @E1
+  @E1 @integration
   Scenario: The joining player can play their own grid, not just the host
     Given two independent pages are both at the multiplayer lobby's name entry step
     When the first page enters the name "Alice" and generates a code
@@ -18,7 +18,7 @@ Feature: Each player fully controls their own side of the match (MP3-FIX)
     Then the second page's local match score has increased
     And the first page's remote match board is unchanged from the recorded one
 
-  @E2
+  @E2 @integration
   Scenario: Score and its multiplier are independent per player, not shared
     Given two independent pages are both at the multiplayer lobby's name entry step
     When the first page enters the name "Alice" and generates a code
@@ -30,7 +30,7 @@ Feature: Each player fully controls their own side of the match (MP3-FIX)
     Then the first page's local match score has increased
     And the second page's own local match score is still exactly zero
 
-  @E3
+  @E3 @integration
   Scenario: S toggles only the local player's own audio
     Given two independent pages are both at the multiplayer lobby's name entry step
     When the first page enters the name "Alice" and generates a code
@@ -41,7 +41,7 @@ Feature: Each player fully controls their own side of the match (MP3-FIX)
     Then audio is muted on the second page
     And audio is unmuted on the first page
 
-  @E4
+  @E4 @integration
   Scenario: A toggles only the local player's own autoplay
     Given two independent pages are both at the multiplayer lobby's name entry step
     When the first page enters the name "Alice" and generates a code
@@ -52,7 +52,7 @@ Feature: Each player fully controls their own side of the match (MP3-FIX)
     Then autoplay is on on the first page
     And autoplay is off on the second page
 
-  @E5
+  @E5 @integration
   Scenario: ESC opens the exit overlay for one player only, and Y exits just that player's match
     Given two independent pages are both at the multiplayer lobby's name entry step
     When the first page enters the name "Alice" and generates a code

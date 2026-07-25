@@ -668,12 +668,12 @@ test('two different callers (by IP) are rate-limited independently', async (t) =
   assert.equal(res.status, 200, 'a different caller must not inherit another IP\'s exhausted limit');
 });
 
-test('the rate-limit bucket trims whitespace around the first x-forwarded-for address', async (t) => {
+test('a caller whose x-forwarded-for has unusual but valid spacing is still correctly rate-limited by its own IP', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   const fetchImpl = fakeUpstash();
-  // Pre-exhausts the TRIMMED key specifically - if the real IP were used
-  // untrimmed (with its own leading space intact), it would land in a
-  // different bucket and this request would wrongly succeed.
+  // Pre-exhausts this caller's real IP address specifically - if it were
+  // bucketed under some other, differently-formatted key instead, this
+  // request would wrongly succeed instead of being turned away.
   fetchImpl.rateLimitCounts.set('magic-gems:ratelimit:2.2.2.2', RATE_LIMIT_MAX_REQUESTS);
   withFetch(t, fetchImpl);
 
@@ -681,10 +681,7 @@ test('the rate-limit bucket trims whitespace around the first x-forwarded-for ad
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
       // A space between the first address and its comma is unusual but
-      // valid for this header - unlike LEADING whitespace on the whole
-      // header value (stripped by header normalization before this code
-      // ever sees it), this one survives split(',')[0] intact and needs
-      // its own trim().
+      // valid for this header.
       headers: { 'x-forwarded-for': '2.2.2.2 ,5.5.5.5' },
       body: JSON.stringify({ action: 'create', hostName: 'Alice' }),
     })
