@@ -1,5 +1,5 @@
 export default {
-  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js', 'src/animation.js', 'src/sprite-layout.js', 'src/render.js', 'src/scoring.js', 'src/multiplier-bar.js', 'src/audio-cues.js', 'src/spin.js', 'src/autoplay.js'],
+  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js', 'src/animation.js', 'src/sprite-layout.js', 'src/render.js', 'src/scoring.js', 'src/multiplier-bar.js', 'src/audio-cues.js', 'src/spin.js', 'src/autoplay.js', 'src/session.js'],
   testRunner: 'command',
   commandRunner: { command: 'npm run test:unit' },
   reporters: ['clear-text', 'progress'],
@@ -279,3 +279,11 @@ export default {
 // open/suspend/Y/N returns), and committing an ordinary swap never asserted
 // `exitConfirmOpen`/`exitRequested` stayed false - both fixed by adding the
 // missing assertions to the existing/new tests, not by waiving anything.
+//
+// (MP2) src/session.js (new - the stub-backed lobby's pure code-gen/session
+// logic, SPEC 13.2): 45/47 killed, 1 timeout, 1 equivalent survivor. The
+// survivor is the same UMD-wrapper case as every file above. The timeout is
+// generateSessionCode's own `for` loop increment flipped (i++ -> i--), which
+// makes the loop condition stay true forever - a genuine infinite loop, not a
+// gap: the mutant is definitively caught (the suite can never pass with it),
+// just via a hang instead of a failed assertion. No test change needed.

@@ -441,6 +441,133 @@
     };
   }
 
+  // MP2: the multiplayer lobby - name entry, then Generate/Enter code (the
+  // Generate/Enter choice itself follows the same 13.1.3 convention as the
+  // start screen: arrow keys move the highlighted option, SPACE/ENTER
+  // confirms), then either a waiting screen or a code-entry screen, ending at
+  // a shared "ready" screen once both players are present. Wired to a
+  // TEMPORARY stub session mechanism (src/session-store.js) behind the same
+  // seam the real REST-backed store (MP2-STORE) swaps into later.
+  function initMultiplayerLobby() {
+    const { createStubSessionClient } = global.MagicGems;
+    const lobbyEl = document.getElementById('mp-lobby');
+    const nameStepEl = document.getElementById('mp-name-step');
+    const nameInputEl = document.getElementById('mp-name-input');
+    const choiceStepEl = document.getElementById('mp-choice-step');
+    const generateBtn = document.getElementById('mp-generate-btn');
+    const enterBtn = document.getElementById('mp-enter-btn');
+    const generateStepEl = document.getElementById('mp-generate-step');
+    const generatedCodeEl = document.getElementById('mp-generated-code');
+    const enterStepEl = document.getElementById('mp-enter-step');
+    const codeInputEl = document.getElementById('mp-code-input');
+    const enterErrorEl = document.getElementById('mp-enter-error');
+    const readyStepEl = document.getElementById('mp-ready-step');
+    const readyNamesEl = document.getElementById('mp-ready-names');
+
+    const sessionClient = createStubSessionClient();
+    const choiceOptions = [generateBtn, enterBtn];
+    const steps = { name: nameStepEl, choice: choiceStepEl, generate: generateStepEl, enter: enterStepEl, ready: readyStepEl };
+    let step = 'name';
+    let choiceIndex = 0;
+    let playerName = '';
+    let unsubscribe = null;
+
+    function showStep(next) {
+      step = next;
+      Object.entries(steps).forEach(([key, el]) => {
+        el.hidden = key !== step;
+      });
+    }
+
+    function updateChoiceHighlight() {
+      choiceOptions.forEach((btn, i) => btn.classList.toggle('selected', i === choiceIndex));
+    }
+
+    // SPEC 13.2.4: once a second player is present, both screens - the host's
+    // (via the subscription below) and the joiner's own (right after it
+    // joins) - land on the same shared "ready" state showing both names.
+    function showReady(session) {
+      if (unsubscribe) {
+        unsubscribe();
+        unsubscribe = null;
+      }
+      readyNamesEl.textContent = session.players.join(' & ');
+      showStep('ready');
+    }
+
+    function chooseGenerate() {
+      sessionClient.createSession(playerName).then((session) => {
+        generatedCodeEl.textContent = session.code;
+        showStep('generate');
+        unsubscribe = sessionClient.subscribeSession(session.code, (updated) => {
+          if (updated && updated.players.length === 2) showReady(updated);
+        });
+      });
+    }
+
+    function chooseEnter() {
+      enterErrorEl.textContent = '';
+      codeInputEl.value = '';
+      showStep('enter');
+      codeInputEl.focus();
+    }
+
+    function submitEnterCode() {
+      const code = codeInputEl.value.trim().toUpperCase();
+      if (!code) return;
+      sessionClient.joinSession(code, playerName).then((result) => {
+        if (result.ok) {
+          showReady(result.session);
+        } else {
+          enterErrorEl.textContent = result.error === 'not-found' ? 'Code not found' : 'Session is full';
+        }
+      });
+    }
+
+    function submitName() {
+      const trimmed = nameInputEl.value.trim();
+      if (!trimmed) return;
+      playerName = trimmed;
+      choiceIndex = 0;
+      updateChoiceHighlight();
+      showStep('choice');
+    }
+
+    document.addEventListener('keydown', (event) => {
+      if (lobbyEl.hidden) return;
+      if (step === 'name') {
+        if (event.key === 'Enter') submitName();
+        return;
+      }
+      if (step === 'choice') {
+        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+          choiceIndex = choiceIndex === 0 ? 1 : 0;
+          updateChoiceHighlight();
+        } else if (event.key === ' ' || event.key === 'Enter') {
+          if (choiceIndex === 0) chooseGenerate();
+          else chooseEnter();
+        }
+        return;
+      }
+      if (step === 'enter') {
+        if (event.key === 'Enter') submitEnterCode();
+      }
+    });
+
+    generateBtn.addEventListener('click', chooseGenerate);
+    enterBtn.addEventListener('click', chooseEnter);
+
+    function startLobby() {
+      lobbyEl.hidden = false;
+      playerName = '';
+      nameInputEl.value = '';
+      showStep('name');
+      nameInputEl.focus();
+    }
+
+    return { startLobby };
+  }
+
   // SPEC 13.1: the start screen gates which mode actually boots - the 8x8
   // board/game itself isn't shown, and single-player's own boot doesn't run,
   // until the player picks one.
@@ -450,7 +577,7 @@
   function initStartScreen() {
     const startScreenEl = document.getElementById('start-screen');
     const gameEl = document.getElementById('game');
-    const mpPlaceholderEl = document.getElementById('mp-placeholder');
+    const multiplayerLobby = initMultiplayerLobby();
     const singleBtn = document.getElementById('start-single-btn');
     const multiplayerBtn = document.getElementById('start-multiplayer-btn');
     const options = [singleBtn, multiplayerBtn];
@@ -472,10 +599,9 @@
         gameEl.hidden = false;
         startSinglePlayer(returnToStartScreen);
       } else {
-        // SPEC 13.1.2: multiplayer's real lobby isn't built yet - a placeholder
-        // screen stands in for it, and single-player must stay fully reachable
-        // regardless (this path never touches the single-player boot path).
-        mpPlaceholderEl.hidden = false;
+        // SPEC 13.1.2/13.2: the real lobby (MP2) - single-player must stay
+        // fully reachable regardless (this path never touches its boot path).
+        multiplayerLobby.startLobby();
       }
     }
 

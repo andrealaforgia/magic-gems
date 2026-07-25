@@ -47,13 +47,13 @@ Then('the game board is shown', async function () {
   await waitForBoardReady(this.page);
 });
 
-Then('the multiplayer placeholder screen is shown', async function () {
-  const result = await this.page.evaluate(() => {
-    const el = document.getElementById('mp-placeholder');
-    return { hidden: el.hidden, text: el.textContent };
-  });
-  assert.equal(result.hidden, false, 'expected the multiplayer placeholder to be visible');
-  assert.ok(result.text.length > 0, 'expected the placeholder to say something, not be empty');
+Then('the multiplayer lobby\'s name entry step is shown', async function () {
+  const result = await this.page.evaluate(() => ({
+    lobbyHidden: document.getElementById('mp-lobby').hidden,
+    nameStepHidden: document.getElementById('mp-name-step').hidden,
+  }));
+  assert.equal(result.lobbyHidden, false, 'expected the multiplayer lobby to be visible');
+  assert.equal(result.nameStepHidden, false, 'expected the lobby to open on its name entry step');
 });
 
 Then('{string} is highlighted as selected', async function (label) {

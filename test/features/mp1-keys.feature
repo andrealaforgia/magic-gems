@@ -18,12 +18,14 @@ Feature: The start screen is fully keyboard-operable (MP1-KEYS)
     When I press "Space"
     Then the game board is shown
 
+  # Originally checked a temporary placeholder screen; superseded once the real
+  # lobby landed (MP2) - now checks the lobby's own first step appears.
   @E3 @E4
   Scenario: ENTER confirms the highlighted Multiplayer choice
     Given I open "index.html" at the raw start screen, with no mode chosen yet
     When I press "ArrowDown"
     And I press "Enter"
-    Then the multiplayer placeholder screen is shown
+    Then the multiplayer lobby's name entry step is shown
 
   @E3
   Scenario: ENTER also confirms Single-player, equivalently to SPACE

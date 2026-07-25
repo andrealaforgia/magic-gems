@@ -16,7 +16,13 @@ AfterAll(async function () {
 });
 
 Before(async function () {
-  this.page = await browser.newPage();
+  // An explicit context (not the browser.newPage() shorthand) so MP2's own
+  // cross-page scenario can open a second page sharing this same context's
+  // localStorage via this.page.context().newPage() - the shorthand's own
+  // default context doesn't support that (Playwright throws "Please use
+  // browser.newContext()").
+  this.context = await browser.newContext();
+  this.page = await this.context.newPage();
   this.consoleErrors = [];
   this.page.on('console', (msg) => {
     if (msg.type() === 'error') this.consoleErrors.push(msg.text());
@@ -25,5 +31,5 @@ Before(async function () {
 });
 
 After(async function () {
-  if (this.page) await this.page.close();
+  await this.context.close();
 });

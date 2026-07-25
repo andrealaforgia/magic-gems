@@ -191,8 +191,9 @@ body {
 
 /* No unconditional `display` declaration of its own (unlike #game/.start-screen
    above) - so there's nothing to beat the browser's own [hidden] { display:
-   none } UA rule, and no override is needed (same reasoning as .mp-placeholder,
-   which the same way relies on plain default display: block while hidden). */
+   none } UA rule, and no override is needed (same reasoning as .mp-lobby and
+   its own step divs below, which the same way rely on plain default display
+   while hidden). */
 .exit-confirm {
   position: absolute;
   top: 50%;
@@ -210,9 +211,73 @@ body {
   max-width: 80vw;
 }
 
-.mp-placeholder {
+.mp-lobby {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
   color: #f2f6ff;
   font-family: 'Press Start 2P', monospace;
-  font-size: 1.2rem;
   text-align: center;
+}
+
+/* Same override as #game/.start-screen above - this class's own display:flex
+   would otherwise beat the hidden attribute a step keeps while inactive. */
+.mp-lobby[hidden] {
+  display: none;
+}
+
+.mp-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* Same override as #game/.start-screen/.mp-lobby above - each step's own
+   display:flex would otherwise beat the hidden attribute the inactive steps
+   keep set. */
+.mp-step[hidden] {
+  display: none;
+}
+
+.mp-lobby-title {
+  font-size: 1.2rem;
+  margin: 0;
+}
+
+.mp-text-input {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 1rem;
+  color: #f2f6ff;
+  background: #1a1a1a;
+  border: 4px solid #ffffff;
+  border-radius: 4px;
+  padding: 0.6rem 0.8rem;
+  text-align: center;
+}
+
+.mp-text-input:focus {
+  outline: none;
+  border-color: #00e5a8;
+}
+
+.mp-code-display {
+  font-size: 1.8rem;
+  letter-spacing: 0.3rem;
+}
+
+.mp-lobby-status {
+  font-size: 0.9rem;
+  color: #8a8a95;
+}
+
+.mp-lobby-error {
+  font-size: 0.8rem;
+  color: #ff6b6b;
+  min-height: 1em;
+}
+
+.mp-ready-names {
+  font-size: 1rem;
 }

@@ -23,11 +23,15 @@ Feature: A start screen offers Single-player or Multiplayer (MP1)
   # is game-match-loop.feature's own E1/E4 - already proven there for the same
   # single-player game this starts, not re-derived here.
 
+  # E3 originally checked a temporary placeholder screen; superseded once the
+  # real lobby landed (MP2) - now checks the lobby's own first step appears,
+  # with its own deeper flow (name -> generate/enter -> ready) covered by
+  # mp2.feature, not re-derived here.
   @E3
-  Scenario: Choosing Multiplayer advances to a distinct placeholder screen, not the board
+  Scenario: Choosing Multiplayer advances to the multiplayer lobby, not the board
     Given I open "index.html" at the raw start screen, with no mode chosen yet
     When I choose "Multiplayer" from the start screen
-    Then the multiplayer placeholder screen is shown
+    Then the multiplayer lobby's name entry step is shown
     And the game board is not shown
 
   @E5 @integration

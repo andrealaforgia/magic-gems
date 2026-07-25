@@ -12,7 +12,31 @@
     <button id="start-single-btn" class="start-btn" type="button">Single-player</button>
     <button id="start-multiplayer-btn" class="start-btn" type="button">Multiplayer</button>
   </div>
-  <div id="mp-placeholder" class="mp-placeholder" hidden>Multiplayer coming soon...</div>
+  <div id="mp-lobby" class="mp-lobby" hidden>
+    <div id="mp-name-step" class="mp-step">
+      <h2 class="mp-lobby-title">ENTER YOUR NAME</h2>
+      <input id="mp-name-input" class="mp-text-input" type="text" maxlength="20" autocomplete="off" />
+    </div>
+    <div id="mp-choice-step" class="mp-step" hidden>
+      <h2 class="mp-lobby-title">JOIN A GAME</h2>
+      <button id="mp-generate-btn" class="start-btn" type="button">Generate code</button>
+      <button id="mp-enter-btn" class="start-btn" type="button">Enter code</button>
+    </div>
+    <div id="mp-generate-step" class="mp-step" hidden>
+      <h2 class="mp-lobby-title">YOUR CODE</h2>
+      <div id="mp-generated-code" class="mp-code-display"></div>
+      <div class="mp-lobby-status">Waiting for a second player...</div>
+    </div>
+    <div id="mp-enter-step" class="mp-step" hidden>
+      <h2 class="mp-lobby-title">ENTER CODE</h2>
+      <input id="mp-code-input" class="mp-text-input" type="text" maxlength="10" autocomplete="off" />
+      <div id="mp-enter-error" class="mp-lobby-error"></div>
+    </div>
+    <div id="mp-ready-step" class="mp-step" hidden>
+      <h2 class="mp-lobby-title">READY</h2>
+      <div id="mp-ready-names" class="mp-ready-names"></div>
+    </div>
+  </div>
   <div id="game" hidden>
     <div id="autoplay-indicator" class="autoplay-indicator">Autoplaying...</div>
     <div id="hud">
@@ -28,6 +52,8 @@
     <div id="audio-toast" class="audio-toast"></div>
     <div id="exit-confirm" class="exit-confirm" hidden>Are you sure you want to exit the game? Y/N</div>
   </div>
+  <script src="src/session.js"></script>
+  <script src="src/session-store.js"></script>
   <script src="src/gems.js"></script>
   <script src="src/spin.js"></script>
   <script src="src/sprite-layout.js"></script>
