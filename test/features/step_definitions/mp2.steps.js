@@ -14,6 +14,13 @@ When('I type {string} into the lobby code field', async function (text) {
   await this.page.keyboard.type(text);
 });
 
+When('I corrupt the stored session data for code {string}', async function (code) {
+  await this.page.evaluate(
+    (code) => localStorage.setItem('magic-gems:session:' + code, 'not valid json{{{'),
+    code
+  );
+});
+
 Then("the lobby's {string} option is highlighted as selected", async function (label) {
   const buttonId = label === 'Generate code' ? '#mp-generate-btn' : '#mp-enter-btn';
   const otherButtonId = label === 'Generate code' ? '#mp-enter-btn' : '#mp-generate-btn';

@@ -5,9 +5,21 @@
 
   const STORAGE_PREFIX = 'magic-gems:session:';
 
+  // Security review (commit e9d7a3d): a malformed stored value - reachable
+  // only by hand-editing this browser's own localStorage, never from another
+  // tab or origin - must read as "no session" rather than throwing and
+  // freezing whichever lobby step is waiting on it.
+  function parseStoredSession(raw) {
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch (err) {
+      return null;
+    }
+  }
+
   function readStoredSession(code) {
-    const raw = localStorage.getItem(STORAGE_PREFIX + code);
-    return raw ? JSON.parse(raw) : null;
+    return parseStoredSession(localStorage.getItem(STORAGE_PREFIX + code));
   }
 
   function writeStoredSession(session) {
@@ -46,7 +58,7 @@
         const key = STORAGE_PREFIX + code;
         function handler(event) {
           if (event.key !== key) return;
-          onChange(event.newValue ? JSON.parse(event.newValue) : null);
+          onChange(parseStoredSession(event.newValue));
         }
         global.addEventListener('storage', handler);
         return () => global.removeEventListener('storage', handler);
