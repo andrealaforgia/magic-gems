@@ -55,3 +55,17 @@ Then('the multiplayer placeholder screen is shown', async function () {
   assert.equal(result.hidden, false, 'expected the multiplayer placeholder to be visible');
   assert.ok(result.text.length > 0, 'expected the placeholder to say something, not be empty');
 });
+
+Then('{string} is highlighted as selected', async function (label) {
+  const buttonId = label === 'Single-player' ? '#start-single-btn' : '#start-multiplayer-btn';
+  const otherButtonId = label === 'Single-player' ? '#start-multiplayer-btn' : '#start-single-btn';
+  const result = await this.page.evaluate(
+    ({ buttonId, otherButtonId }) => ({
+      selected: document.querySelector(buttonId).classList.contains('selected'),
+      otherSelected: document.querySelector(otherButtonId).classList.contains('selected'),
+    }),
+    { buttonId, otherButtonId }
+  );
+  assert.equal(result.selected, true, `expected "${label}" to be highlighted as selected`);
+  assert.equal(result.otherSelected, false, 'expected only one option to be highlighted at a time');
+});

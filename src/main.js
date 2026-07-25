@@ -399,32 +399,53 @@
   // SPEC 13.1: the start screen gates which mode actually boots - the 8x8
   // board/game itself isn't shown, and single-player's own boot doesn't run,
   // until the player picks one.
+  // SPEC 13.1.3: fully keyboard-operable, the same standard every future
+  // multiplayer menu follows - arrow keys move the highlighted selection,
+  // SPACE or ENTER confirms it, equivalently to a direct click on either option.
   function initStartScreen() {
     const startScreenEl = document.getElementById('start-screen');
     const gameEl = document.getElementById('game');
     const mpPlaceholderEl = document.getElementById('mp-placeholder');
+    const singleBtn = document.getElementById('start-single-btn');
+    const multiplayerBtn = document.getElementById('start-multiplayer-btn');
+    const options = [singleBtn, multiplayerBtn];
+    let selectedIndex = 0;
+    let confirmed = false;
 
-    document.getElementById('start-single-btn').addEventListener(
-      'click',
-      () => {
-        startScreenEl.hidden = true;
+    function updateHighlight() {
+      options.forEach((btn, i) => btn.classList.toggle('selected', i === selectedIndex));
+    }
+    updateHighlight();
+
+    // Guarded by `confirmed` (not `{ once: true }`) so a click and a keyboard
+    // confirm can never both fire - whichever input method the player used.
+    function confirmMode(mode) {
+      if (confirmed) return;
+      confirmed = true;
+      startScreenEl.hidden = true;
+      if (mode === 'single') {
         gameEl.hidden = false;
         startSinglePlayer();
-      },
-      { once: true }
-    );
-
-    // SPEC 13.1.2: multiplayer's real lobby isn't built yet - a placeholder
-    // screen stands in for it, and single-player must stay fully reachable
-    // regardless (this button never touches the single-player boot path).
-    document.getElementById('start-multiplayer-btn').addEventListener(
-      'click',
-      () => {
-        startScreenEl.hidden = true;
+      } else {
+        // SPEC 13.1.2: multiplayer's real lobby isn't built yet - a placeholder
+        // screen stands in for it, and single-player must stay fully reachable
+        // regardless (this path never touches the single-player boot path).
         mpPlaceholderEl.hidden = false;
-      },
-      { once: true }
-    );
+      }
+    }
+
+    singleBtn.addEventListener('click', () => confirmMode('single'));
+    multiplayerBtn.addEventListener('click', () => confirmMode('multiplayer'));
+
+    document.addEventListener('keydown', (event) => {
+      if (confirmed) return;
+      if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+        selectedIndex = selectedIndex === 0 ? 1 : 0;
+        updateHighlight();
+      } else if (event.key === ' ' || event.key === 'Enter') {
+        confirmMode(selectedIndex === 0 ? 'single' : 'multiplayer');
+      }
+    });
   }
 
   document.addEventListener('DOMContentLoaded', initStartScreen);

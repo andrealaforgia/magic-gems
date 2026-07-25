@@ -235,3 +235,8 @@ clauses are added as each iteration lands.)
   - 13.1.2 Choosing Multiplayer proceeds to the multiplayer lobby (§13.2). Until the
     lobby is built, Multiplayer leads to a placeholder screen indicating multiplayer
     is coming; single-player must remain fully playable regardless.
+  - 13.1.3 The start screen — and every multiplayer menu/screen (§13.2 onward) — is
+    fully operable by keyboard alone, consistent with the game's keyboard-only
+    control scheme (§6): the selection moves between options with the arrow keys and
+    is confirmed with SPACE or ENTER, with the current choice visibly highlighted. A
+    mouse is never required anywhere in the game.
