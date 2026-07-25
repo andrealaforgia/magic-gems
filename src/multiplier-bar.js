@@ -18,7 +18,7 @@
   // padding - a template literal already renders an integer with no leading
   // zeros, so `x100`/`x7`/`x0` fall out directly.
   function multiplierMessage(multiplier) {
-    return `Score multiplier going down! Hurry up! x${multiplier}`;
+    return `Score multiplier: x${multiplier}`;
   }
 
   global.MagicGems = global.MagicGems || {};

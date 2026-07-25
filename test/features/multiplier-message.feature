@@ -6,7 +6,7 @@ Feature: A message on the multiplier bar warns the player it is draining (MULTIP
   @E1 @e2e
   Scenario: The multiplier box shows the fixed SPEC 10.9 message, in white, with the current value after "x"
     Given I open "index.html" directly as a file:// URL with no server or build step
-    Then the multiplier box shows "Score multiplier going down! Hurry up! x100" in white
+    Then the multiplier box shows "Score multiplier: x100" in white
 
   @E2 @e2e
   Scenario: The shown number keeps pace with the countdown and never disagrees with the bar's own value
@@ -21,7 +21,7 @@ Feature: A message on the multiplier bar warns the player it is draining (MULTIP
   @E3 @component
   Scenario: The message is still shown, reading x0, once the multiplier has fully drained (SPEC 10.9.2)
     Given I open "index.html" directly as a file:// URL with no server or build step
-    Then the multiplier message for a real elapsed time past the drain window reads "Score multiplier going down! Hurry up! x0"
+    Then the multiplier message for a real elapsed time past the drain window reads "Score multiplier: x0"
 
   @E4 @component
   Scenario: The message text is white with a legibility outline, sitting within the bar's own box, independent of fill level (SPEC 10.9.3)
@@ -31,7 +31,7 @@ Feature: A message on the multiplier bar warns the player it is draining (MULTIP
   @E5 @integration
   Scenario: A full fresh-load play cycle shows the drain message correctly through every phase
     Given I open "index.html" directly as a file:// URL with no server or build step
-    Then the multiplier box shows "Score multiplier going down! Hurry up! x100" in white
+    Then the multiplier box shows "Score multiplier: x100" in white
     And the time multiplier bar is displayed and is full, at exactly 100
     Given I record the current score
     And I locate an adjacent swap that would produce a match on the live board
@@ -46,4 +46,4 @@ Feature: A message on the multiplier bar warns the player it is draining (MULTIP
     And the multiplier bar's fill is anchored to the bar's left edge
     And the multiplier bar has a thick white border
     And the live page reproduces the frozen worked example: a lone 3-run, 30s gap, scores exactly 35
-    And the multiplier message for a real elapsed time past the drain window reads "Score multiplier going down! Hurry up! x0"
+    And the multiplier message for a real elapsed time past the drain window reads "Score multiplier: x0"

@@ -1,7 +1,7 @@
 import { Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
 
-const MESSAGE_PREFIX = 'Score multiplier going down! Hurry up! x';
+const MESSAGE_PREFIX = 'Score multiplier: x';
 
 function readMultiplierMessage(page) {
   return page.evaluate(() => document.getElementById('multiplier-message').textContent);

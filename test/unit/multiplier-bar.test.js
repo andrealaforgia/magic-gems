@@ -53,13 +53,13 @@ test('multiplierBarColor clamps fraction to [0, 1]', () => {
   assert.equal(multiplierBarColor(1.5), multiplierBarColor(1));
 });
 
-test('multiplierMessage carries the SPEC 10.9 fixed text with the value appended after "x", no padding', () => {
-  assert.equal(multiplierMessage(100), 'Score multiplier going down! Hurry up! x100');
-  assert.equal(multiplierMessage(7), 'Score multiplier going down! Hurry up! x7');
-  assert.equal(multiplierMessage(0), 'Score multiplier going down! Hurry up! x0');
+test('multiplierMessage carries the SPEC 10.9 fixed label with the value appended after "x", no padding', () => {
+  assert.equal(multiplierMessage(100), 'Score multiplier: x100');
+  assert.equal(multiplierMessage(7), 'Score multiplier: x7');
+  assert.equal(multiplierMessage(0), 'Score multiplier: x0');
 });
 
 test('multiplierMessage never zero-pads the value (SPEC 10.9)', () => {
   assert.equal(multiplierMessage(5).endsWith('x5'), true);
-  assert.notEqual(multiplierMessage(5), 'Score multiplier going down! Hurry up! x005');
+  assert.notEqual(multiplierMessage(5), 'Score multiplier: x005');
 });
