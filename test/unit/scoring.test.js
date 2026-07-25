@@ -74,7 +74,7 @@ test('computeCompletionScore reproduces the frozen worked example: a 3-run and 4
 test('computeCompletionScore multiplies by the combo factor, never divides by it', () => {
   // With comboFactor=1 (every worked example above), multiplying and dividing by
   // it are indistinguishable - use comboFactor=2 so they diverge: multiplying
-  // doubles the score (140), dividing would roughly halve it (35).
+  // doubles the score (70), dividing would roughly halve it (17).
   assert.equal(computeCompletionScore(50, 70, 2), 70);
 });
 

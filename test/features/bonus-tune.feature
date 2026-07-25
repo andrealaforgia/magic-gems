@@ -22,7 +22,7 @@ Feature: Tuned decaying time bonus - lower ceiling (BONUS-TUNE)
     When I commit that swap
     Then the time multiplier bar reset to full, exactly 100, at the moment of that commit's completion
 
-  @E2 @E3 @component
+  @E2 @component
   Scenario: Both re-frozen worked examples reproduce exactly at the new 100 maximum
     Given I open "index.html" directly as a file:// URL with no server or build step
     Then the live page reproduces the frozen worked example: a lone 3-run, 30s gap, scores exactly 35
@@ -34,7 +34,7 @@ Feature: Tuned decaying time bonus - lower ceiling (BONUS-TUNE)
     Then the live page reproduces the frozen worked example: a lone 3-run, 100s gap, scores exactly 0
     And a real completion of a 3-run on the live page contributes exactly 50 base points before any multiplier
 
-  @component
+  @E3 @component
   Scenario: The multiplier bar's fill depletes from left to right, anchored to the bar's left edge
     Given I open "index.html" directly as a file:// URL with no server or build step
     Then the multiplier bar's fill is anchored to the bar's left edge
