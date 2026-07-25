@@ -4,7 +4,7 @@ Feature: The split-screen match layout fits the viewport width (MP-LAYOUT)
   So I can see and play my own side of the match on any device
 
   @E1 @E2 @E3 @E4 @E5 @E6 @integration
-  Scenario Outline: A real match fits the viewport horizontally at both a narrow and a wide screen size, with the local grid fully visible, the gauge vertically centred, and everything else still correctly positioned and playable
+  Scenario Outline: A real match fits the viewport horizontally at a narrow, a mid-range, and a wide screen size, with the local grid fully visible, the gauge vertically centred, and everything else still correctly positioned and playable
     Given two independent pages are both at the multiplayer lobby's name entry step
     And the first page's viewport is <width> by <height>
     When the first page enters the name "Alice" and generates a code
@@ -20,4 +20,5 @@ Feature: The split-screen match layout fits the viewport width (MP-LAYOUT)
     Examples:
       | width | height |
       | 375   | 700    |
+      | 560   | 750    |
       | 1280  | 800    |
