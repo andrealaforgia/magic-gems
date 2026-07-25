@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadMagicGems } from '../support/load-src.js';
 
-const { multiplierFraction, multiplierBarColor } = loadMagicGems([
+const { multiplierFraction, multiplierBarColor, multiplierMessage } = loadMagicGems([
   new URL('../../src/multiplier-bar.js', import.meta.url),
 ]);
 
@@ -51,4 +51,15 @@ test('multiplierBarColor shifts smoothly (linearly) with fraction, not in fixed 
 test('multiplierBarColor clamps fraction to [0, 1]', () => {
   assert.equal(multiplierBarColor(-0.5), multiplierBarColor(0));
   assert.equal(multiplierBarColor(1.5), multiplierBarColor(1));
+});
+
+test('multiplierMessage carries the SPEC 10.9 fixed text with the value appended after "x", no padding', () => {
+  assert.equal(multiplierMessage(100), 'Score multiplier going down! Hurry up! x100');
+  assert.equal(multiplierMessage(7), 'Score multiplier going down! Hurry up! x7');
+  assert.equal(multiplierMessage(0), 'Score multiplier going down! Hurry up! x0');
+});
+
+test('multiplierMessage never zero-pads the value (SPEC 10.9)', () => {
+  assert.equal(multiplierMessage(5).endsWith('x5'), true);
+  assert.notEqual(multiplierMessage(5), 'Score multiplier going down! Hurry up! x005');
 });

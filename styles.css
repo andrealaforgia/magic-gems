@@ -40,6 +40,7 @@ body {
 }
 
 .multiplier-bar {
+  position: relative;
   flex: 1 1 auto;
   min-width: 0;
   height: 32px;
@@ -58,6 +59,26 @@ body {
   height: 100%;
   width: 100%;
   background: hsl(120, 70%, 45%);
+}
+
+/* Absolutely positioned over the whole box (not the fill), so it stays put and
+   fully legible regardless of the fill's own width or colour (SPEC 10.9.3) - a
+   black outline (text-shadow in all 4 directions) keeps the white text readable
+   against every point of the green -> yellow -> red gradient (SPEC 10.8). */
+.multiplier-message {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 0.6rem;
+  color: #ffffff;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.6rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+  pointer-events: none;
 }
 
 #board {

@@ -43,6 +43,7 @@
       TIME_MULTIPLIER_START,
       multiplierFraction,
       multiplierBarColor,
+      multiplierMessage,
       createSoundPlayer,
       soundsForKeydown,
       soundsForCascadeStep,
@@ -52,6 +53,7 @@
     const canvas = document.getElementById('board');
     const scoreEl = document.getElementById('score');
     const multiplierFillEl = document.getElementById('multiplier-fill');
+    const multiplierMessageEl = document.getElementById('multiplier-message');
     const audioToastEl = document.getElementById('audio-toast');
     const autoplayIndicatorEl = document.getElementById('autoplay-indicator');
     const cellSize = computeCellSize(window.innerWidth, window.innerHeight, BOARD_SIZE);
@@ -88,6 +90,7 @@
       // just a precise, unrounded readout of the same underlying value for tests -
       // recovering it from a CSS percentage would lose precision.
       multiplierFillEl.dataset.multiplier = timeMultiplier;
+      multiplierMessageEl.textContent = multiplierMessage(timeMultiplier);
     }
 
     function cellCenter(row, col) {

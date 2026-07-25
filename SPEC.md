@@ -157,6 +157,16 @@ quickly and in bigger, chained clears.
   left. The bar is coloured with a green → yellow → red gradient. It is enclosed in
   a THICK WHITE box (border) around its full extent. The bar is sized to be clearly
   visible and prominent — a generous height, not a thin sliver.
+- 10.9 The multiplier box (10.8) carries the message `Score multiplier going down!
+  Hurry up! x###` in WHITE, where `###` is the current value of the time multiplier
+  (10.5) with no padding — so `x100` at a fresh reset, `x7` near the end, `x0` at the
+  floor.
+  - 10.9.1 The number changes in step with the countdown (10.5), so the message and
+    the bar's fill never disagree about the multiplier.
+  - 10.9.2 The message is present at all times, including when the multiplier has
+    reached 0.
+  - 10.9.3 The text sits within the box, over the bar, and remains legible against
+    the bar's gradient (10.8) at every fill level and at every point along the bar.
 
 ## 11. Sound
 The game plays short sound effects that respond to what the player does and what

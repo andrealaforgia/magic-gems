@@ -264,3 +264,9 @@ export default {
 // decay-rate tests already hardened when this file was first created (see the
 // (SCORE) note above), just re-pointed at the new ceiling and its own new
 // multiplier-reaches-0-scores-0 case (SPEC 10.7.2).
+//
+// (B2, MULTIPLIER-MESSAGE) src/multiplier-bar.js's new multiplierMessage
+// (SPEC 10.9): re-run scoped to this file. 18/19 mutants killed, 1 equivalent
+// survivor - the same UMD-wrapper case as every file above. No gap: the fixed
+// text, the "x"-prefix, and no-padding claims are each pinned by their own
+// unit test.

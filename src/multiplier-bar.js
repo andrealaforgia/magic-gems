@@ -14,7 +14,15 @@
     return `hsl(${hue}, 70%, 45%)`;
   }
 
+  // SPEC 10.9: the multiplier's own current value appended after "x", with no
+  // padding - a template literal already renders an integer with no leading
+  // zeros, so `x100`/`x7`/`x0` fall out directly.
+  function multiplierMessage(multiplier) {
+    return `Score multiplier going down! Hurry up! x${multiplier}`;
+  }
+
   global.MagicGems = global.MagicGems || {};
   global.MagicGems.multiplierFraction = multiplierFraction;
   global.MagicGems.multiplierBarColor = multiplierBarColor;
+  global.MagicGems.multiplierMessage = multiplierMessage;
 })(typeof window !== 'undefined' ? window : globalThis);
