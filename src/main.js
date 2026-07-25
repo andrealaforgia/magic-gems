@@ -500,9 +500,13 @@
 
     // SPEC 13.3.1: both clients derive the identical starting board from the
     // shared session code - left active (not restored) for the rest of this
-    // match's own refills too, so luck stays equal there as well; there's no
-    // "leave the match" path yet this iteration to restore it from.
-    activateSeededRandom(session.code);
+    // match's own refills too, so luck stays equal there as well. Security
+    // review (commit 30e7755): the restore handle is captured now, even with
+    // no caller yet, so a future "leave the match" path has it ready rather
+    // than needing to thread it through again - session codes are generated
+    // server-side (a separate process), never client-side, so this seeded
+    // Math.random can never influence one regardless.
+    const restoreRealRandom = activateSeededRandom(session.code);
     const startingBoard = ensurePlayable(generateBoard()).board;
 
     let board = startingBoard;
