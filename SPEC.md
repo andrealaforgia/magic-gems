@@ -270,3 +270,20 @@ clauses are added as each iteration lands.)
     a later iteration).
   - 13.2.5 Each player's name is shared through the session so both can see the
     other's name.
+
+- 13.3 The match (split-screen). When both players are ready (§13.2.4), the match
+  begins on both clients.
+  - 13.3.1 Both clients build the IDENTICAL starting board, generated deterministically
+    from the shared session code (a seeded fill obeying §4.2 — no pre-existing match).
+    Refills after clears draw from the same seeded sequence on both clients, so luck
+    is equal; thereafter each player plays their own board.
+  - 13.3.2 The screen splits into two halves: the LOCAL player's grid, name, and score
+    on the LEFT; the REMOTE player's grid and name on the RIGHT. Each grid keeps the
+    look of §3/§9 (sprites, chessboard cells).
+  - 13.3.3 The CENTRE shows a countdown timer starting at 10:00 and counting down, and
+    a tug-of-war gauge indicating who is winning by score (even at the start). Text in
+    the display font (§9.4).
+  - 13.3.4 The local player plays their own grid with the usual controls (§6). The
+    remote grid shows the opponent's board; live updates of the opponent's moves and
+    score arrive in the next iteration (§13.4) — until then the remote side shows the
+    shared starting board.

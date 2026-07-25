@@ -441,6 +441,286 @@
     };
   }
 
+  // MP3: the split-screen match. Deliberately its own small, standalone loop
+  // rather than a shared refactor of startSinglePlayer's own closure above -
+  // this iteration's local grid needs only the plain SPEC 6 controls (no
+  // autoplay/audio/exit-confirm/multiplier-bar, none of which MP3's own SPEC
+  // citations include), and reusing startSinglePlayer's much larger, already
+  // heavily-tested closure wasn't worth the regression risk for that much
+  // smaller a feature set. Duplicates the swap/cascade/revive animation
+  // plumbing single-player already has; a shared extraction is better done
+  // once a later multiplayer iteration actually needs the fuller feature set
+  // here too, not speculatively now.
+  async function startMatch(session, localName) {
+    const {
+      generateBoard,
+      drawBoard,
+      drawInteraction,
+      drawFragments,
+      createInteractionState,
+      handleGameKey,
+      computeCellSize,
+      ensurePlayable,
+      applySwap,
+      createFragments,
+      updateFragments,
+      pruneOffscreen,
+      computeSourceTile,
+      clampProgress,
+      interpolatePoint,
+      loadGemSprites,
+      summedBasePoints,
+      computeTimeMultiplier,
+      comboFactorForChainIndex,
+      computeCompletionScore,
+      reviveSpinFrameIndex,
+      activateSeededRandom,
+    } = global.MagicGems;
+
+    const matchEl = document.getElementById('match');
+    const localCanvas = document.getElementById('match-local-board');
+    const remoteCanvas = document.getElementById('match-remote-board');
+    const localNameEl = document.getElementById('match-local-name');
+    const remoteNameEl = document.getElementById('match-remote-name');
+    const localScoreEl = document.getElementById('match-local-score');
+    const timerEl = document.getElementById('match-timer');
+    const gaugeFillEl = document.getElementById('match-gauge-fill');
+
+    const localIndex = session.players[0] === localName ? 0 : 1;
+    const remoteIndex = 1 - localIndex;
+    localNameEl.textContent = session.players[localIndex];
+    remoteNameEl.textContent = session.players[remoteIndex];
+
+    const cellSize = computeCellSize(window.innerWidth * 0.4, window.innerHeight, BOARD_SIZE);
+    localCanvas.width = remoteCanvas.width = BOARD_SIZE * cellSize;
+    localCanvas.height = remoteCanvas.height = BOARD_SIZE * cellSize;
+    const localCtx = localCanvas.getContext('2d');
+    const remoteCtx = remoteCanvas.getContext('2d');
+    const sprites = await loadGemSprites();
+
+    // SPEC 13.3.1: both clients derive the identical starting board from the
+    // shared session code - left active (not restored) for the rest of this
+    // match's own refills too, so luck stays equal there as well; there's no
+    // "leave the match" path yet this iteration to restore it from.
+    activateSeededRandom(session.code);
+    const startingBoard = ensurePlayable(generateBoard()).board;
+
+    let board = startingBoard;
+    let interaction = createInteractionState();
+    let fragments = [];
+    let animationQueue = [];
+    let activeAnimation = null;
+    let score = 0;
+    let lastCompletionTimeMs = performance.now();
+
+    // SPEC 13.3.3: a sensible 50/50 state even at 0-0, not a divide-by-zero -
+    // the remote score stays 0 this iteration (13.3.4's own scope boundary).
+    function updateGauge() {
+      const remoteScore = 0;
+      const total = score + remoteScore;
+      const fraction = total === 0 ? 0.5 : score / total;
+      gaugeFillEl.style.width = `${fraction * 100}%`;
+    }
+    updateGauge();
+
+    function applyCompletionScore(runLengths, chainPosition) {
+      const now = performance.now();
+      const timeMultiplier = computeTimeMultiplier(now - lastCompletionTimeMs);
+      const base = summedBasePoints(runLengths);
+      const combo = comboFactorForChainIndex(chainPosition);
+      score += computeCompletionScore(base, timeMultiplier, combo);
+      lastCompletionTimeMs = now;
+      localScoreEl.textContent = `Score: ${score}`;
+      updateGauge();
+    }
+
+    function cellCenter(row, col) {
+      return { x: col * cellSize + cellSize / 2, y: row * cellSize + cellSize / 2 };
+    }
+
+    function spawnFragments(clearEvents) {
+      for (const { row, col, gemType } of clearEvents) {
+        const { x, y } = cellCenter(row, col);
+        const sprite = sprites[gemType][0];
+        const tagged = createFragments(x, y).map((f, i) => ({
+          ...f,
+          sprite,
+          ...computeSourceTile(i, sprite.naturalWidth, sprite.naturalHeight),
+        }));
+        fragments = fragments.concat(tagged);
+      }
+    }
+
+    function buildSwapPhase(fromBoard, a, b) {
+      return {
+        kind: 'swap',
+        duration: SWAP_DURATION_MS,
+        board: fromBoard,
+        a,
+        b,
+        gemAtA: fromBoard[a.row][a.col],
+        gemAtB: fromBoard[b.row][b.col],
+      };
+    }
+
+    function buildCascadePhase(step, chainPosition) {
+      return { kind: 'cascade', duration: FALL_DURATION_MS, chainPosition, ...step };
+    }
+
+    function buildRevivePhase(finalBoard, changedCells) {
+      return { kind: 'revive', duration: REVIVE_SPIN_DURATION_MS, board: finalBoard, changedCells };
+    }
+
+    function buildQueue(result) {
+      const queue = [];
+      if (result.swapAnimation) {
+        const { a, b, preSwapBoard, matched } = result.swapAnimation;
+        queue.push(buildSwapPhase(preSwapBoard, a, b));
+        if (!matched) queue.push(buildSwapPhase(applySwap(preSwapBoard, a, b), a, b));
+      }
+      result.steps.forEach((step, i) => queue.push(buildCascadePhase(step, i + 1)));
+      if (result.revived) queue.push(buildRevivePhase(result.board, result.changedCells));
+      return queue;
+    }
+
+    function advanceQueue() {
+      if (activeAnimation !== null || animationQueue.length === 0) return;
+      activeAnimation = animationQueue.shift();
+      activeAnimation.elapsedMs = 0;
+      if (activeAnimation.kind === 'cascade') {
+        spawnFragments(activeAnimation.clearEvents);
+        applyCompletionScore(activeAnimation.runLengths, activeAnimation.chainPosition);
+      }
+    }
+
+    function renderSwapPhase(anim, progress) {
+      const hidden = new Set([`${anim.a.row},${anim.a.col}`, `${anim.b.row},${anim.b.col}`]);
+      drawBoard(localCtx, anim.board, cellSize, sprites, hidden);
+      const posA = cellCenter(anim.a.row, anim.a.col);
+      const posB = cellCenter(anim.b.row, anim.b.col);
+      const spriteA = interpolatePoint(posA.x, posA.y, posB.x, posB.y, progress);
+      const spriteB = interpolatePoint(posB.x, posB.y, posA.x, posA.y, progress);
+      global.MagicGems.drawGem(localCtx, anim.gemAtA, spriteA.x, spriteA.y, cellSize, sprites);
+      global.MagicGems.drawGem(localCtx, anim.gemAtB, spriteB.x, spriteB.y, cellSize, sprites);
+    }
+
+    function renderCascadePhase(anim, progress) {
+      const hidden = new Set();
+      for (const e of anim.clearEvents) hidden.add(`${e.row},${e.col}`);
+      for (const e of anim.fallEvents) {
+        hidden.add(`${e.fromRow},${e.col}`);
+        hidden.add(`${e.toRow},${e.col}`);
+      }
+      for (const e of anim.refillEvents) hidden.add(`${e.row},${e.col}`);
+
+      drawBoard(localCtx, anim.boardBeforeStep, cellSize, sprites, hidden);
+
+      for (const e of anim.fallEvents) {
+        const from = cellCenter(e.fromRow, e.col);
+        const to = cellCenter(e.toRow, e.col);
+        const pos = interpolatePoint(from.x, from.y, to.x, to.y, progress);
+        global.MagicGems.drawGem(localCtx, e.gemType, pos.x, pos.y, cellSize, sprites);
+      }
+      for (const e of anim.refillEvents) {
+        const fromX = e.col * cellSize + cellSize / 2;
+        const fromY = e.startRow * cellSize + cellSize / 2;
+        const to = cellCenter(e.row, e.col);
+        const pos = interpolatePoint(fromX, fromY, to.x, to.y, progress);
+        global.MagicGems.drawGem(localCtx, e.gemType, pos.x, pos.y, cellSize, sprites);
+      }
+    }
+
+    function renderRevivePhase(anim, progress) {
+      const hidden = new Set(anim.changedCells.map((c) => `${c.row},${c.col}`));
+      drawBoard(localCtx, anim.board, cellSize, sprites, hidden);
+      const frameIndex = reviveSpinFrameIndex(progress);
+      for (const { row, col } of anim.changedCells) {
+        const { x, y } = cellCenter(row, col);
+        global.MagicGems.drawGem(localCtx, anim.board[row][col], x, y, cellSize, sprites, frameIndex);
+      }
+    }
+
+    function renderLocal() {
+      if (activeAnimation) {
+        const progress = clampProgress(activeAnimation.elapsedMs, activeAnimation.duration);
+        if (activeAnimation.kind === 'swap') renderSwapPhase(activeAnimation, progress);
+        else if (activeAnimation.kind === 'revive') renderRevivePhase(activeAnimation, progress);
+        else renderCascadePhase(activeAnimation, progress);
+      } else {
+        drawBoard(localCtx, board, cellSize, sprites);
+      }
+      drawInteraction(localCtx, interaction, cellSize);
+      drawFragments(localCtx, fragments);
+    }
+
+    // SPEC 13.3.4: no live opponent updates yet this iteration - the remote
+    // side always shows the one shared starting board, never re-rendered.
+    function renderRemote() {
+      drawBoard(remoteCtx, startingBoard, cellSize, sprites);
+    }
+
+    renderLocal();
+    renderRemote();
+
+    function dispatchGameKey(key) {
+      const next = handleGameKey({ board, interaction, exitConfirmOpen: false }, key);
+      if (next.board !== board || next.interaction !== interaction) {
+        board = next.board;
+        interaction = next.interaction;
+        animationQueue = animationQueue.concat(buildQueue(next));
+        advanceQueue();
+        renderLocal();
+      }
+    }
+
+    const MATCH_DURATION_MS = 10 * 60 * 1000;
+    const matchStartMs = performance.now();
+
+    function formatTimer(remainingMs) {
+      const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      return `${minutes}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    let lastFrameTimeMs = null;
+    function tick(frameTimeMs) {
+      const isActive = fragments.length > 0 || activeAnimation !== null || animationQueue.length > 0;
+      if (isActive) {
+        if (lastFrameTimeMs !== null) {
+          const dtMs = frameTimeMs - lastFrameTimeMs;
+          if (fragments.length > 0) {
+            fragments = pruneOffscreen(updateFragments(fragments, dtMs / 1000), localCanvas.height);
+          }
+          if (activeAnimation) {
+            activeAnimation.elapsedMs += dtMs;
+            if (activeAnimation.elapsedMs >= activeAnimation.duration) activeAnimation = null;
+          }
+          advanceQueue();
+          renderLocal();
+        }
+        lastFrameTimeMs = frameTimeMs;
+      } else {
+        lastFrameTimeMs = null;
+      }
+      timerEl.textContent = formatTimer(MATCH_DURATION_MS - (performance.now() - matchStartMs));
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+
+    function onKeydown(event) {
+      if (matchEl.hidden) return;
+      dispatchGameKey(event.key);
+    }
+    document.addEventListener('keydown', onKeydown);
+
+    // Test-observability seam, same convention as single-player's own.
+    global.MagicGems.getMatchInteractionState = () => interaction;
+    global.MagicGems.getMatchBoard = () => board;
+    global.MagicGems.getMatchRemoteBoard = () => startingBoard;
+    global.MagicGems.getMatchScore = () => score;
+  }
+
   // MP2/MP2-STORE: the multiplayer lobby - name entry, then Generate/Enter
   // code (the Generate/Enter choice itself follows the same 13.1.3 convention
   // as the start screen: arrow keys move the highlighted option, SPACE/ENTER
@@ -486,7 +766,12 @@
 
     // SPEC 13.2.4: once a second player is present, both screens - the host's
     // (via the subscription below) and the joiner's own (right after it
-    // joins) - land on the same shared "ready" state showing both names.
+    // joins) - land on the same shared "ready" state showing both names, then
+    // (SPEC 13.2.4/13.3) both proceed into the match shortly after - a brief,
+    // visible confirmation rather than an instant cut two independent clients
+    // could otherwise show for inconsistent durations.
+    const READY_TO_MATCH_DELAY_MS = 1200;
+
     function showReady(session) {
       if (unsubscribe) {
         unsubscribe();
@@ -494,6 +779,11 @@
       }
       readyNamesEl.textContent = session.players.join(' & ');
       showStep('ready');
+      setTimeout(() => {
+        lobbyEl.hidden = true;
+        document.getElementById('match').hidden = false;
+        startMatch(session, playerName);
+      }, READY_TO_MATCH_DELAY_MS);
     }
 
     function chooseGenerate() {

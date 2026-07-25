@@ -34,6 +34,22 @@
     return board;
   }
 
+  // SPEC 13.3.1: two independent clients joined to the same session code must
+  // build the identical starting board, and their subsequent refills must
+  // draw from the same seeded sequence too - so Math.random stays replaced
+  // until the caller explicitly restores it (covering not just this call's
+  // own generateBoard(), but every later resolveCascade/ensurePlayable draw
+  // this client's own match session makes), rather than only the one board.
+  function activateSeededRandom(seedString) {
+    const { hashStringToSeed, createSeededRandom } = global.MagicGems;
+    const seededRandom = createSeededRandom(hashStringToSeed(seedString));
+    const realRandom = Math.random;
+    Math.random = seededRandom;
+    return function restoreRealRandom() {
+      Math.random = realRandom;
+    };
+  }
+
   function hasMatch(board) {
     const size = board.length;
 
@@ -60,4 +76,5 @@
 
   global.MagicGems.generateBoard = generateBoard;
   global.MagicGems.hasMatch = hasMatch;
+  global.MagicGems.activateSeededRandom = activateSeededRandom;
 })(typeof window !== 'undefined' ? window : globalThis);

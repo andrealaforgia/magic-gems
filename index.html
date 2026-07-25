@@ -38,6 +38,23 @@
       <div id="mp-ready-names" class="mp-ready-names"></div>
     </div>
   </div>
+  <div id="match" class="match" hidden>
+    <div class="match-side">
+      <div id="match-local-name" class="match-player-name"></div>
+      <div id="match-local-score" class="match-score">Score: 0</div>
+      <canvas id="match-local-board"></canvas>
+    </div>
+    <div class="match-center">
+      <div id="match-timer" class="match-timer">10:00</div>
+      <div id="match-gauge" class="match-gauge">
+        <div id="match-gauge-fill" class="match-gauge-fill"></div>
+      </div>
+    </div>
+    <div class="match-side">
+      <div id="match-remote-name" class="match-player-name"></div>
+      <canvas id="match-remote-board"></canvas>
+    </div>
+  </div>
   <div id="game" hidden>
     <div id="autoplay-indicator" class="autoplay-indicator">Autoplaying...</div>
     <div id="hud">
@@ -56,6 +73,7 @@
   <script src="src/session.js"></script>
   <script src="src/session-api-client.js"></script>
   <script src="src/gems.js"></script>
+  <script src="src/seeded-random.js"></script>
   <script src="src/spin.js"></script>
   <script src="src/sprite-layout.js"></script>
   <script src="src/sprites.js"></script>

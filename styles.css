@@ -281,3 +281,71 @@ body {
 .mp-ready-names {
   font-size: 1rem;
 }
+
+.match {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.5rem;
+}
+
+/* Same override as #game/.start-screen/.mp-lobby/.mp-step above - this
+   class's own display:flex would otherwise beat the hidden attribute. */
+.match[hidden] {
+  display: none;
+}
+
+.match-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.match-player-name {
+  color: #f2f6ff;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.9rem;
+}
+
+.match-score {
+  color: #f2f6ff;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.8rem;
+}
+
+.match-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding-top: 2rem;
+  min-width: 8rem;
+}
+
+.match-timer {
+  color: #f2f6ff;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 1.2rem;
+}
+
+.match-gauge {
+  position: relative;
+  width: 8rem;
+  height: 20px;
+  background: #1a1a1a;
+  border: 4px solid #ffffff;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+/* Anchored to the gauge's own left edge; its own width IS the local player's
+   share of the bar (SPEC 13.3.3's "tug-of-war"), so 50% width means an even
+   contest, not merely "half full". */
+.match-gauge-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 50%;
+  background: #00e5a8;
+}

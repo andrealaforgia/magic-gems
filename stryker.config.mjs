@@ -1,5 +1,5 @@
 export default {
-  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js', 'src/animation.js', 'src/sprite-layout.js', 'src/render.js', 'src/scoring.js', 'src/multiplier-bar.js', 'src/audio-cues.js', 'src/spin.js', 'src/autoplay.js', 'src/session.js', 'api/magic-gems/_upstash.js', 'api/magic-gems/session.js'],
+  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js', 'src/animation.js', 'src/sprite-layout.js', 'src/render.js', 'src/scoring.js', 'src/multiplier-bar.js', 'src/audio-cues.js', 'src/spin.js', 'src/autoplay.js', 'src/session.js', 'src/seeded-random.js', 'api/magic-gems/_upstash.js', 'api/magic-gems/session.js'],
   testRunner: 'command',
   commandRunner: { command: 'npm run test:unit' },
   reporters: ['clear-text', 'progress'],
@@ -298,3 +298,17 @@ export default {
 // collision - fixed by pinning Math.random to force one directly, not
 // narrated), the JSON response content-type, and several exact error-message
 // strings on the 400/405 paths.
+//
+// (MP3) src/seeded-random.js (new) + src/board.js (unchanged logic, re-run
+// alongside it): board.js's own survivors are the same wouldMatchAt/hasMatch/
+// UMD-wrapper equivalents already documented above (matching patterns, not
+// re-derived here), plus 8 timeouts from generateBoard's own do-while loop
+// spinning forever when wouldMatchAt is weakened enough to never accept a
+// gem - also a genuine, definitively-caught mutant, just via a hang. One real
+// gap this pass found and fixed on seeded-random.js: both createSeededRandom
+// and hashStringToSeed were only ever tested for GENERAL properties
+// (determinism, range, variety) - real, but loose enough that an internally-
+// consistent wrong variant (an arithmetic sign flip in mulberry32, an off-by-
+// one loop bound in the FNV-1a hash) still satisfied every one of them.
+// Fixed by pinning the exact known output for a fixed seed/string, not by
+// tightening the property tests further.
