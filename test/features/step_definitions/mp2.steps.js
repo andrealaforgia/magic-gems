@@ -1,10 +1,10 @@
 import { Given, When, Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
-import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { getStaticBaseUrl } from '../support/static-server.js';
 
-const PROJECT_ROOT = path.resolve(import.meta.dirname, '..', '..', '..');
-const INDEX_HTML_URL = pathToFileURL(path.join(PROJECT_ROOT, 'index.html')).href;
+Given('I open the game over a real local server, at the raw start screen, with no mode chosen yet', async function () {
+  await this.page.goto(`${getStaticBaseUrl()}/index.html`);
+});
 
 When('I type {string} into the lobby name field', async function (text) {
   await this.page.keyboard.type(text);
@@ -14,13 +14,13 @@ When('I type {string} into the lobby code field', async function (text) {
   await this.page.keyboard.type(text);
 });
 
-When('I corrupt the stored session data for code {string}', async function (code) {
-  // Reads the real prefix from the live page (QA review, commits 933da80 +
-  // 66dec96) rather than duplicating the literal - if it ever changes in
-  // production, this step notices instead of silently drifting.
-  await this.page.evaluate(
-    (code) => localStorage.setItem(window.MagicGems.SESSION_STORAGE_PREFIX + code, 'not valid json{{{'),
-    code
+// MP2-STORE (commit TBD): overrides the default in-memory mock installed in
+// Before with one that always fails, simulating an unreachable/misconfigured
+// real store (E4) - registered after the default route, so Playwright's
+// most-recently-registered-first matching gives this one precedence.
+Given('the session store is simulated as unavailable', async function () {
+  await this.context.route('**/api/magic-gems/session**', (route) =>
+    route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'store unavailable' }) })
   );
 });
 
@@ -39,6 +39,10 @@ Then("the lobby's {string} option is highlighted as selected", async function (l
 });
 
 Then('a random 10-letter code is displayed', async function () {
+  // Generating a code is a real network round trip (create) - waits for it
+  // to actually land rather than sampling immediately, which raced the
+  // in-flight request often enough to be a real, not theoretical, flake.
+  await this.page.waitForSelector('#mp-generate-step:not([hidden])', { timeout: 3000 });
   const result = await this.page.evaluate(() => ({
     hidden: document.getElementById('mp-generate-step').hidden,
     code: document.getElementById('mp-generated-code').textContent,
@@ -58,12 +62,29 @@ Then("the lobby's code entry step is shown", async function () {
 });
 
 Then('the lobby reports the code was not found', async function () {
+  // Joining is a real network round trip - waits for the response to land
+  // rather than sampling immediately.
+  await this.page.waitForFunction(
+    () => document.getElementById('mp-enter-error').textContent.length > 0,
+    null,
+    { timeout: 3000 }
+  );
   const text = await this.page.evaluate(() => document.getElementById('mp-enter-error').textContent);
   assert.ok(/not found/i.test(text), `expected a "not found" error, got "${text}"`);
 });
 
+Then('the lobby shows a clear error instead of hanging', async function () {
+  await this.page.waitForFunction(
+    () => document.getElementById('mp-lobby-error').textContent.length > 0,
+    null,
+    { timeout: 3000 }
+  );
+  const text = await this.page.evaluate(() => document.getElementById('mp-lobby-error').textContent);
+  assert.ok(text.length > 0, 'expected a non-empty lobby error message');
+});
+
 async function enterLobbyAsMultiplayer(page) {
-  await page.goto(INDEX_HTML_URL);
+  await page.goto(`${getStaticBaseUrl()}/index.html`);
   await page.click('#start-multiplayer-btn');
   await page.waitForSelector('#mp-name-step:not([hidden])');
 }

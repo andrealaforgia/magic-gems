@@ -13,6 +13,7 @@
     <button id="start-multiplayer-btn" class="start-btn" type="button">Multiplayer</button>
   </div>
   <div id="mp-lobby" class="mp-lobby" hidden>
+    <div id="mp-lobby-error" class="mp-lobby-error"></div>
     <div id="mp-name-step" class="mp-step">
       <h2 class="mp-lobby-title">ENTER YOUR NAME</h2>
       <input id="mp-name-input" class="mp-text-input" type="text" maxlength="20" autocomplete="off" />
@@ -53,7 +54,7 @@
     <div id="exit-confirm" class="exit-confirm" hidden>Are you sure you want to exit the game? Y/N</div>
   </div>
   <script src="src/session.js"></script>
-  <script src="src/session-store.js"></script>
+  <script src="src/session-api-client.js"></script>
   <script src="src/gems.js"></script>
   <script src="src/spin.js"></script>
   <script src="src/sprite-layout.js"></script>

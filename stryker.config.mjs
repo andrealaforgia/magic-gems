@@ -1,5 +1,5 @@
 export default {
-  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js', 'src/animation.js', 'src/sprite-layout.js', 'src/render.js', 'src/scoring.js', 'src/multiplier-bar.js', 'src/audio-cues.js', 'src/spin.js', 'src/autoplay.js', 'src/session.js'],
+  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js', 'src/animation.js', 'src/sprite-layout.js', 'src/render.js', 'src/scoring.js', 'src/multiplier-bar.js', 'src/audio-cues.js', 'src/spin.js', 'src/autoplay.js', 'src/session.js', 'api/magic-gems/_upstash.js', 'api/magic-gems/session.js'],
   testRunner: 'command',
   commandRunner: { command: 'npm run test:unit' },
   reporters: ['clear-text', 'progress'],
@@ -287,3 +287,14 @@ export default {
 // makes the loop condition stay true forever - a genuine infinite loop, not a
 // gap: the mutant is definitively caught (the suite can never pass with it),
 // just via a hang instead of a failed assertion. No test change needed.
+//
+// (MP2-STORE) api/magic-gems/_upstash.js + session.js (new - the real
+// REST-backed session service, SPEC 13.2, replacing MP2's stub): 80/80
+// mutants killed, 100% - the UMD-wrapper case doesn't apply here since these
+// are plain Node ESM modules, not browser globals. Real gaps this pass found
+// and fixed, not waived: the storage key prefix and TTL constants, the `||`
+// vs `&&` in resolveConfig's missing-config check (only tested both-missing,
+// not one-of-two-missing), the collision-retry loop (no test forced an actual
+// collision - fixed by pinning Math.random to force one directly, not
+// narrated), the JSON response content-type, and several exact error-message
+// strings on the 400/405 paths.

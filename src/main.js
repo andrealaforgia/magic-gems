@@ -441,16 +441,17 @@
     };
   }
 
-  // MP2: the multiplayer lobby - name entry, then Generate/Enter code (the
-  // Generate/Enter choice itself follows the same 13.1.3 convention as the
-  // start screen: arrow keys move the highlighted option, SPACE/ENTER
+  // MP2/MP2-STORE: the multiplayer lobby - name entry, then Generate/Enter
+  // code (the Generate/Enter choice itself follows the same 13.1.3 convention
+  // as the start screen: arrow keys move the highlighted option, SPACE/ENTER
   // confirms), then either a waiting screen or a code-entry screen, ending at
-  // a shared "ready" screen once both players are present. Wired to a
-  // TEMPORARY stub session mechanism (src/session-store.js) behind the same
-  // seam the real REST-backed store (MP2-STORE) swaps into later.
+  // a shared "ready" screen once both players are present. Wired to the real
+  // REST-backed session service (api/magic-gems/session.js), which MP2's own
+  // temporary localStorage stub previously stood in for.
   function initMultiplayerLobby() {
-    const { createStubSessionClient } = global.MagicGems;
+    const { createRestSessionClient } = global.MagicGems;
     const lobbyEl = document.getElementById('mp-lobby');
+    const lobbyErrorEl = document.getElementById('mp-lobby-error');
     const nameStepEl = document.getElementById('mp-name-step');
     const nameInputEl = document.getElementById('mp-name-input');
     const choiceStepEl = document.getElementById('mp-choice-step');
@@ -464,7 +465,7 @@
     const readyStepEl = document.getElementById('mp-ready-step');
     const readyNamesEl = document.getElementById('mp-ready-names');
 
-    const sessionClient = createStubSessionClient();
+    const sessionClient = createRestSessionClient();
     const choiceOptions = [generateBtn, enterBtn];
     const steps = { name: nameStepEl, choice: choiceStepEl, generate: generateStepEl, enter: enterStepEl, ready: readyStepEl };
     let step = 'name';
@@ -496,13 +497,21 @@
     }
 
     function chooseGenerate() {
-      sessionClient.createSession(playerName).then((session) => {
-        generatedCodeEl.textContent = session.code;
-        showStep('generate');
-        unsubscribe = sessionClient.subscribeSession(session.code, (updated) => {
-          if (updated && updated.players.length === 2) showReady(updated);
+      lobbyErrorEl.textContent = '';
+      sessionClient
+        .createSession(playerName)
+        .then((session) => {
+          generatedCodeEl.textContent = session.code;
+          showStep('generate');
+          unsubscribe = sessionClient.subscribeSession(session.code, (updated) => {
+            if (updated && updated.players.length === 2) showReady(updated);
+          });
+        })
+        // E4: a misconfigured/unavailable store must surface a clear error,
+        // never leave the player staring at an unresponsive choice screen.
+        .catch((err) => {
+          lobbyErrorEl.textContent = 'Could not create a session - please try again.';
         });
-      });
     }
 
     function chooseEnter() {
@@ -515,13 +524,22 @@
     function submitEnterCode() {
       const code = codeInputEl.value.trim().toUpperCase();
       if (!code) return;
-      sessionClient.joinSession(code, playerName).then((result) => {
-        if (result.ok) {
-          showReady(result.session);
-        } else {
-          enterErrorEl.textContent = result.error === 'not-found' ? 'Code not found' : 'Session is full';
-        }
-      });
+      enterErrorEl.textContent = '';
+      lobbyErrorEl.textContent = '';
+      sessionClient
+        .joinSession(code, playerName)
+        .then((result) => {
+          if (result.ok) {
+            showReady(result.session);
+          } else {
+            enterErrorEl.textContent = result.error === 'not-found' ? 'Code not found' : 'Session is full';
+          }
+        })
+        // E4: a misconfigured/unavailable store must surface a clear error,
+        // never leave the player staring at an unresponsive code entry step.
+        .catch((err) => {
+          lobbyErrorEl.textContent = 'Could not reach the session service - please try again.';
+        });
     }
 
     function submitName() {
@@ -559,6 +577,7 @@
 
     function startLobby() {
       lobbyEl.hidden = false;
+      lobbyErrorEl.textContent = '';
       playerName = '';
       nameInputEl.value = '';
       showStep('name');

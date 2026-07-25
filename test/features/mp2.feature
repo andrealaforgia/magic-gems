@@ -16,9 +16,13 @@ Feature: The multiplayer lobby creates and joins sessions by a shared code (MP2)
     When I press "ArrowUp"
     Then the lobby's "Generate code" option is highlighted as selected
 
+  # E2/E3 open over a real local server rather than file:// (MP2-STORE): the
+  # real REST client's fetch() calls are rejected outright for file:// pages
+  # before any request is even attempted, unlike E1 above, which never
+  # confirms a choice and so never touches the network.
   @E2
   Scenario: Generate code creates a session, shows a random 10-letter code, and waits
-    Given I open "index.html" at the raw start screen, with no mode chosen yet
+    Given I open the game over a real local server, at the raw start screen, with no mode chosen yet
     When I choose "Multiplayer" from the start screen
     And I type "Alice" into the lobby name field
     And I press "Enter"
@@ -28,7 +32,7 @@ Feature: The multiplayer lobby creates and joins sessions by a shared code (MP2)
 
   @E3
   Scenario: Enter code lets the player type a code via keyboard and attempt to join
-    Given I open "index.html" at the raw start screen, with no mode chosen yet
+    Given I open the game over a real local server, at the raw start screen, with no mode chosen yet
     When I choose "Multiplayer" from the start screen
     And I type "Bob" into the lobby name field
     And I press "Enter"
@@ -63,21 +67,11 @@ Feature: The multiplayer lobby creates and joins sessions by a shared code (MP2)
     And the second page enters the name "Bob" and enters that same code
     Then both pages reach the ready state showing "Alice & Bob"
 
-  # Security review (commit e9d7a3d): a stored session value that isn't valid
-  # JSON - reachable only by hand-editing this browser's own storage, never
-  # from another tab or origin - must read as "no session", not throw and
-  # freeze the lobby step waiting on it.
-  @E9
-  Scenario: A corrupted stored session is treated as not-found, not a crash
-    Given I open "index.html" at the raw start screen, with no mode chosen yet
-    When I choose "Multiplayer" from the start screen
-    And I type "Carol" into the lobby name field
-    And I press "Enter"
-    And I corrupt the stored session data for code "CORRUPTEDXX"
-    And I press "ArrowDown"
-    And I press "Enter"
-    Then the lobby's code entry step is shown
-    When I type "CORRUPTEDXX" into the lobby code field
-    And I press "Enter"
-    Then the lobby reports the code was not found
-    And no console errors were raised while loading
+  # E9 (a corrupted stored session reads as not-found, not a crash) is retired
+  # here (MP2-STORE): it targeted the localStorage-backed stub specifically,
+  # which the real server-backed session service has now fully replaced - the
+  # client no longer reads session state from this browser's own storage at
+  # all, so "corrupt localStorage" no longer corresponds to any real failure
+  # mode. The equivalent robustness claim for the real store - a genuinely
+  # unavailable/misconfigured backend surfaces a clear error rather than
+  # hanging - is mp2-store.feature's own E4.
