@@ -17,7 +17,10 @@
   const AUTOPLAY_FALL_DURATION_MS = 213;
   const AUTOPLAY_REVIVE_SPIN_DURATION_MS = 400;
 
-  async function boot() {
+  // SPEC 13.1.1: single-player is everything already delivered, started only
+  // once the player actually chooses it from the start screen rather than on
+  // page load directly.
+  async function startSinglePlayer() {
     const {
       generateBoard,
       drawBoard,
@@ -237,6 +240,10 @@
     }
 
     render();
+    // Matches render()'s own synchronous initial paint above - otherwise the
+    // multiplier bar/label would show nothing at all until the first
+    // requestAnimationFrame callback fires, however soon that normally is.
+    updateMultiplierBar(computeTimeMultiplier(0));
 
     let lastFrameTimeMs = null;
 
@@ -389,5 +396,36 @@
     };
   }
 
-  document.addEventListener('DOMContentLoaded', boot);
+  // SPEC 13.1: the start screen gates which mode actually boots - the 8x8
+  // board/game itself isn't shown, and single-player's own boot doesn't run,
+  // until the player picks one.
+  function initStartScreen() {
+    const startScreenEl = document.getElementById('start-screen');
+    const gameEl = document.getElementById('game');
+    const mpPlaceholderEl = document.getElementById('mp-placeholder');
+
+    document.getElementById('start-single-btn').addEventListener(
+      'click',
+      () => {
+        startScreenEl.hidden = true;
+        gameEl.hidden = false;
+        startSinglePlayer();
+      },
+      { once: true }
+    );
+
+    // SPEC 13.1.2: multiplayer's real lobby isn't built yet - a placeholder
+    // screen stands in for it, and single-player must stay fully reachable
+    // regardless (this button never touches the single-player boot path).
+    document.getElementById('start-multiplayer-btn').addEventListener(
+      'click',
+      () => {
+        startScreenEl.hidden = true;
+        mpPlaceholderEl.hidden = false;
+      },
+      { once: true }
+    );
+  }
+
+  document.addEventListener('DOMContentLoaded', initStartScreen);
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -24,6 +24,14 @@ body {
   position: relative;
 }
 
+/* An explicit display:flex above always wins over the browser's own
+   [hidden] { display: none } default (author CSS beats UA CSS regardless of
+   specificity) - without this override, the hidden attribute set before a
+   mode is chosen (SPEC 13.1) would have no visible effect at all. */
+#game[hidden] {
+  display: none;
+}
+
 #hud {
   display: flex;
   align-items: center;
@@ -135,4 +143,48 @@ body {
 .audio-toast.visible {
   opacity: 1;
   transition: opacity 0s;
+}
+
+.start-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  color: #f2f6ff;
+  font-family: 'Press Start 2P', monospace;
+  text-align: center;
+}
+
+/* Same override as #game[hidden] - this class's own display:flex would
+   otherwise beat the hidden attribute set once a mode is chosen. */
+.start-screen[hidden] {
+  display: none;
+}
+
+.start-title {
+  font-size: 1.5rem;
+  margin: 0;
+}
+
+.start-btn {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 1rem;
+  color: #f2f6ff;
+  background: #1a1a1a;
+  border: 4px solid #ffffff;
+  border-radius: 4px;
+  padding: 0.8rem 1.5rem;
+  cursor: pointer;
+}
+
+.start-btn:hover,
+.start-btn:focus {
+  background: #242424;
+}
+
+.mp-placeholder {
+  color: #f2f6ff;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 1.2rem;
+  text-align: center;
 }

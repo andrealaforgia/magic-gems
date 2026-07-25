@@ -101,12 +101,18 @@ async function measureGridDimensions(page) {
 
 Given('I open {string} directly as a file:\\/\\/ URL with no server or build step', async function (_file) {
   await this.page.goto(INDEX_HTML_URL);
+  // SPEC 13.1: every pre-existing scenario is implicitly about single-player -
+  // the start screen itself is exercised separately (mp1.feature), not by every
+  // other scenario re-choosing a mode.
+  await this.page.click('#start-single-btn');
   await waitForBoardReady(this.page);
 });
 
 When('I open {string} again as a fresh file:\\/\\/ page load', async function (_file) {
   this.previousGrid = await classifiedGrid(this.page);
   await this.page.reload();
+  // SPEC 13.1: a reload lands back on the start screen, same as any fresh load.
+  await this.page.click('#start-single-btn');
   await waitForBoardReady(this.page);
 });
 

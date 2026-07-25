@@ -223,3 +223,15 @@ A hands-off demo mode in which the game plays itself.
 - 12.4 While autoplay is ON, a blinking "Autoplaying..." indicator is shown centred
   at the top of the grid (above the score), in the game's display font (9.4). It
   disappears when autoplay is turned off.
+
+## 13. Multiplayer
+A two-player competitive mode played over the internet. (Built iteratively; later
+clauses are added as each iteration lands.)
+
+- 13.1 The game opens on a START SCREEN offering two modes: **Single-player** and
+  **Multiplayer**, presented in the game's display font (9.4).
+  - 13.1.1 Choosing Single-player starts the game exactly as described in §1–§12 —
+    the existing experience, including autoplay (§12), unchanged.
+  - 13.1.2 Choosing Multiplayer proceeds to the multiplayer lobby (§13.2). Until the
+    lobby is built, Multiplayer leads to a placeholder screen indicating multiplayer
+    is coming; single-player must remain fully playable regardless.
