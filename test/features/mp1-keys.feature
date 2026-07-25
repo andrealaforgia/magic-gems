@@ -31,16 +31,15 @@ Feature: The start screen is fully keyboard-operable (MP1-KEYS)
     When I press "Enter"
     Then the game board is shown
 
-  @E5
-  Scenario: Single-player reached via keyboard is still fully playable, no regression from MP1
-    Given I open "index.html" at the raw start screen, with no mode chosen yet
-    When I press "Space"
-    Then the game board is shown
-    And I locate an adjacent swap that would produce a match on the live board
-    When I commit that swap
-    And the shatter animation has settled
-    Then the board contains no horizontal or vertical run of 3 or more identical gems
-    And all 64 cells contain exactly one recognizable gem colour each
+  # E5 (Single-player reached via keyboard is still fully playable, no
+  # regression from MP1) isn't re-derived as its own scenario: the keyboard and
+  # click paths both call the exact same confirmMode()/startSinglePlayer() in
+  # src/main.js, so E1-E4 above (which already exercise the keyboard-specific
+  # input-dispatch layer) plus E6 below (a full real play cycle reached via
+  # keyboard) already cover everything E5 would - the same
+  # swap->shatter->gravity->refill->cascade->stable-board claim
+  # game-match-loop.feature's own E1/E4 prove, not worth a third copy in a
+  # third file.
 
   @E6 @integration
   Scenario: A full fresh-load play cycle, driven entirely by keyboard, no mouse at all
