@@ -13,20 +13,18 @@ test('generateSessionCode returns a 10-letter uppercase code (SPEC 13.2.2)', () 
   assert.ok(/^[A-Z]{10}$/.test(code), `expected 10 uppercase letters, got "${code}"`);
 });
 
-test('generateSessionCode is derived from Math.random, not a fixed constant', () => {
-  // Pins Math.random to select the first letter (A) then the last (Z) - a
-  // hardcoded/constant-string implementation couldn't produce two different
-  // reachable outputs from two different random draws.
-  const { generateSessionCode: genA } = loadMagicGems(
+test('generateSessionCode draws a fresh Math.random value for every one of its 10 characters, not just the first (QA review, commit e9d7a3d)', () => {
+  // Pins all 10 draws at once, each to a distinct letter (A..J) - a
+  // partially-hardcoded implementation (a real random first character, then a
+  // fixed constant for the rest) would diverge from this exact string at
+  // position 1 onward and get caught, which a check of position 0 alone
+  // could never distinguish from a fully-random implementation.
+  const queue = Array.from({ length: 10 }, (_, i) => (i + 0.5) / 26);
+  const { generateSessionCode: gen } = loadMagicGems(
     [new URL('../../src/session.js', import.meta.url)],
-    { randomQueue: [0] }
+    { randomQueue: queue }
   );
-  const { generateSessionCode: genZ } = loadMagicGems(
-    [new URL('../../src/session.js', import.meta.url)],
-    { randomQueue: [0.999999] }
-  );
-  assert.equal(genA()[0], 'A');
-  assert.equal(genZ()[0], 'Z');
+  assert.equal(gen(), 'ABCDEFGHIJ');
 });
 
 test('createSession starts a session with exactly the host as its one player', () => {
