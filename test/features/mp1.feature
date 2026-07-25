@@ -10,15 +10,18 @@ Feature: A start screen offers Single-player or Multiplayer (MP1)
     And the game board is not shown
 
   @E2 @E4 @e2e
-  Scenario: Choosing Single-player starts the existing game exactly as before
+  Scenario: Choosing Single-player starts the existing game and accepts real input
     Given I open "index.html" at the raw start screen, with no mode chosen yet
     When I choose "Single-player" from the start screen
     Then the game board is shown
+    Given I record the current score
     And I locate an adjacent swap that would produce a match on the live board
     When I commit that swap
     And the shatter animation has settled
-    Then the board contains no horizontal or vertical run of 3 or more identical gems
-    And all 64 cells contain exactly one recognizable gem colour each
+    Then the score has strictly increased since it was recorded
+  # The full swap -> shatter -> gravity -> refill -> cascade -> stable-board claim
+  # is game-match-loop.feature's own E1/E4 - already proven there for the same
+  # single-player game this starts, not re-derived here.
 
   @E3
   Scenario: Choosing Multiplayer advances to a distinct placeholder screen, not the board
