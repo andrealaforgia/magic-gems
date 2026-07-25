@@ -490,6 +490,7 @@
     const localNameEl = document.getElementById('match-local-name');
     const remoteNameEl = document.getElementById('match-remote-name');
     const localScoreEl = document.getElementById('match-local-score');
+    const remoteScoreEl = document.getElementById('match-remote-score');
     const multiplierFillEl = document.getElementById('match-multiplier-fill');
     const multiplierMessageEl = document.getElementById('match-multiplier-message');
     const timerEl = document.getElementById('match-timer');
@@ -540,12 +541,16 @@
     let activeAnimation = null;
     let score = 0;
     let lastCompletionTimeMs = performance.now();
+    // SPEC 13.4: shows the opponent's latest published state - the shared
+    // starting board until their first publish lands, then whatever the most
+    // recent poll returned.
+    let remoteState = { board: startingBoard, score: 0 };
 
-    // SPEC 13.3.3: a sensible 50/50 state even at 0-0, not a divide-by-zero -
-    // the remote score stays 0 this iteration (13.3.4's own scope boundary).
+    // SPEC 13.3.3/13.4.1: a sensible 50/50 state even at 0-0, not a
+    // divide-by-zero - tilts toward whoever currently leads once the
+    // opponent's own published score starts arriving (13.4).
     function updateGauge() {
-      const remoteScore = 0;
-      const total = score + remoteScore;
+      const total = score + remoteState.score;
       const fraction = total === 0 ? 0.5 : score / total;
       gaugeFillEl.style.width = `${fraction * 100}%`;
     }
@@ -695,10 +700,6 @@
       drawFragments(localCtx, fragments);
     }
 
-    // SPEC 13.4: shows the opponent's latest published state - the shared
-    // starting board until their first publish lands, then whatever the most
-    // recent poll returned.
-    let remoteState = { board: startingBoard, score: 0 };
     function renderRemote() {
       drawBoard(remoteCtx, remoteState.board, cellSize, sprites);
     }
@@ -725,6 +726,8 @@
       const remote = updated.states && updated.states[remotePlayerName];
       if (!remote) return;
       remoteState = remote;
+      remoteScoreEl.textContent = `Score: ${remoteState.score}`;
+      updateGauge();
       renderRemote();
     });
 
@@ -884,6 +887,7 @@
     global.MagicGems.getMatchInteractionState = () => interaction;
     global.MagicGems.getMatchBoard = () => board;
     global.MagicGems.getMatchRemoteBoard = () => remoteState.board;
+    global.MagicGems.getMatchRemoteScore = () => remoteState.score;
     global.MagicGems.getMatchScore = () => score;
     global.MagicGems.getMatchSoundLog = () => sound.getLog();
     global.MagicGems.isMatchAudioMuted = () => sound.isMuted();
