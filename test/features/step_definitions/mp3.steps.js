@@ -94,10 +94,6 @@ Then('the match timer on the first page visibly counts down over real time', asy
   assert.notEqual(before, after, `expected the timer to visibly change, stayed at "${before}"`);
 });
 
-Given("I record the second page's remote match board", async function () {
-  this.recordedRemoteBoard = await this.pageB.evaluate(() => window.MagicGems.getMatchRemoteBoard());
-});
-
 Given("I locate an adjacent swap that would produce a match on the first page's local match board", async function () {
   const grid = await this.pageA.evaluate(() => window.MagicGems.getMatchBoard());
   this.matchFoundSwap = findAdjacentSwap(grid, true);
@@ -117,9 +113,4 @@ Then("the first page's local match score has increased", async function () {
   await this.pageA.waitForFunction(() => window.MagicGems.getMatchScore() > 0, null, { timeout: 5000 });
   const score = await this.pageA.evaluate(() => window.MagicGems.getMatchScore());
   assert.ok(score > 0, `expected a positive score, got ${score}`);
-});
-
-Then("the second page's remote match board is unchanged from the recorded one", async function () {
-  const current = await this.pageB.evaluate(() => window.MagicGems.getMatchRemoteBoard());
-  assert.deepEqual(current, this.recordedRemoteBoard);
 });

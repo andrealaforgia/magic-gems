@@ -481,6 +481,7 @@
       reviveSpinFrameIndex,
       planAutoplaySteps,
       activateSeededRandom,
+      createRestSessionClient,
     } = global.MagicGems;
 
     const matchEl = document.getElementById('match');
@@ -694,10 +695,12 @@
       drawFragments(localCtx, fragments);
     }
 
-    // SPEC 13.3.4: no live opponent updates yet this iteration - the remote
-    // side always shows the one shared starting board, never re-rendered.
+    // SPEC 13.4: shows the opponent's latest published state - the shared
+    // starting board until their first publish lands, then whatever the most
+    // recent poll returned.
+    let remoteState = { board: startingBoard, score: 0 };
     function renderRemote() {
-      drawBoard(remoteCtx, startingBoard, cellSize, sprites);
+      drawBoard(remoteCtx, remoteState.board, cellSize, sprites);
     }
 
     renderLocal();
@@ -705,6 +708,25 @@
     // Matches renderLocal()'s own synchronous initial paint - otherwise the
     // multiplier bar/label would show nothing until the first frame.
     updateMultiplierBar(computeTimeMultiplier(0));
+
+    // SPEC 13.4/13.4.2: publishing and polling each run on their own timer,
+    // entirely separate from the rAF render loop (tick(), below) and never
+    // awaited from within it - a slow or failing request can only delay the
+    // NEXT tick of its own timer, never the local game's input, animation, or
+    // rendering (E4).
+    const sessionSync = createRestSessionClient();
+    const PUBLISH_INTERVAL_MS = 500;
+    const localPlayerName = session.players[localIndex];
+    const remotePlayerName = session.players[remoteIndex];
+    const publishTimer = setInterval(() => {
+      sessionSync.publishState(session.code, localPlayerName, board, score);
+    }, PUBLISH_INTERVAL_MS);
+    const stopPolling = sessionSync.pollMatchState(session.code, (updated) => {
+      const remote = updated.states && updated.states[remotePlayerName];
+      if (!remote) return;
+      remoteState = remote;
+      renderRemote();
+    });
 
     function updateExitConfirmOverlay() {
       exitConfirmEl.hidden = !exitConfirmOpen;
@@ -733,6 +755,8 @@
       cancelAnimationFrame(rafId);
       clearTimeout(autoplayTimer);
       clearTimeout(audioToastTimeout);
+      clearInterval(publishTimer);
+      stopPolling();
       document.removeEventListener('keydown', onKeydown);
       autoplayIndicatorEl.classList.remove('active');
       audioToastEl.classList.remove('visible');
@@ -859,7 +883,7 @@
     // Test-observability seam, same convention as single-player's own.
     global.MagicGems.getMatchInteractionState = () => interaction;
     global.MagicGems.getMatchBoard = () => board;
-    global.MagicGems.getMatchRemoteBoard = () => startingBoard;
+    global.MagicGems.getMatchRemoteBoard = () => remoteState.board;
     global.MagicGems.getMatchScore = () => score;
     global.MagicGems.getMatchSoundLog = () => sound.getLog();
     global.MagicGems.isMatchAudioMuted = () => sound.isMuted();

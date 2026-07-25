@@ -33,10 +33,23 @@
     return !!session && session.players.length === 2;
   }
 
+  // SPEC 13.4: each client continuously publishes its own board+score into the
+  // shared session, keyed by name, so the other client can read it back and
+  // render it on the remote side - never touching the other player's own
+  // last-published state. Mirrors api/magic-gems/_session-logic.mjs's own copy
+  // (kept in sync by hand, not shared - see that file's own comment).
+  function publishPlayerState(session, playerName, board, score) {
+    return {
+      ...session,
+      states: { ...session.states, [playerName]: { board, score } },
+    };
+  }
+
   global.MagicGems = global.MagicGems || {};
   global.MagicGems.CODE_LENGTH = CODE_LENGTH;
   global.MagicGems.generateSessionCode = generateSessionCode;
   global.MagicGems.createSession = createSession;
   global.MagicGems.joinSession = joinSession;
   global.MagicGems.isSessionReady = isSessionReady;
+  global.MagicGems.publishPlayerState = publishPlayerState;
 })(typeof window !== 'undefined' ? window : globalThis);

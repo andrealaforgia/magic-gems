@@ -46,10 +46,6 @@ function pageFor(world, which) {
   return which === 'first' ? world.pageA : world.pageB;
 }
 
-Given("I record the first page's remote match board", async function () {
-  this.recordedRemoteBoardA = await this.pageA.evaluate(() => window.MagicGems.getMatchRemoteBoard());
-});
-
 Given("I locate an adjacent swap that would produce a match on the second page's local match board", async function () {
   const grid = await this.pageB.evaluate(() => window.MagicGems.getMatchBoard());
   this.matchFoundSwapB = findAdjacentSwap(grid, true);
@@ -69,11 +65,6 @@ Then("the second page's local match score has increased", async function () {
   await this.pageB.waitForFunction(() => window.MagicGems.getMatchScore() > 0, null, { timeout: 5000 });
   const score = await this.pageB.evaluate(() => window.MagicGems.getMatchScore());
   assert.ok(score > 0, `expected a positive score, got ${score}`);
-});
-
-Then("the first page's remote match board is unchanged from the recorded one", async function () {
-  const current = await this.pageA.evaluate(() => window.MagicGems.getMatchRemoteBoard());
-  assert.deepEqual(current, this.recordedRemoteBoardA);
 });
 
 Then("the first page's own match multiplier bar is shown, in the pixel font", async function () {

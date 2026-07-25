@@ -65,6 +65,32 @@
           clearInterval(timer);
         };
       },
+      // MP4/SPEC 13.4: fire-and-forget - a failed publish never surfaces to
+      // the caller, so a transient network hiccup can't block or slow down
+      // local play (E4). The next publish on the timer just tries again.
+      publishState(code, playerName, board, score) {
+        return postAction({ action: 'publish', code, playerName, board, score }).catch(() => {});
+      },
+      // MP4/SPEC 13.4: continuous poll (unlike subscribeSession's one-shot
+      // stop-on-2-players) - runs for the whole match so the remote side
+      // keeps refreshing. A single transient poll failure isn't surfaced
+      // (E4); the next poll just tries again.
+      pollMatchState(code, onEachPoll) {
+        let stopped = false;
+        const timer = setInterval(async () => {
+          if (stopped) return;
+          try {
+            const session = await fetchSession(code);
+            if (session) onEachPoll(session);
+          } catch (err) {
+            // intentionally ignored - see comment above
+          }
+        }, POLL_INTERVAL_MS);
+        return () => {
+          stopped = true;
+          clearInterval(timer);
+        };
+      },
     };
   }
 

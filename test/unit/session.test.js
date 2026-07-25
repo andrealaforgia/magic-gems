@@ -2,9 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import { loadMagicGems } from '../support/load-src.js';
 
-const { CODE_LENGTH, generateSessionCode, createSession, joinSession, isSessionReady } = loadMagicGems([
-  new URL('../../src/session.js', import.meta.url),
-]);
+const { CODE_LENGTH, generateSessionCode, createSession, joinSession, isSessionReady, publishPlayerState } =
+  loadMagicGems([new URL('../../src/session.js', import.meta.url)]);
 
 test('generateSessionCode returns a 10-letter uppercase code (SPEC 13.2.2)', () => {
   const code = generateSessionCode();
@@ -66,4 +65,38 @@ test('isSessionReady is true only once exactly two players are present', () => {
 
 test('isSessionReady is false for a missing session, never throws', () => {
   assert.equal(isSessionReady(null), false);
+});
+
+// MP4: mirrors _session-logic.mjs's own coverage of the server-side copy.
+test('publishPlayerState records a player\'s board and score under their own name, without touching the other player\'s', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const { session: joined } = joinSession(session, 'Bob');
+  const board = [['red-square']];
+
+  const updated = publishPlayerState(joined, 'Alice', board, 42);
+
+  assert.deepEqual(updated.states.Alice, { board, score: 42 });
+  assert.equal(updated.states.Bob, undefined, 'must not fabricate a state for the other player');
+  assert.deepEqual(joined.players, ['Alice', 'Bob'], 'must never mutate the session it was given');
+});
+
+test('publishPlayerState updates a previously-published state, and never touches the other player\'s', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const { session: joined } = joinSession(session, 'Bob');
+  const afterBob = publishPlayerState(joined, 'Bob', [['blue-diamond']], 10);
+
+  const afterAlice = publishPlayerState(afterBob, 'Alice', [['red-square']], 20);
+  const afterAliceAgain = publishPlayerState(afterAlice, 'Alice', [['green-octagon']], 30);
+
+  assert.deepEqual(afterAliceAgain.states.Alice, { board: [['green-octagon']], score: 30 });
+  assert.deepEqual(afterAliceAgain.states.Bob, { board: [['blue-diamond']], score: 10 }, 'the other player\'s last-published state must survive untouched');
+});
+
+test('publishPlayerState never mutates the board array it was given', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const board = [['red-square']];
+
+  publishPlayerState(session, 'Alice', board, 5);
+
+  assert.deepEqual(board, [['red-square']]);
 });

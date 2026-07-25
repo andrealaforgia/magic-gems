@@ -1,6 +1,6 @@
 import { loadMagicGems } from '../../support/load-src.js';
 
-const { generateSessionCode, createSession, joinSession } = loadMagicGems([
+const { generateSessionCode, createSession, joinSession, publishPlayerState } = loadMagicGems([
   new URL('../../../src/session.js', import.meta.url),
 ]);
 
@@ -36,6 +36,13 @@ export function installSessionApiMock(context) {
         const result = joinSession(store.get(body.code) || null, body.playerName);
         if (result.ok) store.set(body.code, result.session);
         return json(result);
+      }
+      if (body.action === 'publish') {
+        const existing = store.get(body.code) || null;
+        if (!existing) return json({ ok: false, error: 'not-found' });
+        const updated = publishPlayerState(existing, body.playerName, body.board, body.score);
+        store.set(body.code, updated);
+        return json({ ok: true, session: updated });
       }
     }
     return json({ error: 'unsupported request' }, 400);

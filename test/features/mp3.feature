@@ -31,16 +31,14 @@ Feature: The match begins split-screen once both players are ready (MP3)
     And the match timer on the first page visibly counts down over real time
 
   @E6 @integration
-  Scenario: The local grid responds to real keyboard controls and resolves a match, while the remote grid stays static
+  Scenario: The local grid responds to real keyboard controls and resolves a match
     Given two independent pages are both at the multiplayer lobby's name entry step
     When the first page enters the name "Alice" and generates a code
     And the second page enters the name "Bob" and enters that same code
     Then the match begins on both pages
-    Given I record the second page's remote match board
-    And I locate an adjacent swap that would produce a match on the first page's local match board
+    Given I locate an adjacent swap that would produce a match on the first page's local match board
     When I commit that swap on the first page's local match board
     Then the first page's local match score has increased
-    And the second page's remote match board is unchanged from the recorded one
 
   # E3 (refills after a clear draw from the same seeded sequence on both
   # clients) is proven at the unit level (test/unit/seeded-board.test.js),
