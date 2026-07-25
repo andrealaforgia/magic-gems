@@ -11,10 +11,16 @@ import { generateSessionCode, createSession, joinSession, CODE_LENGTH } from './
 const CODE_PATTERN = new RegExp(`^[A-Z]{${CODE_LENGTH}}$`);
 const MAX_NAME_LENGTH = 20;
 // Security review (commit 023dece), M2: no per-caller throttle previously -
-// generous enough for genuine lobby use (a handful of requests per player),
-// tight enough to blunt a scripted flood against a zero-auth endpoint.
+// tight enough to blunt a scripted flood against a zero-auth endpoint. must
+// stay comfortably above legitimate traffic - security review (commit
+// 7b43738) found the original threshold (20) was actually BELOW the
+// already-shipped host's own status-polling rate while waiting for a second
+// player (session-api-client.js's own POLL_INTERVAL_MS = 1500ms is 40
+// requests/60s), silently stalling that flow for realistic wait times. 150
+// gives that real rate a healthy margin (>3x) while still meaningfully
+// capping a real flood.
 const RATE_LIMIT_WINDOW_SECONDS = 60;
-const RATE_LIMIT_MAX_REQUESTS = 20;
+const RATE_LIMIT_MAX_REQUESTS = 150;
 
 function callerIp(request) {
   const forwarded = request.headers.get('x-forwarded-for');
@@ -111,3 +117,9 @@ export default {
     }
   },
 };
+
+// Named export (alongside the default handler) so tests can assert against
+// the real threshold directly instead of duplicating the literal - the exact
+// drift that let it fall out of sync with real client traffic once already
+// (security review, commit 7b43738).
+export { RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_SECONDS };

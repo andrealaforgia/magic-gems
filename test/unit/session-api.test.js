@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import handler from '../../api/magic-gems/session.mjs';
+import handler, { RATE_LIMIT_MAX_REQUESTS } from '../../api/magic-gems/session.mjs';
 import { sessionKey } from '../../api/magic-gems/_upstash.mjs';
 
 const CONFIGURED_ENV = { UPSTASH_REDIS_REST_URL: 'https://x', UPSTASH_REDIS_REST_TOKEN: 'tok' };
@@ -450,7 +450,7 @@ test('a caller past the per-IP rate limit is rejected with 429, never reaching t
   const fetchImpl = fakeUpstash();
   // Pre-fill this caller's own bucket to exactly the limit, so its next hit
   // is the one that tips over.
-  fetchImpl.rateLimitCounts.set('magic-gems:ratelimit:9.9.9.9', 20);
+  fetchImpl.rateLimitCounts.set('magic-gems:ratelimit:9.9.9.9', RATE_LIMIT_MAX_REQUESTS);
   withFetch(t, fetchImpl);
 
   const res = await handler.fetch(
@@ -470,7 +470,7 @@ test('a caller past the per-IP rate limit is rejected with 429, never reaching t
 test('two different callers (by IP) are rate-limited independently', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   const fetchImpl = fakeUpstash();
-  fetchImpl.rateLimitCounts.set('magic-gems:ratelimit:9.9.9.9', 20);
+  fetchImpl.rateLimitCounts.set('magic-gems:ratelimit:9.9.9.9', RATE_LIMIT_MAX_REQUESTS);
   withFetch(t, fetchImpl);
 
   const res = await handler.fetch(
@@ -490,7 +490,7 @@ test('the rate-limit bucket trims whitespace around the first x-forwarded-for ad
   // Pre-exhausts the TRIMMED key specifically - if the real IP were used
   // untrimmed (with its own leading space intact), it would land in a
   // different bucket and this request would wrongly succeed.
-  fetchImpl.rateLimitCounts.set('magic-gems:ratelimit:2.2.2.2', 20);
+  fetchImpl.rateLimitCounts.set('magic-gems:ratelimit:2.2.2.2', RATE_LIMIT_MAX_REQUESTS);
   withFetch(t, fetchImpl);
 
   const res = await handler.fetch(
@@ -512,7 +512,7 @@ test('the rate-limit bucket trims whitespace around the first x-forwarded-for ad
 test('a caller with no x-forwarded-for header at all shares the "unknown" bucket', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   const fetchImpl = fakeUpstash();
-  fetchImpl.rateLimitCounts.set('magic-gems:ratelimit:unknown', 20);
+  fetchImpl.rateLimitCounts.set('magic-gems:ratelimit:unknown', RATE_LIMIT_MAX_REQUESTS);
   withFetch(t, fetchImpl);
 
   const res = await handler.fetch(

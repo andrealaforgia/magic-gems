@@ -70,4 +70,9 @@
 
   global.MagicGems = global.MagicGems || {};
   global.MagicGems.createRestSessionClient = createRestSessionClient;
+  // Test-observability only: lets a test tie this to the server's own rate
+  // limit and catch a repeat of the exact drift a security review found once
+  // already (commit 7b43738) - this value silently exceeding the server's
+  // allowance.
+  global.MagicGems.SESSION_POLL_INTERVAL_MS = POLL_INTERVAL_MS;
 })(typeof window !== 'undefined' ? window : globalThis);
