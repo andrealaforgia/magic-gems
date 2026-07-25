@@ -287,3 +287,31 @@ clauses are added as each iteration lands.)
     remote grid shows the opponent's board; live updates of the opponent's moves and
     score arrive in the next iteration (§13.4) — until then the remote side shows the
     shared starting board.
+
+  - 13.3.5 Each player has their OWN independent score and time-multiplier (§10),
+    computed and shown on their own side of the split — the multiplier is per-player
+    and is never shared across both players. The centre keeps the countdown (13.3.3)
+    and the who's-winning gauge.
+  - 13.3.6 During a multiplayer match, each player operates their OWN local grid on
+    their own client — this must work for both the host AND the player who joined by
+    code (fixing the joined player being unable to play). The local player's usual
+    controls are active on their client: the play controls (§6), S toggles their
+    audio (§11.5), A toggles their autoplay (§12), and ESC opens the exit
+    confirmation (§14). Confirming an exit leaves the match (in multiplayer, exiting
+    is surrender per §14.2; the winner proclamation is delivered by the end-game
+    iteration, §13.5).
+
+- 13.4 Live opponent sync. During the match, each client continuously publishes its
+  own state (its board and score, reflecting the player's moves as they happen) to
+  the session on the server, and reads the opponent's latest published state,
+  rendering the opponent's grid and score on the remote (right) side. Player A sees
+  player B's moves and score, and player B sees player A's — each on the opposite
+  side of their own split screen.
+  - 13.4.1 The centre who's-winning gauge (13.3.3) reflects the two players' current
+    scores, tilting toward whoever leads.
+  - 13.4.2 Talking to the server is ASYNCHRONOUS and low-priority — it must NEVER
+    block or degrade the local game experience. Local input, animation, and
+    rendering always take precedence; opponent updates are best-effort and may lag
+    slightly behind real time; a slow, delayed, or failed network request must not
+    freeze, stutter, or delay the local game in any way. The game experience is
+    privileged over sync latency.

@@ -349,3 +349,11 @@ body {
   width: 50%;
   background: #00e5a8;
 }
+
+/* MP3-FIX (SPEC 13.3.5, 10): a per-player multiplier bar on the match's own
+   local side - same look as single-player's, just narrower to fit the
+   split-screen column instead of the full-width HUD row. */
+.match-multiplier-bar {
+  width: 12rem;
+  max-width: 100%;
+}

@@ -441,17 +441,15 @@
     };
   }
 
-  // MP3: the split-screen match. Deliberately its own small, standalone loop
-  // rather than a shared refactor of startSinglePlayer's own closure above -
-  // this iteration's local grid needs only the plain SPEC 6 controls (no
-  // autoplay/audio/exit-confirm/multiplier-bar, none of which MP3's own SPEC
-  // citations include), and reusing startSinglePlayer's much larger, already
-  // heavily-tested closure wasn't worth the regression risk for that much
-  // smaller a feature set. Duplicates the swap/cascade/revive animation
-  // plumbing single-player already has; a shared extraction is better done
-  // once a later multiplayer iteration actually needs the fuller feature set
-  // here too, not speculatively now.
-  async function startMatch(session, localName) {
+  // MP3/MP3-FIX: the split-screen match. Deliberately its own small,
+  // standalone loop rather than a shared refactor of startSinglePlayer's own
+  // closure above - reusing that much larger, already heavily-tested closure
+  // wasn't worth the regression risk. Now carries its own audio/autoplay/
+  // exit-confirm/multiplier-bar, each scoped to THIS client's own closure -
+  // naturally independent per player, since each is a separate page/process
+  // (MP3-FIX E2/E3/E4/E5; MP3 itself deferred all of these, which turned out
+  // to be needed after all once real two-client play was tried live).
+  async function startMatch(session, localName, onExit) {
     const {
       generateBoard,
       drawBoard,
@@ -473,7 +471,15 @@
       computeTimeMultiplier,
       comboFactorForChainIndex,
       computeCompletionScore,
+      TIME_MULTIPLIER_START,
+      multiplierFraction,
+      multiplierBarColor,
+      multiplierMessage,
+      createSoundPlayer,
+      soundsForKeydown,
+      soundsForCascadeStep,
       reviveSpinFrameIndex,
+      planAutoplaySteps,
       activateSeededRandom,
     } = global.MagicGems;
 
@@ -483,8 +489,24 @@
     const localNameEl = document.getElementById('match-local-name');
     const remoteNameEl = document.getElementById('match-remote-name');
     const localScoreEl = document.getElementById('match-local-score');
+    const multiplierFillEl = document.getElementById('match-multiplier-fill');
+    const multiplierMessageEl = document.getElementById('match-multiplier-message');
     const timerEl = document.getElementById('match-timer');
     const gaugeFillEl = document.getElementById('match-gauge-fill');
+    const autoplayIndicatorEl = document.getElementById('match-autoplay-indicator');
+    const audioToastEl = document.getElementById('match-audio-toast');
+    const exitConfirmEl = document.getElementById('match-exit-confirm');
+
+    // MP3-FIX E1: a still-focused form element from the lobby (e.g. the code
+    // entry field, only ever focused on the joiner's own path - the host
+    // never focuses one) surviving into the match could otherwise intercept
+    // the very keys that drive the game, on any browser that doesn't auto-
+    // blur an element whose ancestor just became hidden. Unconditional, not
+    // just for the joiner, so the host's own path can never regress the same
+    // way if it ever also focuses something first.
+    if (document.activeElement && document.activeElement !== document.body) {
+      document.activeElement.blur();
+    }
 
     const localIndex = session.players[0] === localName ? 0 : 1;
     const remoteIndex = 1 - localIndex;
@@ -497,20 +519,21 @@
     const localCtx = localCanvas.getContext('2d');
     const remoteCtx = remoteCanvas.getContext('2d');
     const sprites = await loadGemSprites();
+    const sound = createSoundPlayer();
 
     // SPEC 13.3.1: both clients derive the identical starting board from the
     // shared session code - left active (not restored) for the rest of this
     // match's own refills too, so luck stays equal there as well. Security
-    // review (commit 30e7755): the restore handle is captured now, even with
-    // no caller yet, so a future "leave the match" path has it ready rather
-    // than needing to thread it through again - session codes are generated
-    // server-side (a separate process), never client-side, so this seeded
-    // Math.random can never influence one regardless.
+    // review (commit 30e7755): the restore handle is captured now so this
+    // match's own exit (MP3-FIX E5) can hand real randomness back - session
+    // codes are generated server-side (a separate process), never
+    // client-side, so this seeded Math.random couldn't influence one anyway.
     const restoreRealRandom = activateSeededRandom(session.code);
     const startingBoard = ensurePlayable(generateBoard()).board;
 
     let board = startingBoard;
     let interaction = createInteractionState();
+    let exitConfirmOpen = false;
     let fragments = [];
     let animationQueue = [];
     let activeAnimation = null;
@@ -526,6 +549,17 @@
       gaugeFillEl.style.width = `${fraction * 100}%`;
     }
     updateGauge();
+
+    // MP3-FIX E2: a visible, independent multiplier per player - same
+    // mechanic and display as single-player's own (SPEC 10.7-10.9), just on
+    // this client's own local side.
+    function updateMultiplierBar(timeMultiplier) {
+      const fraction = multiplierFraction(timeMultiplier, TIME_MULTIPLIER_START);
+      multiplierFillEl.style.width = `${fraction * 100}%`;
+      multiplierFillEl.style.backgroundColor = multiplierBarColor(fraction);
+      multiplierFillEl.dataset.multiplier = timeMultiplier;
+      multiplierMessageEl.textContent = multiplierMessage(timeMultiplier);
+    }
 
     function applyCompletionScore(runLengths, chainPosition) {
       const now = performance.now();
@@ -558,7 +592,7 @@
     function buildSwapPhase(fromBoard, a, b) {
       return {
         kind: 'swap',
-        duration: SWAP_DURATION_MS,
+        duration: autoplayEnabled ? AUTOPLAY_SWAP_DURATION_MS : SWAP_DURATION_MS,
         board: fromBoard,
         a,
         b,
@@ -568,11 +602,13 @@
     }
 
     function buildCascadePhase(step, chainPosition) {
-      return { kind: 'cascade', duration: FALL_DURATION_MS, chainPosition, ...step };
+      const duration = autoplayEnabled ? AUTOPLAY_FALL_DURATION_MS : FALL_DURATION_MS;
+      return { kind: 'cascade', duration, chainPosition, ...step };
     }
 
     function buildRevivePhase(finalBoard, changedCells) {
-      return { kind: 'revive', duration: REVIVE_SPIN_DURATION_MS, board: finalBoard, changedCells };
+      const duration = autoplayEnabled ? AUTOPLAY_REVIVE_SPIN_DURATION_MS : REVIVE_SPIN_DURATION_MS;
+      return { kind: 'revive', duration, board: finalBoard, changedCells };
     }
 
     function buildQueue(result) {
@@ -594,6 +630,7 @@
       if (activeAnimation.kind === 'cascade') {
         spawnFragments(activeAnimation.clearEvents);
         applyCompletionScore(activeAnimation.runLengths, activeAnimation.chainPosition);
+        soundsForCascadeStep(activeAnimation).forEach((name) => sound.play(name));
       }
     }
 
@@ -665,15 +702,98 @@
 
     renderLocal();
     renderRemote();
+    // Matches renderLocal()'s own synchronous initial paint - otherwise the
+    // multiplier bar/label would show nothing until the first frame.
+    updateMultiplierBar(computeTimeMultiplier(0));
+
+    function updateExitConfirmOverlay() {
+      exitConfirmEl.hidden = !exitConfirmOpen;
+    }
+
+    const AUDIO_TOAST_VISIBLE_MS = 800;
+    let audioToastTimeout = null;
+
+    function showAudioToast(text) {
+      clearTimeout(audioToastTimeout);
+      audioToastEl.textContent = text;
+      audioToastEl.classList.add('visible');
+      audioToastTimeout = setTimeout(() => audioToastEl.classList.remove('visible'), AUDIO_TOAST_VISIBLE_MS);
+    }
+
+    function toggleAudio() {
+      const nowMuted = !sound.isMuted();
+      sound.setMuted(nowMuted);
+      showAudioToast(nowMuted ? 'SOUND OFF' : 'SOUND ON');
+    }
+
+    // MP3-FIX E5: tears down this match session's own timers/frame/listener
+    // (same convention as single-player's own teardown) and hands real
+    // randomness back before returning to the start screen.
+    function teardown() {
+      cancelAnimationFrame(rafId);
+      clearTimeout(autoplayTimer);
+      clearTimeout(audioToastTimeout);
+      document.removeEventListener('keydown', onKeydown);
+      autoplayIndicatorEl.classList.remove('active');
+      audioToastEl.classList.remove('visible');
+      exitConfirmEl.hidden = true;
+      restoreRealRandom();
+    }
 
     function dispatchGameKey(key) {
-      const next = handleGameKey({ board, interaction, exitConfirmOpen: false }, key);
+      const next = handleGameKey({ board, interaction, exitConfirmOpen }, key);
+      const stateChanged = next.board !== board || next.interaction !== interaction || next.exitConfirmOpen !== exitConfirmOpen;
+      if (!stateChanged) return;
       if (next.board !== board || next.interaction !== interaction) {
-        board = next.board;
-        interaction = next.interaction;
-        animationQueue = animationQueue.concat(buildQueue(next));
-        advanceQueue();
-        renderLocal();
+        soundsForKeydown(key, interaction, next).forEach((name) => sound.play(name));
+      }
+      board = next.board;
+      interaction = next.interaction;
+      exitConfirmOpen = next.exitConfirmOpen;
+      updateExitConfirmOverlay();
+      if (next.exitRequested) {
+        teardown();
+        onExit();
+        return;
+      }
+      animationQueue = animationQueue.concat(buildQueue(next));
+      advanceQueue();
+      renderLocal();
+    }
+
+    let autoplayEnabled = false;
+    let autoplayQueue = [];
+    let autoplayTimer = null;
+    const autoplayKeyLog = [];
+
+    function isBoardBusy() {
+      return activeAnimation !== null || animationQueue.length > 0;
+    }
+
+    function runAutoplayStep() {
+      if (!autoplayEnabled) return;
+      if (autoplayQueue.length === 0) {
+        if (isBoardBusy()) {
+          autoplayTimer = setTimeout(runAutoplayStep, AUTOPLAY_STEP_MS);
+          return;
+        }
+        autoplayQueue = planAutoplaySteps(board, interaction.cursor);
+      }
+      const key = autoplayQueue.shift();
+      if (key !== undefined) {
+        autoplayKeyLog.push({ key, ts: performance.now() });
+        dispatchGameKey(key);
+      }
+      autoplayTimer = setTimeout(runAutoplayStep, AUTOPLAY_STEP_MS);
+    }
+
+    function toggleAutoplay() {
+      autoplayEnabled = !autoplayEnabled;
+      autoplayIndicatorEl.classList.toggle('active', autoplayEnabled);
+      clearTimeout(autoplayTimer);
+      if (autoplayEnabled) {
+        autoplayQueue = [];
+        autoplayTimer = setTimeout(runAutoplayStep, AUTOPLAY_STEP_MS);
       }
     }
 
@@ -708,12 +828,30 @@
         lastFrameTimeMs = null;
       }
       timerEl.textContent = formatTimer(MATCH_DURATION_MS - (performance.now() - matchStartMs));
-      requestAnimationFrame(tick);
+      updateMultiplierBar(computeTimeMultiplier(performance.now() - lastCompletionTimeMs));
+      rafId = requestAnimationFrame(tick);
     }
-    requestAnimationFrame(tick);
+    let rafId = requestAnimationFrame(tick);
 
+    // MP3-FIX E3/E4/E5: while the exit overlay is open, only Y/N are acted
+    // on - even the S/A toggles are suspended, so this check comes first,
+    // matching single-player's own established convention.
     function onKeydown(event) {
       if (matchEl.hidden) return;
+      if (exitConfirmOpen) {
+        dispatchGameKey(event.key);
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (key === 's') {
+        toggleAudio();
+        return;
+      }
+      if (key === 'a') {
+        toggleAutoplay();
+        return;
+      }
+      if (autoplayEnabled) return;
       dispatchGameKey(event.key);
     }
     document.addEventListener('keydown', onKeydown);
@@ -723,6 +861,10 @@
     global.MagicGems.getMatchBoard = () => board;
     global.MagicGems.getMatchRemoteBoard = () => startingBoard;
     global.MagicGems.getMatchScore = () => score;
+    global.MagicGems.getMatchSoundLog = () => sound.getLog();
+    global.MagicGems.isMatchAudioMuted = () => sound.isMuted();
+    global.MagicGems.isMatchAutoplayOn = () => autoplayEnabled;
+    global.MagicGems.getMatchAutoplayKeyLog = () => autoplayKeyLog.slice();
   }
 
   // MP2/MP2-STORE: the multiplayer lobby - name entry, then Generate/Enter
@@ -732,7 +874,7 @@
   // a shared "ready" screen once both players are present. Wired to the real
   // REST-backed session service (api/magic-gems/session.mjs), which MP2's own
   // temporary localStorage stub previously stood in for.
-  function initMultiplayerLobby() {
+  function initMultiplayerLobby(onExitToStartScreen) {
     const { createRestSessionClient } = global.MagicGems;
     const lobbyEl = document.getElementById('mp-lobby');
     const lobbyErrorEl = document.getElementById('mp-lobby-error');
@@ -786,7 +928,7 @@
       setTimeout(() => {
         lobbyEl.hidden = true;
         document.getElementById('match').hidden = false;
-        startMatch(session, playerName);
+        startMatch(session, playerName, onExitToStartScreen);
       }, READY_TO_MATCH_DELAY_MS);
     }
 
@@ -890,7 +1032,7 @@
   function initStartScreen() {
     const startScreenEl = document.getElementById('start-screen');
     const gameEl = document.getElementById('game');
-    const multiplayerLobby = initMultiplayerLobby();
+    const multiplayerLobby = initMultiplayerLobby(returnToStartScreen);
     const singleBtn = document.getElementById('start-single-btn');
     const multiplayerBtn = document.getElementById('start-multiplayer-btn');
     const options = [singleBtn, multiplayerBtn];
@@ -923,6 +1065,7 @@
     // dead end - re-arms the same `confirmed` guard confirmMode() checks.
     function returnToStartScreen() {
       gameEl.hidden = true;
+      document.getElementById('match').hidden = true;
       confirmed = false;
       selectedIndex = 0;
       updateHighlight();
