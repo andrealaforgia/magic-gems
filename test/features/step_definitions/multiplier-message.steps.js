@@ -33,16 +33,21 @@ Then('the multiplier message\'s number always matches the bar\'s own value', asy
   assert.equal(shown, barValue, `expected the message's number (${shown}) to match the bar's own value (${barValue})`);
 });
 
-// Calls the live page's own real computeTimeMultiplier/multiplierMessage functions
-// with a real elapsed time past the 100s drain window, rather than waiting that long
-// - the same component-style proof bonus-tune.feature's own decayed-to-0 scenario
-// uses for the identical timing claim.
-Then('the multiplier message for a real elapsed time past the drain window reads {string}', async function (expectedText) {
-  const message = await this.page.evaluate(() => {
-    const { computeTimeMultiplier, multiplierMessage } = window.MagicGems;
-    return multiplierMessage(computeTimeMultiplier(150000));
-  });
-  assert.equal(message, expectedText);
+// Backdates lastCompletionTimeMs past the drain window, then waits for the
+// page's own real tick loop (the next requestAnimationFrame, not a
+// re-derivation) to actually render the drained value - proves main.js's
+// rendering path itself, not just that the pure formatting/multiplier
+// functions compose correctly (those are already proven independently by
+// their own unit tests; QA test-design review, commit 7c52a7a).
+Then('the multiplier message reads {string} once the multiplier has fully drained', async function (expectedText) {
+  await this.page.evaluate(() => window.MagicGems.setElapsedSinceLastCompletionMs(150000));
+  await this.page.waitForFunction(
+    (expected) => document.getElementById('multiplier-message').textContent === expected,
+    expectedText,
+    { timeout: 3000 }
+  );
+  const text = await readMultiplierMessage(this.page);
+  assert.equal(text, expectedText);
 });
 
 Then('the multiplier message text is white with a contrast outline, sitting within the bar\'s own box', async function () {

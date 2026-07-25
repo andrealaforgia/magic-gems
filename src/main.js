@@ -380,6 +380,13 @@
     global.MagicGems.getInteractionState = () => interaction;
     global.MagicGems.getAutoplayKeyLog = () => autoplayKeyLog.slice();
     global.MagicGems.AUTOPLAY_STEP_MS = AUTOPLAY_STEP_MS;
+    // The only mutator in this seam: backdates lastCompletionTimeMs so a real
+    // tick (the next requestAnimationFrame, not a re-derivation) drains the
+    // multiplier for real, without a real multi-second wait or the fake-clock
+    // instability already ruled out for this page (see scoring.steps.js).
+    global.MagicGems.setElapsedSinceLastCompletionMs = (ms) => {
+      lastCompletionTimeMs = performance.now() - ms;
+    };
   }
 
   document.addEventListener('DOMContentLoaded', boot);

@@ -58,8 +58,3 @@ test('multiplierMessage carries the SPEC 10.9 fixed label with the value appende
   assert.equal(multiplierMessage(7), 'Score multiplier: x7');
   assert.equal(multiplierMessage(0), 'Score multiplier: x0');
 });
-
-test('multiplierMessage never zero-pads the value (SPEC 10.9)', () => {
-  assert.equal(multiplierMessage(5).endsWith('x5'), true);
-  assert.notEqual(multiplierMessage(5), 'Score multiplier: x005');
-});
