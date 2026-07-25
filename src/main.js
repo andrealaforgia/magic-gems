@@ -6,14 +6,16 @@
   const FALL_DURATION_MS = 400;
   const REVIVE_SPIN_DURATION_MS = 700;
   // SPEC 12.2 (re-frozen, AUTOPLAY-SPEED): autoplay runs at a brisk MODERATE
-  // pace - clearly faster than manual play, but roughly half the speed of an
-  // all-out minimal-delay demo (double these durations), easy to follow rather
-  // than a blur. Ordinary player-driven play keeps the deliberate 9.3 pace above
-  // untouched.
-  const AUTOPLAY_STEP_MS = 80;
-  const AUTOPLAY_SWAP_DURATION_MS = 160;
-  const AUTOPLAY_FALL_DURATION_MS = 160;
-  const AUTOPLAY_REVIVE_SPIN_DURATION_MS = 300;
+  // pace - clearly faster than manual play, easy to follow rather than a blur.
+  // Explicitly a tuning choice adjusted by feel, not a fixed frozen figure - the
+  // values below are the moderate pass (80/160/160/300) each stretched by ~1.33x
+  // (a further "run it a notch slower" nudge, ~75% of that rate): 80->107,
+  // 160->213 (twice), 300->400. Ordinary player-driven play keeps the
+  // deliberate 9.3 pace above untouched.
+  const AUTOPLAY_STEP_MS = 107;
+  const AUTOPLAY_SWAP_DURATION_MS = 213;
+  const AUTOPLAY_FALL_DURATION_MS = 213;
+  const AUTOPLAY_REVIVE_SPIN_DURATION_MS = 400;
 
   async function boot() {
     const {
