@@ -358,8 +358,16 @@ body {
   font-size: 1.2rem;
 }
 
+/* SPEC 13.3.3 (re-frozen): vertically centred on the screen - taken out of
+   the centre column's own flow (which stays top-anchored under the
+   countdown) and anchored to the match view itself instead, both axes, same
+   overlay convention as this view's own audio-toast/exit-confirm. Still its
+   own positioning context for match-gauge-fill below. */
 .match-gauge {
-  position: relative;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   width: 8rem;
   height: 20px;
   background: #1a1a1a;
@@ -386,4 +394,11 @@ body {
 .match-multiplier-bar {
   width: 12rem;
   max-width: 100%;
+  /* SPEC 13.3.7: its width is set directly in JS to match the real grid
+     width it sits above - border-box so that value is this element's own
+     full rendered footprint (border included), not just its content area,
+     which would otherwise render 8px wider than the grid above it (the
+     shared .multiplier-bar class's own 4px-each-side border) and overflow
+     its column by half that on each side. */
+  box-sizing: border-box;
 }

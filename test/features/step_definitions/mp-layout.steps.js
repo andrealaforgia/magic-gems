@@ -1,5 +1,6 @@
 import { Given, Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
+import { VIEWPORT_CENTER_TOLERANCE_RATIO } from '../support/pixel-utils.js';
 
 Given("the first page's viewport is {int} by {int}", async function (width, height) {
   await this.pageA.setViewportSize({ width, height });
@@ -36,3 +37,15 @@ Then(
     assert.ok(layout.gauge.width > 0 && layout.gauge.height > 0, 'expected the gauge to be visible');
   }
 );
+
+Then("the first page's gauge is vertically centred on the screen", async function () {
+  const { gaugeCenterY, viewportHeight } = await this.pageA.evaluate(() => {
+    const rect = document.getElementById('match-gauge').getBoundingClientRect();
+    return { gaugeCenterY: rect.top + rect.height / 2, viewportHeight: window.innerHeight };
+  });
+  const dy = Math.abs(gaugeCenterY - viewportHeight / 2);
+  assert.ok(
+    dy < viewportHeight * VIEWPORT_CENTER_TOLERANCE_RATIO,
+    `expected the gauge centred vertically, off by ${dy}px (viewport height ${viewportHeight})`
+  );
+});
