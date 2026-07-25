@@ -67,4 +67,5 @@
   }
 
   global.MagicGems.createStubSessionClient = createStubSessionClient;
+  global.MagicGems.SESSION_STORAGE_PREFIX = STORAGE_PREFIX;
 })(typeof window !== 'undefined' ? window : globalThis);

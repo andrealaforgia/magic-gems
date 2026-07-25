@@ -15,8 +15,11 @@ When('I type {string} into the lobby code field', async function (text) {
 });
 
 When('I corrupt the stored session data for code {string}', async function (code) {
+  // Reads the real prefix from the live page (QA review, commits 933da80 +
+  // 66dec96) rather than duplicating the literal - if it ever changes in
+  // production, this step notices instead of silently drifting.
   await this.page.evaluate(
-    (code) => localStorage.setItem('magic-gems:session:' + code, 'not valid json{{{'),
+    (code) => localStorage.setItem(window.MagicGems.SESSION_STORAGE_PREFIX + code, 'not valid json{{{'),
     code
   );
 });
