@@ -22,10 +22,16 @@ const CODE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 // server-side copy needs it: the browser copy in src/session.js is
 // unreachable dead code post-MP2-STORE (session codes are generated here,
 // never client-side), kept only for its own existing tests/symmetry.
-function generateSessionCode() {
+//
+// randomIntFn is injectable (defaulting to the real CSPRNG) so a test can
+// pin every one of the 10 draws the same way src/session.js's own test does
+// - node:crypto's randomInt can't be monkey-patched from outside like
+// Math.random, so this is the seam that makes that possible here too (QA
+// review, commit 87bd778).
+function generateSessionCode(randomIntFn = randomInt) {
   let code = '';
   for (let i = 0; i < CODE_LENGTH; i++) {
-    code += CODE_ALPHABET[randomInt(CODE_ALPHABET.length)];
+    code += CODE_ALPHABET[randomIntFn(CODE_ALPHABET.length)];
   }
   return code;
 }

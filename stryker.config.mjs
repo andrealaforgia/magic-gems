@@ -334,3 +334,12 @@ export default {
 // can never match the code pattern anyway - closed with a single-element
 // array (`['AAAAAAAAAA']`), whose own default coercion equals its one
 // element, genuinely distinguishing the guard from the pattern check alone.
+//
+// (QA review, commit 87bd778) _session-logic.mjs's own generateSessionCode:
+// previously only exercised indirectly (session-api.test.js's handler-level
+// tests, which never verified per-character independence). Given its own
+// dedicated test file mirroring src/session.js's, including the same
+// per-character pin (via an injectable randomIntFn default-parameter seam,
+// since node:crypto's real randomInt can't be monkey-patched the way
+// Math.random can). 100% (24/24 non-timeout mutants killed), 6 timeouts on
+// the same documented increment-flip infinite loop.
