@@ -50,10 +50,18 @@ function joinSession(session, playerName) {
 // shared session, keyed by name, so the other client can read it back and
 // render it on the remote side - never touching the other player's own
 // last-published state.
+//
+// Security review (commit be737cd), Finding 1: playerName must actually be
+// one of this session's own players - otherwise anyone holding the code
+// could overwrite the live broadcast of a slot they were never part of.
 function publishPlayerState(session, playerName, board, score) {
+  if (!session.players.includes(playerName)) return { ok: false, error: 'not-a-player' };
   return {
-    ...session,
-    states: { ...session.states, [playerName]: { board, score } },
+    ok: true,
+    session: {
+      ...session,
+      states: { ...session.states, [playerName]: { board, score } },
+    },
   };
 }
 

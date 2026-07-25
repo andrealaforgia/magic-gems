@@ -235,6 +235,45 @@ test('publish records the caller\'s board and score under their own name in the 
   assert.deepEqual(body.session.states.Alice, { board: validBoardFixture(), score: 42 });
 });
 
+test('a successful publish is actually persisted, not just echoed back in its own response', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  const fetchImpl = fakeUpstash();
+  withFetch(t, fetchImpl);
+  const created = await createViaHandler('Alice');
+
+  await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'publish', code: created.session.code, playerName: 'Alice', board: validBoardFixture(), score: 42 }),
+    })
+  );
+
+  const getRes = await handler.fetch(
+    new Request(`https://x/api/magic-gems/session?code=${created.session.code}`)
+  );
+  const getBody = await getRes.json();
+  assert.deepEqual(getBody.session.states.Alice, { board: validBoardFixture(), score: 42 });
+});
+
+test('publish refuses a name that is not actually one of the session\'s own players, as a normal 200 result, not a 500', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  const fetchImpl = fakeUpstash();
+  withFetch(t, fetchImpl);
+  const created = await createViaHandler('Alice');
+
+  const res = await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'publish', code: created.session.code, playerName: 'Mallory', board: validBoardFixture(), score: 0 }),
+    })
+  );
+  const body = await res.json();
+
+  assert.equal(res.status, 200);
+  assert.equal(body.ok, false);
+  assert.equal(body.error, 'not-a-player');
+});
+
 test('publish against an unknown code reports not-found as a normal 200 result, not a 500', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   withFetch(t, fakeUpstash());
@@ -311,9 +350,9 @@ test('publish rejects a board that is not an 8x8 array of short strings with 400
   const wrongRowCount = await publishBoard(Array.from({ length: 9 }, () => Array(8).fill('red-square')));
   assert.equal(wrongRowCount.status, 400);
 
-  // A string row has a `.length` of 8 but isn't an array - and, unguarded,
-  // its individual characters would each pass the per-cell checks too, so
-  // this can only be caught by the row's own Array.isArray check.
+  // A row that isn't an array - unguarded, a string row's own characters
+  // could otherwise slip past a per-cell check too, so this can only be
+  // caught by the row's own Array.isArray check.
   const rowNotAnArray = [...Array.from({ length: 7 }, () => Array(8).fill('red-square')), '12345678'];
   const rowNotAnArrayResult = await publishBoard(rowNotAnArray);
   assert.equal(rowNotAnArrayResult.status, 400);
@@ -328,24 +367,28 @@ test('publish rejects a board that is not an 8x8 array of short strings with 400
   const nonStringCellResult = await publishBoard(nonStringCell);
   assert.equal(nonStringCellResult.status, 400);
 
-  const oversizedCell = await publishBoard([
-    ['A'.repeat(31), ...Array(7).fill('red-square')],
+  // Security review (commit be737cd), Finding 2: shape/length alone let any
+  // string through, including one that isn't a real gem - which broke the
+  // opponent's remote rendering irrecoverably for the rest of the match.
+  const notARealGem = await publishBoard([
+    ['not-a-real-gem', ...Array(7).fill('red-square')],
     ...Array.from({ length: 7 }, () => Array(8).fill('red-square')),
   ]);
-  assert.equal(oversizedCell.status, 400);
-  assert.equal(oversizedCell.body.error, 'each board cell must be a string of at most 30 characters');
+  assert.equal(notARealGem.status, 400);
+  assert.equal(notARealGem.body.error, 'each board cell must be a real gem type, or null for an empty cell');
 });
 
-test('publish accepts a board whose cells sit exactly at the length boundary', async (t) => {
+test('publish accepts every real gem type, and null for an empty cell', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   withFetch(t, fakeUpstash());
   const created = await createViaHandler('Alice');
-  const boundaryBoard = Array.from({ length: 8 }, () => Array(8).fill('A'.repeat(30)));
+  const realGemRow = ['blue-teardrop', 'green-octagon', 'orange-hexagon', 'purple-triangle', 'red-square', 'silver-octagon', 'yellow-diamond', null];
+  const board = [realGemRow, ...Array.from({ length: 7 }, () => Array(8).fill('red-square'))];
 
   const res = await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'publish', code: created.session.code, playerName: 'Alice', board: boundaryBoard, score: 0 }),
+      body: JSON.stringify({ action: 'publish', code: created.session.code, playerName: 'Alice', board, score: 0 }),
     })
   );
   const body = await res.json();

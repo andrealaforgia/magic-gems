@@ -38,10 +38,17 @@
   // render it on the remote side - never touching the other player's own
   // last-published state. Mirrors api/magic-gems/_session-logic.mjs's own copy
   // (kept in sync by hand, not shared - see that file's own comment).
+  //
+  // Security review (commit be737cd), Finding 1: playerName must actually be
+  // one of this session's own players.
   function publishPlayerState(session, playerName, board, score) {
+    if (!session.players.includes(playerName)) return { ok: false, error: 'not-a-player' };
     return {
-      ...session,
-      states: { ...session.states, [playerName]: { board, score } },
+      ok: true,
+      session: {
+        ...session,
+        states: { ...session.states, [playerName]: { board, score } },
+      },
     };
   }
 

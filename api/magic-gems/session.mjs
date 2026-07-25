@@ -10,12 +10,24 @@ import { generateSessionCode, createSession, joinSession, publishPlayerState, CO
 
 const CODE_PATTERN = new RegExp(`^[A-Z]{${CODE_LENGTH}}$`);
 const MAX_NAME_LENGTH = 20;
-// MP4/M1: the real board is 8x8 of short gem-type names - capped generously
-// rather than exactly matching the game's own constants, so this doesn't
-// need to change in lockstep with board-size tuning, while still rejecting
-// the oversized-payload class of abuse M1 was about.
+// MP4/M1: the real board is 8x8 of short gem-type names.
 const BOARD_SIZE = 8;
-const MAX_CELL_LENGTH = 30;
+// Security review (commit be737cd), Finding 2: shape/length alone let any
+// string through, including one that isn't a real gem - which broke the
+// opponent's remote rendering irrecoverably for the rest of the match. A
+// self-contained copy of src/gems.js's own GEM_TYPES (kept in sync by hand,
+// not shared - same convention as this file's other duplicated constants, to
+// avoid re-introducing the cross-boundary import that broke production once
+// already).
+const VALID_GEM_TYPES = new Set([
+  'blue-teardrop',
+  'green-octagon',
+  'orange-hexagon',
+  'purple-triangle',
+  'red-square',
+  'silver-octagon',
+  'yellow-diamond',
+]);
 const MAX_SCORE = 1e9;
 // Security review (commit 023dece), M2: no per-caller throttle previously -
 // tight enough to blunt a scripted flood against a zero-auth endpoint. must
@@ -23,11 +35,15 @@ const MAX_SCORE = 1e9;
 // 7b43738) found the original threshold (20) was actually BELOW the
 // already-shipped host's own status-polling rate while waiting for a second
 // player (session-api-client.js's own POLL_INTERVAL_MS = 1500ms is 40
-// requests/60s), silently stalling that flow for realistic wait times. 150
-// gives that real rate a healthy margin (>3x) while still meaningfully
+// requests/60s). Security review (commit be737cd), Finding 3: raising this
+// to 150 fixed that, but MP4's own publish traffic during a live match
+// (PUBLISH_INTERVAL_MS = 500ms is 120 requests/60s) added on top of the same
+// client's own polling brought the combined real rate to 160/60s - back
+// above the 150 cap, deterministically, for every match. 320 restores a
+// healthy margin (2x) over that real combined rate while still meaningfully
 // capping a real flood.
 const RATE_LIMIT_WINDOW_SECONDS = 60;
-const RATE_LIMIT_MAX_REQUESTS = 150;
+const RATE_LIMIT_MAX_REQUESTS = 320;
 
 function callerIp(request) {
   const forwarded = request.headers.get('x-forwarded-for');
@@ -67,8 +83,8 @@ function validBoardOrError(board) {
       return `each board row must be an array of ${BOARD_SIZE} cells`;
     }
     for (const cell of row) {
-      if (typeof cell !== 'string' || cell.length > MAX_CELL_LENGTH) {
-        return `each board cell must be a string of at most ${MAX_CELL_LENGTH} characters`;
+      if (cell !== null && !VALID_GEM_TYPES.has(cell)) {
+        return 'each board cell must be a real gem type, or null for an empty cell';
       }
     }
   }
@@ -100,9 +116,10 @@ async function handleJoin(env, code, playerName) {
 async function handlePublish(env, code, playerName, board, score) {
   const existing = await getStoredSession(env, code);
   if (!existing) return { ok: false, error: 'not-found' };
-  const updated = publishPlayerState(existing, playerName, board, score);
-  await setStoredSession(env, updated);
-  return { ok: true, session: updated };
+  const result = publishPlayerState(existing, playerName, board, score);
+  if (!result.ok) return result;
+  await setStoredSession(env, result.session);
+  return result;
 }
 
 export default {

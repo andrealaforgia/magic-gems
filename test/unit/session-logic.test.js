@@ -70,20 +70,21 @@ test('publishPlayerState records a player\'s board and score under their own nam
   const { session: joined } = joinSession(session, 'Bob');
   const board = [['red-square']];
 
-  const updated = publishPlayerState(joined, 'Alice', board, 42);
+  const result = publishPlayerState(joined, 'Alice', board, 42);
 
-  assert.deepEqual(updated.states.Alice, { board, score: 42 });
-  assert.equal(updated.states.Bob, undefined, 'must not fabricate a state for the other player');
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.session.states.Alice, { board, score: 42 });
+  assert.equal(result.session.states.Bob, undefined, 'must not fabricate a state for the other player');
   assert.deepEqual(joined.players, ['Alice', 'Bob'], 'must never mutate the session it was given');
 });
 
 test('publishPlayerState updates a previously-published state, and never touches the other player\'s', () => {
   const session = createSession('ABCDEFGHIJ', 'Alice');
   const { session: joined } = joinSession(session, 'Bob');
-  const afterBob = publishPlayerState(joined, 'Bob', [['blue-diamond']], 10);
+  const afterBob = publishPlayerState(joined, 'Bob', [['blue-diamond']], 10).session;
 
-  const afterAlice = publishPlayerState(afterBob, 'Alice', [['red-square']], 20);
-  const afterAliceAgain = publishPlayerState(afterAlice, 'Alice', [['green-octagon']], 30);
+  const afterAlice = publishPlayerState(afterBob, 'Alice', [['red-square']], 20).session;
+  const afterAliceAgain = publishPlayerState(afterAlice, 'Alice', [['green-octagon']], 30).session;
 
   assert.deepEqual(afterAliceAgain.states.Alice, { board: [['green-octagon']], score: 30 });
   assert.deepEqual(afterAliceAgain.states.Bob, { board: [['blue-diamond']], score: 10 }, 'the other player\'s last-published state must survive untouched');
@@ -96,4 +97,19 @@ test('publishPlayerState never mutates the board array it was given', () => {
   publishPlayerState(session, 'Alice', board, 5);
 
   assert.deepEqual(board, [['red-square']]);
+});
+
+// Security review (commit be737cd), Finding 1: a name that isn't actually one
+// of the session's own players must be refused, not silently accepted as a
+// new broadcaster - otherwise anyone holding the code could overwrite a
+// slot they were never part of.
+test('publishPlayerState refuses to publish for a name that isn\'t actually one of the session\'s players', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const { session: joined } = joinSession(session, 'Bob');
+
+  const result = publishPlayerState(joined, 'Mallory', [['red-square']], 5);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'not-a-player');
+  assert.equal(joined.states, undefined, 'a refused publish must never touch the existing session');
 });

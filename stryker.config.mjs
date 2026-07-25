@@ -356,3 +356,17 @@ export default {
 // typeof clause's presence or absence changes the outcome. Verified by hand
 // across all non-number JS types (string, boolean, null, undefined, array,
 // object), not just the ones a test happened to try.
+//
+// (Security review round, commit be737cd) publish ownership check (Finding
+// 1), board-cell GEM_TYPES enum validation (Finding 2, replacing the old
+// shape-only check), and the rate-limit headroom fix (Finding 3): 100%
+// (_session-logic.mjs, 36/36) / 98.91% (session.mjs, 181/183 non-timeout
+// mutants killed) / 98.31% (session.js, 57/58). One real gap this pass found
+// and fixed: a mutant that made handlePublish's early-return unconditional
+// (`if (true) return result` in place of `if (!result.ok)`) survived because
+// the existing publish test only checked the immediate response body, never
+// that a successful publish was actually persisted to the store afterward -
+// closed with a follow-up GET confirming the state survives past the
+// response. Remaining survivors are the same documented equivalents already
+// listed above (the leading `typeof score !== 'number'` clause, the
+// UMD-wrapper case).

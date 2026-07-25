@@ -40,9 +40,9 @@ export function installSessionApiMock(context) {
       if (body.action === 'publish') {
         const existing = store.get(body.code) || null;
         if (!existing) return json({ ok: false, error: 'not-found' });
-        const updated = publishPlayerState(existing, body.playerName, body.board, body.score);
-        store.set(body.code, updated);
-        return json({ ok: true, session: updated });
+        const result = publishPlayerState(existing, body.playerName, body.board, body.score);
+        if (result.ok) store.set(body.code, result.session);
+        return json(result);
       }
     }
     return json({ error: 'unsupported request' }, 400);

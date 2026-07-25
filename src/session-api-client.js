@@ -7,6 +7,12 @@
   // stub's native "storage" event - a real request each interval, not a
   // hardcoded readiness flag.
   const POLL_INTERVAL_MS = 1500;
+  // MP4/SPEC 13.4: how often each client publishes its own board+score during
+  // a match - defined alongside POLL_INTERVAL_MS (not in main.js, where the
+  // match loop itself lives) so both of this session service's own traffic
+  // rates can be checked together against the server's rate limit the same
+  // lightweight way, without needing a live browser.
+  const PUBLISH_INTERVAL_MS = 500;
 
   async function parseOrThrow(res) {
     const body = await res.json().catch(() => ({}));
@@ -101,4 +107,5 @@
   // already (commit 7b43738) - this value silently exceeding the server's
   // allowance.
   global.MagicGems.SESSION_POLL_INTERVAL_MS = POLL_INTERVAL_MS;
+  global.MagicGems.SESSION_PUBLISH_INTERVAL_MS = PUBLISH_INTERVAL_MS;
 })(typeof window !== 'undefined' ? window : globalThis);

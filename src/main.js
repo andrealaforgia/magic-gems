@@ -482,6 +482,7 @@
       planAutoplaySteps,
       activateSeededRandom,
       createRestSessionClient,
+      SESSION_PUBLISH_INTERVAL_MS,
     } = global.MagicGems;
 
     const matchEl = document.getElementById('match');
@@ -716,12 +717,11 @@
     // NEXT tick of its own timer, never the local game's input, animation, or
     // rendering (E4).
     const sessionSync = createRestSessionClient();
-    const PUBLISH_INTERVAL_MS = 500;
     const localPlayerName = session.players[localIndex];
     const remotePlayerName = session.players[remoteIndex];
     const publishTimer = setInterval(() => {
       sessionSync.publishState(session.code, localPlayerName, board, score);
-    }, PUBLISH_INTERVAL_MS);
+    }, SESSION_PUBLISH_INTERVAL_MS);
     const stopPolling = sessionSync.pollMatchState(session.code, (updated) => {
       const remote = updated.states && updated.states[remotePlayerName];
       if (!remote) return;
