@@ -108,4 +108,11 @@
   // allowance.
   global.MagicGems.SESSION_POLL_INTERVAL_MS = POLL_INTERVAL_MS;
   global.MagicGems.SESSION_PUBLISH_INTERVAL_MS = PUBLISH_INTERVAL_MS;
+  // QA review (commit 827ac6f): every interval above generates real,
+  // continuous traffic against the same rate-limited endpoint - listed here
+  // as the one place a regression test can sum generically, so a future
+  // third traffic source (e.g. a heartbeat) is automatically covered just by
+  // being added to this array, rather than depending on that test also being
+  // hand-updated to know its name.
+  global.MagicGems.SESSION_CLIENT_INTERVALS_MS = [POLL_INTERVAL_MS, PUBLISH_INTERVAL_MS];
 })(typeof window !== 'undefined' ? window : globalThis);

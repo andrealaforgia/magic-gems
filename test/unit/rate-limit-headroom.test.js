@@ -12,19 +12,22 @@ import { RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_SECONDS } from '../../api/ma
 //
 // Security review (commit be737cd), Finding 3: fixing that once wasn't
 // enough - MP4 added its own publish traffic on top of the same client's
-// polling, pushing the REAL combined rate back over the limit. Checks the
-// sum of both, not polling alone, so this specific class of regression can't
-// silently reintroduce itself in either direction again.
-const { SESSION_POLL_INTERVAL_MS, SESSION_PUBLISH_INTERVAL_MS } = loadMagicGems([
-  new URL('../../src/session-api-client.js', import.meta.url),
-]);
+// polling, pushing the REAL combined rate back over the limit.
+//
+// QA review (commit 827ac6f): summing two specific named constants was the
+// same fix pattern applied a second time, not a generalized one - a third
+// traffic source could be added later without anyone remembering to update
+// this test. Sums SESSION_CLIENT_INTERVALS_MS generically instead, so any
+// future addition to that array is automatically covered.
+const { SESSION_CLIENT_INTERVALS_MS } = loadMagicGems([new URL('../../src/session-api-client.js', import.meta.url)]);
 
-test('the client\'s real combined poll+publish rate stays comfortably under the server\'s own rate limit', () => {
-  const pollsPerWindow = (RATE_LIMIT_WINDOW_SECONDS * 1000) / SESSION_POLL_INTERVAL_MS;
-  const publishesPerWindow = (RATE_LIMIT_WINDOW_SECONDS * 1000) / SESSION_PUBLISH_INTERVAL_MS;
-  const combinedPerWindow = pollsPerWindow + publishesPerWindow;
+test('the client\'s real combined traffic across every one of its own session intervals stays comfortably under the server\'s own rate limit', () => {
+  const combinedPerWindow = SESSION_CLIENT_INTERVALS_MS.reduce(
+    (sum, intervalMs) => sum + (RATE_LIMIT_WINDOW_SECONDS * 1000) / intervalMs,
+    0
+  );
   assert.ok(
     combinedPerWindow * 2 <= RATE_LIMIT_MAX_REQUESTS,
-    `expected at least 2x headroom: client's combined poll+publish is ${combinedPerWindow}/window, limit is ${RATE_LIMIT_MAX_REQUESTS}/window`
+    `expected at least 2x headroom: client's combined traffic is ${combinedPerWindow}/window, limit is ${RATE_LIMIT_MAX_REQUESTS}/window`
   );
 });
