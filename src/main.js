@@ -17,6 +17,13 @@
   const AUTOPLAY_FALL_DURATION_MS = 213;
   const AUTOPLAY_REVIVE_SPIN_DURATION_MS = 400;
 
+  // Test-observability only (QA review, commit 280629a): lives outside any one
+  // session's own closure so it survives across an exit+restart, letting a test
+  // prove teardown() genuinely ran before the next session starts - kept in the
+  // exact same two places as the real addEventListener/removeEventListener
+  // calls it's paired with, not a hand-waved separate bookkeeping value.
+  let activeSinglePlayerSessions = 0;
+
   // SPEC 13.1.1: single-player is everything already delivered, started only
   // once the player actually chooses it from the start screen rather than on
   // page load directly.
@@ -316,6 +323,7 @@
       clearTimeout(autoplayTimer);
       clearTimeout(audioToastTimeout);
       document.removeEventListener('keydown', onKeydown);
+      activeSinglePlayerSessions--;
       autoplayIndicatorEl.classList.remove('active');
       audioToastEl.classList.remove('visible');
       exitConfirmEl.hidden = true;
@@ -408,6 +416,7 @@
       dispatchGameKey(event.key);
     }
     document.addEventListener('keydown', onKeydown);
+    activeSinglePlayerSessions++;
 
     // Observability seam for tests: animation/shatter state is real, time-based
     // state that isn't otherwise reachable from outside this closure.
@@ -422,6 +431,7 @@
     global.MagicGems.getInteractionState = () => interaction;
     global.MagicGems.getAutoplayKeyLog = () => autoplayKeyLog.slice();
     global.MagicGems.AUTOPLAY_STEP_MS = AUTOPLAY_STEP_MS;
+    global.MagicGems.getActiveSinglePlayerSessions = () => activeSinglePlayerSessions;
     // The only mutator in this seam: backdates lastCompletionTimeMs so a real
     // tick (the next requestAnimationFrame, not a re-derivation) drains the
     // multiplier for real, without a real multi-second wait or the fake-clock

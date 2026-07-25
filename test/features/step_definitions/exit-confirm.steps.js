@@ -46,3 +46,18 @@ Then('the cursor has not moved from the position recorded before', async functio
   const state = await this.page.evaluate(() => window.MagicGems.getInteractionState());
   assert.deepEqual(state.cursor, this.recordedCursor, 'expected the cursor to stay exactly where it was recorded');
 });
+
+Then('exactly one single-player session is active', async function () {
+  // A restart's own boot is still finishing its async sprite load right after
+  // waitForBoardReady resolves (that helper's own sprite check can pass on a
+  // still-live previous session's stale sprites before the new one lands) -
+  // wait for the count to actually settle rather than sampling once, which
+  // would race the real value it's trying to observe.
+  await this.page.waitForFunction(
+    () => window.MagicGems.getActiveSinglePlayerSessions() === 1,
+    null,
+    { timeout: 2000 }
+  );
+  const count = await this.page.evaluate(() => window.MagicGems.getActiveSinglePlayerSessions());
+  assert.equal(count, 1, `expected exactly one active single-player session, found ${count}`);
+});

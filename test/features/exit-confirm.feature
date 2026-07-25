@@ -78,3 +78,20 @@ Feature: ESC opens an exit confirmation before quitting (EXIT-CONFIRM)
     When I press "Escape"
     And I press "y"
     Then the start screen is shown again
+
+  # (QA review, commit 280629a, Farley Index 8.3): the exit path's own teardown
+  # - cancelling the old animation frame, clearing its timers, removing its
+  # keydown listener - was completely unverified, so nothing proved a
+  # restarted single-player session doesn't end up running as a second copy
+  # alongside the fresh one it creates. Proven directly rather than inferred
+  # from unrelated symptoms.
+  @E9
+  Scenario: Exiting and restarting single-player leaves no duplicate session running
+    Given I open "index.html" directly as a file:// URL with no server or build step
+    Then exactly one single-player session is active
+    When I press "Escape"
+    And I press "y"
+    Then the start screen is shown again
+    When I choose "Single-player" from the start screen
+    Then the game board is shown
+    And exactly one single-player session is active
