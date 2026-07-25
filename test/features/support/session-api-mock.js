@@ -5,7 +5,7 @@ const { generateSessionCode, createSession, joinSession } = loadMagicGems([
 ]);
 
 // A realistic in-memory stand-in for the real Upstash-backed API
-// (api/magic-gems/session.js) - reuses the exact same pure decision logic
+// (api/magic-gems/session.mjs) - reuses the exact same pure decision logic
 // the real handler does, so this proves the client's real request/response
 // code path, not a hand-narrated fake. Installed at the CONTEXT level (not
 // per-page) so a scenario that opens a second page in the same context (MP2's

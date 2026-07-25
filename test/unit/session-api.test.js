@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import handler from '../../api/magic-gems/session.js';
-import { sessionKey } from '../../api/magic-gems/_upstash.js';
+import handler from '../../api/magic-gems/session.mjs';
+import { sessionKey } from '../../api/magic-gems/_upstash.mjs';
 
 const CONFIGURED_ENV = { UPSTASH_REDIS_REST_URL: 'https://x', UPSTASH_REDIS_REST_TOKEN: 'tok' };
 

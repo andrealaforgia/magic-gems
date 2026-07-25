@@ -6,7 +6,7 @@ import {
   getStoredSession,
   setStoredSession,
   SESSION_TTL_SECONDS,
-} from '../../api/magic-gems/_upstash.js';
+} from '../../api/magic-gems/_upstash.mjs';
 
 function withFetch(t, fetchImpl) {
   const realFetch = globalThis.fetch;

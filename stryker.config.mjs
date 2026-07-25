@@ -1,5 +1,5 @@
 export default {
-  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js', 'src/animation.js', 'src/sprite-layout.js', 'src/render.js', 'src/scoring.js', 'src/multiplier-bar.js', 'src/audio-cues.js', 'src/spin.js', 'src/autoplay.js', 'src/session.js', 'src/seeded-random.js', 'api/magic-gems/_upstash.js', 'api/magic-gems/session.js'],
+  mutate: ['src/board.js', 'src/interaction.js', 'src/layout.js', 'src/resolution.js', 'src/game.js', 'src/shatter.js', 'src/animation.js', 'src/sprite-layout.js', 'src/render.js', 'src/scoring.js', 'src/multiplier-bar.js', 'src/audio-cues.js', 'src/spin.js', 'src/autoplay.js', 'src/session.js', 'src/seeded-random.js', 'api/magic-gems/_upstash.mjs', 'api/magic-gems/session.mjs', 'api/magic-gems/_session-logic.mjs'],
   testRunner: 'command',
   commandRunner: { command: 'npm run test:unit' },
   reporters: ['clear-text', 'progress'],
@@ -312,3 +312,11 @@ export default {
 // one loop bound in the FNV-1a hash) still satisfied every one of them.
 // Fixed by pinning the exact known output for a fixed seed/string, not by
 // tightening the property tests further.
+//
+// (MP2-API-FIX) api/magic-gems/session.mjs + _upstash.mjs (renamed from .js
+// to guarantee ESM parsing regardless of the deployed repo's own package.json
+// "type" field - a real production crash cause) + the new self-contained
+// _session-logic.mjs (replacing a cross-boundary import into src/session.js,
+// the OTHER real production crash cause): 109/111 killed, 100% of non-timeout
+// mutants, 2 timeouts on _session-logic.mjs's own generateSessionCode - the
+// same documented increment-flip infinite loop as src/session.js's own copy.

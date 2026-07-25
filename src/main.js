@@ -726,7 +726,7 @@
   // as the start screen: arrow keys move the highlighted option, SPACE/ENTER
   // confirms), then either a waiting screen or a code-entry screen, ending at
   // a shared "ready" screen once both players are present. Wired to the real
-  // REST-backed session service (api/magic-gems/session.js), which MP2's own
+  // REST-backed session service (api/magic-gems/session.mjs), which MP2's own
   // temporary localStorage stub previously stood in for.
   function initMultiplayerLobby() {
     const { createRestSessionClient } = global.MagicGems;

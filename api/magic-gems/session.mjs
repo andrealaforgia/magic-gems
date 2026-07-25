@@ -1,13 +1,12 @@
-// MP2-STORE: the real REST-backed session service (SPEC 13.2), replacing
-// MP2's temporary same-origin stub behind the exact client seam it defined.
-// Reuses src/session.js's own already-unit-tested pure decision logic
-// (generateSessionCode/createSession/joinSession) directly - it's a
-// side-effect-only import (the file sets globalThis.MagicGems itself, same
-// as when a browser loads it via <script>), not a duplicate reimplementation.
-import '../../src/session.js';
-import { getStoredSession, setStoredSession } from './_upstash.js';
-
-const { generateSessionCode, createSession, joinSession } = globalThis.MagicGems;
+// MP2-STORE/MP2-API-FIX: the real REST-backed session service (SPEC 13.2),
+// replacing MP2's temporary same-origin stub behind the exact client seam it
+// defined. Uses a small, self-contained copy of the pure decision logic
+// (./_session-logic.mjs) scoped to this directory - not a cross-boundary
+// import into the shipped game's own src/ folder, which crashed in
+// production once this function and the static game ended up at different
+// relative locations after deployment.
+import { getStoredSession, setStoredSession } from './_upstash.mjs';
+import { generateSessionCode, createSession, joinSession } from './_session-logic.mjs';
 
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -54,7 +53,7 @@ export default {
       }
       return jsonResponse({ error: 'method not allowed' }, 405);
     } catch (err) {
-      // E4: a misconfigured/unavailable store must surface a clear error to
+      // E3: a misconfigured/unavailable store must surface a clear error to
       // the caller, never hang or fail invisibly.
       return jsonResponse({ error: err.message }, 500);
     }
