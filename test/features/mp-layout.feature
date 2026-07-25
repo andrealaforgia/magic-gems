@@ -1,0 +1,22 @@
+Feature: The split-screen match layout fits the viewport width (MP-LAYOUT)
+  As a player on any screen size
+  I want the match's split-screen layout to fit without a horizontal scrollbar
+  So I can see and play my own side of the match on any device
+
+  @E1 @E2 @E3 @E4 @integration
+  Scenario Outline: A real match fits the viewport horizontally at both a narrow and a wide screen size, with everything still correctly positioned and playable
+    Given two independent pages are both at the multiplayer lobby's name entry step
+    And the first page's viewport is <width> by <height>
+    When the first page enters the name "Alice" and generates a code
+    And the second page enters the name "Bob" and enters that same code
+    Then the match begins on both pages
+    And the first page's match does not overflow the viewport horizontally
+    And the first page's local grid is on the left, the remote grid is on the right, and the centre shows the countdown and gauge
+    Given I locate an adjacent swap that would produce a match on the first page's local match board
+    When I commit that swap on the first page's local match board
+    Then the first page's local match score has increased
+
+    Examples:
+      | width | height |
+      | 375   | 700    |
+      | 1280  | 800    |

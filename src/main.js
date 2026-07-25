@@ -516,9 +516,24 @@
     localNameEl.textContent = session.players[localIndex];
     remoteNameEl.textContent = session.players[remoteIndex];
 
-    const cellSize = computeCellSize(window.innerWidth * 0.4, window.innerHeight, BOARD_SIZE);
+    // SPEC 13.3.7/3.4: fits the whole split-screen layout to the real
+    // viewport width, not a fixed guess - measures the centre column's own
+    // actual rendered width and the real gap directly (rather than a fixed
+    // fraction of the viewport), so both grids shrink together with it and
+    // this stays correct if the centre column's own content or spacing ever
+    // changes. Measured before either canvas has a size of its own, so this
+    // reading can never be skewed by their own (still default) dimensions.
+    const matchCenterWidth = matchEl.querySelector('.match-center').offsetWidth;
+    const matchGapPx = parseFloat(getComputedStyle(matchEl).columnGap) || 0;
+    const availableForGrids = Math.max(0, window.innerWidth - matchCenterWidth - matchGapPx * 2);
+    const cellSize = computeCellSize(availableForGrids / 2, window.innerHeight, BOARD_SIZE);
     localCanvas.width = remoteCanvas.width = BOARD_SIZE * cellSize;
     localCanvas.height = remoteCanvas.height = BOARD_SIZE * cellSize;
+    // SPEC 13.3.7: the multiplier bar's own fixed width would otherwise set
+    // this side's natural (pre-shrink) width for the row above - tying it to
+    // the same real grid width it already visually sits above keeps both in
+    // sync, at any viewport size.
+    document.getElementById('match-multiplier-bar').style.width = `${BOARD_SIZE * cellSize}px`;
     const localCtx = localCanvas.getContext('2d');
     const remoteCtx = remoteCanvas.getContext('2d');
     const sprites = await loadGemSprites();

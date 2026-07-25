@@ -286,6 +286,32 @@ body {
   display: flex;
   align-items: flex-start;
   gap: 1.5rem;
+  /* SPEC 13.3.7: without these two, a flex row won't shrink its items below
+     their own content's natural (min-content) size, no matter how narrow the
+     viewport is - min-width:0 lifts that floor so the grids/multiplier bar
+     below can actually shrink with the real available width computed in JS,
+     and max-width:100% keeps this row itself from ever exceeding its own
+     parent's width. */
+  min-width: 0;
+  max-width: 100%;
+  /* Anchors the absolutely-positioned overlay children below (autoplay
+     indicator, audio toast, exit confirm) to this view itself, same
+     convention as #game's own position:relative for the identical purpose. */
+  position: relative;
+}
+
+/* SPEC 13.3.7: unlike single-player's own #autoplay-indicator (a normal,
+   in-flow column child, unaffected), this one is a sibling of the match's
+   own flex ROW - even hidden via visibility (not display:none), its long
+   unbreakable text still fully participated in that row's own width budget,
+   which crushed the two grids on a narrow viewport. Taken out of flow
+   entirely instead, matching the audio-toast/exit-confirm siblings' own
+   already-established overlay pattern in this same view. */
+#match-autoplay-indicator {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 /* Same override as #game/.start-screen/.mp-lobby/.mp-step above - this
@@ -299,6 +325,10 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 0.5rem;
+  /* SPEC 13.3.7: same min-content-floor fix as .match above - otherwise the
+     multiplier bar's own fixed width (below) would keep this side from ever
+     shrinking past it, even after the grid itself is sized correctly. */
+  min-width: 0;
 }
 
 .match-player-name {
