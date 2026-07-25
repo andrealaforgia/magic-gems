@@ -1,16 +1,26 @@
 import { Given, Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
 import { classifiedGrid } from '../support/board-reader.js';
-import { findHighlight } from './interaction.steps.js';
 
 Given('I record the cursor position', async function () {
-  const [cursor] = await findHighlight(this.page, 'cursor');
-  this.recordedCursor = cursor;
+  // Autoplay can be toggled off mid-move (after SPACE selects but before the
+  // aim+commit that follows) - a lingering selection would mean no cursor ring
+  // is drawn at all (findHighlight('cursor') finds nothing while a selection is
+  // active), and the very next arrow key would designate a target instead of
+  // moving the cursor. Clear any such leftover selection first so the recorded
+  // position reflects a genuinely plain, ready-for-normal-input cursor state.
+  await this.page.evaluate(() => {
+    if (window.MagicGems.getInteractionState().selection) {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    }
+  });
+  const state = await this.page.evaluate(() => window.MagicGems.getInteractionState());
+  this.recordedCursor = state.cursor;
 });
 
 Then('the cursor has moved exactly one step right of the position recorded before', async function () {
-  const [cursor] = await findHighlight(this.page, 'cursor');
-  assert.deepEqual(cursor, { row: this.recordedCursor.row, col: this.recordedCursor.col + 1 });
+  const state = await this.page.evaluate(() => window.MagicGems.getInteractionState());
+  assert.deepEqual(state.cursor, { row: this.recordedCursor.row, col: this.recordedCursor.col + 1 });
 });
 
 Then('autoplay is off', async function () {
@@ -156,7 +166,7 @@ Then('the score strictly increases across at least 3 separate real completions w
       return window.__scoreIncreaseCount >= 3;
     },
     null,
-    { timeout: 15000 }
+    { timeout: await autoplayRealTimeoutMs(this.page) }
   );
 });
 
