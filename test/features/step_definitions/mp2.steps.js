@@ -14,14 +14,36 @@ When('I type {string} into the lobby code field', async function (text) {
   await this.page.keyboard.type(text);
 });
 
-// MP2-STORE (commit TBD): overrides the default in-memory mock installed in
-// Before with one that always fails, simulating an unreachable/misconfigured
-// real store (E4) - registered after the default route, so Playwright's
-// most-recently-registered-first matching gives this one precedence.
+// MP2-STORE (commit e9d7a3d): overrides the default in-memory mock installed
+// in Before with one that always fails, simulating an unreachable/
+// misconfigured real store (E4) - registered after the default route, so
+// Playwright's most-recently-registered-first matching gives this one
+// precedence.
 Given('the session store is simulated as unavailable', async function () {
   await this.context.route('**/api/magic-gems/session**', (route) =>
     route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'store unavailable' }) })
   );
+});
+
+// QA review (commit 023dece): simulates exactly one transient GET (status
+// poll) failure - only the host's own subscribeSession loop ever issues a
+// GET, so this reliably targets its first tick - then falls back to the
+// default in-memory mock for everything after, proving the poll survives
+// and recovers rather than getting stuck.
+Given("the first page's next status poll will fail once, then succeed normally", async function () {
+  let failedOnce = false;
+  await this.context.route('**/api/magic-gems/session**', async (route) => {
+    const request = route.request();
+    if (request.method() === 'GET' && !failedOnce) {
+      failedOnce = true;
+      return route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'simulated transient poll failure' }),
+      });
+    }
+    return route.fallback();
+  });
 });
 
 Then("the lobby's {string} option is highlighted as selected", async function (label) {
@@ -115,8 +137,11 @@ When('the second page enters the name {string} and enters that same code', async
 });
 
 Then('both pages reach the ready state showing {string}', async function (expectedNames) {
-  await this.pageB.waitForSelector('#mp-ready-step:not([hidden])', { timeout: 3000 });
-  await this.pageA.waitForSelector('#mp-ready-step:not([hidden])', { timeout: 3000 });
+  // Generous enough to also cover a simulated failed poll tick elsewhere in
+  // this file, which costs the host one extra polling interval before it
+  // recovers and detects the join.
+  await this.pageB.waitForSelector('#mp-ready-step:not([hidden])', { timeout: 6000 });
+  await this.pageA.waitForSelector('#mp-ready-step:not([hidden])', { timeout: 6000 });
   const namesA = await this.pageA.textContent('#mp-ready-names');
   const namesB = await this.pageB.textContent('#mp-ready-names');
   assert.equal(namesA, expectedNames, 'expected the first page to show both real names');

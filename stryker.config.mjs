@@ -320,3 +320,17 @@ export default {
 // the OTHER real production crash cause): 109/111 killed, 100% of non-timeout
 // mutants, 2 timeouts on _session-logic.mjs's own generateSessionCode - the
 // same documented increment-flip infinite loop as src/session.js's own copy.
+//
+// (Security review round, commit 023dece) input validation (M1), per-IP rate
+// limiting (M2), a CSPRNG for session codes (L1), and generic-500-plus-
+// server-log error handling (L2): 100% (180/188 killed, 8 timeouts - the same
+// documented generateSessionCode infinite-loop pattern, now also present in
+// _upstash.mjs's own rate-limit path). Several real gaps this pass found and
+// fixed: a malformed/empty rate-limit response threw instead of failing
+// closed; the x-forwarded-for parser's own .trim() and the name/code length
+// boundaries (exactly empty, exactly at the limit) were untested; and the
+// `typeof code !== 'string'` guard survived every non-string test value
+// tried (numbers, single non-array values) because their string coercions
+// can never match the code pattern anyway - closed with a single-element
+// array (`['AAAAAAAAAA']`), whose own default coercion equals its one
+// element, genuinely distinguishing the guard from the pattern check alone.

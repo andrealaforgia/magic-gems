@@ -5,7 +5,9 @@ import {
   sessionKey,
   getStoredSession,
   setStoredSession,
+  checkRateLimit,
   SESSION_TTL_SECONDS,
+  RATE_LIMIT_KEY_PREFIX,
 } from '../../api/magic-gems/_upstash.mjs';
 
 function withFetch(t, fetchImpl) {
@@ -103,5 +105,50 @@ test('setStoredSession surfaces a store-reported error instead of swallowing it'
   await assert.rejects(
     () => setStoredSession({ UPSTASH_REDIS_REST_URL: 'https://x', UPSTASH_REDIS_REST_TOKEN: 'tok' }, { code: 'ABC', players: ['Alice'] }),
     /OOM/
+  );
+});
+
+test('checkRateLimit issues an authenticated pipeline INCR+EXPIRE(NX) against the namespaced bucket key', async (t) => {
+  const calls = [];
+  withFetch(t, async (url, options) => {
+    calls.push({ url, options });
+    return { json: async () => [{ result: 1 }, { result: 1 }] };
+  });
+
+  await checkRateLimit({ UPSTASH_REDIS_REST_URL: 'https://x', UPSTASH_REDIS_REST_TOKEN: 'tok' }, '1.2.3.4', 20, 60);
+
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].url.endsWith('/pipeline'), calls[0].url);
+  assert.equal(calls[0].options.method, 'POST');
+  assert.equal(calls[0].options.headers['Content-Type'], 'application/json');
+  assert.equal(calls[0].options.headers.Authorization, 'Bearer tok');
+  const commands = JSON.parse(calls[0].options.body);
+  assert.deepEqual(commands[0], ['INCR', `${RATE_LIMIT_KEY_PREFIX}1.2.3.4`]);
+  assert.deepEqual(commands[1], ['EXPIRE', `${RATE_LIMIT_KEY_PREFIX}1.2.3.4`, 60, 'NX']);
+});
+
+test('checkRateLimit fails closed (treats it as exceeded) rather than throwing on a malformed empty pipeline response', async (t) => {
+  withFetch(t, async () => ({ json: async () => [] }));
+  const within = await checkRateLimit({ UPSTASH_REDIS_REST_URL: 'https://x', UPSTASH_REDIS_REST_TOKEN: 'tok' }, '1.2.3.4', 20, 60);
+  assert.equal(within, false);
+});
+
+test('checkRateLimit reports within-limit while the count is at or below the limit', async (t) => {
+  withFetch(t, async () => ({ json: async () => [{ result: 20 }, { result: 1 }] }));
+  const within = await checkRateLimit({ UPSTASH_REDIS_REST_URL: 'https://x', UPSTASH_REDIS_REST_TOKEN: 'tok' }, '1.2.3.4', 20, 60);
+  assert.equal(within, true);
+});
+
+test('checkRateLimit reports exceeded once the count goes past the limit', async (t) => {
+  withFetch(t, async () => ({ json: async () => [{ result: 21 }, { result: 1 }] }));
+  const within = await checkRateLimit({ UPSTASH_REDIS_REST_URL: 'https://x', UPSTASH_REDIS_REST_TOKEN: 'tok' }, '1.2.3.4', 20, 60);
+  assert.equal(within, false);
+});
+
+test('checkRateLimit surfaces a store-reported error instead of swallowing it', async (t) => {
+  withFetch(t, async () => ({ json: async () => [{ error: 'WRONGPASS' }] }));
+  await assert.rejects(
+    () => checkRateLimit({ UPSTASH_REDIS_REST_URL: 'https://x', UPSTASH_REDIS_REST_TOKEN: 'tok' }, '1.2.3.4', 20, 60),
+    /WRONGPASS/
   );
 });

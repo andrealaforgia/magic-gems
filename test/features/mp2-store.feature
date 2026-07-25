@@ -9,7 +9,7 @@ Feature: The multiplayer lobby is backed by a real server-side session service (
   # create/join/ready round trip with each player seeing the other's real
   # name) are the exact same single round trip mp2.feature's own E8 already
   # proves, now driven through the real REST-backed session API contract
-  # (api/magic-gems/session.js) rather than the retired localStorage stub -
+  # (api/magic-gems/session.mjs) rather than the retired localStorage stub -
   # not re-derived a second time here.
 
   # E3 (abandoned/stale sessions clean themselves up rather than accumulating
@@ -45,3 +45,15 @@ Feature: The multiplayer lobby is backed by a real server-side session service (
   # alongside the static game on the andrealaforgia.com Vercel project, with
   # its Upstash env vars) and this scenario's own live verification are called
   # out separately as the outstanding deploy need.
+
+  # (QA review, commit 023dece): subscribeSession's poll-error-recovery path
+  # (a single transient poll failure isn't surfaced; the next poll just tries
+  # again) was previously untested. Proven here via a route override that
+  # fails exactly the host's first status poll, then succeeds normally.
+  @E7
+  Scenario: A single transient poll failure does not stop the host from eventually reaching ready
+    Given two independent pages are both at the multiplayer lobby's name entry step
+    And the first page's next status poll will fail once, then succeed normally
+    When the first page enters the name "Alice" and generates a code
+    And the second page enters the name "Bob" and enters that same code
+    Then both pages reach the ready state showing "Alice & Bob"

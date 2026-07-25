@@ -1,4 +1,5 @@
 const KEY_PREFIX = 'magic-gems:session:';
+const RATE_LIMIT_KEY_PREFIX = 'magic-gems:ratelimit:';
 // SPEC 13.2/E3 (MP2-STORE): abandoned sessions expire on their own rather
 // than accumulating in the store forever - an hour is ample for one lobby
 // pairing to complete without depending on any separate cleanup job.
@@ -47,4 +48,44 @@ async function setStoredSession(env, session) {
   if (body.error) throw new Error(body.error);
 }
 
-export { resolveConfig, sessionKey, getStoredSession, setStoredSession, KEY_PREFIX, SESSION_TTL_SECONDS };
+// Security review (commit 023dece), M2: no per-caller throttle previously -
+// every create/join/lookup cost a real store operation with no cap, an
+// unauthenticated cost/quota-exhaustion vector. A fixed-window counter (INCR
+// + EXPIRE ... NX, so only the FIRST request in a window starts its clock -
+// a plain INCR-then-EXPIRE-every-time would keep pushing the window out
+// forever under sustained traffic and never actually reset) via Upstash's own
+// pipeline endpoint - no new runtime dependency needed for this.
+async function incrementRateLimitCount(env, bucketId, windowSeconds) {
+  const { url, token } = resolveConfig(env);
+  const key = RATE_LIMIT_KEY_PREFIX + bucketId;
+  const res = await fetch(`${url}/pipeline`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify([
+      ['INCR', key],
+      ['EXPIRE', key, windowSeconds, 'NX'],
+    ]),
+  });
+  const results = await res.json();
+  if (results[0]?.error) throw new Error(results[0].error);
+  // A malformed/empty pipeline response yields undefined here, which makes
+  // checkRateLimit's own `count <= limit` comparison false - failing closed
+  // (treated as exceeded) rather than throwing on something this malformed.
+  return results[0]?.result;
+}
+
+async function checkRateLimit(env, bucketId, limit, windowSeconds) {
+  const count = await incrementRateLimitCount(env, bucketId, windowSeconds);
+  return count <= limit;
+}
+
+export {
+  resolveConfig,
+  sessionKey,
+  getStoredSession,
+  setStoredSession,
+  checkRateLimit,
+  KEY_PREFIX,
+  SESSION_TTL_SECONDS,
+  RATE_LIMIT_KEY_PREFIX,
+};

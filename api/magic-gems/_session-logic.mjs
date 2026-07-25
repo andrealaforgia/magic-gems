@@ -11,13 +11,21 @@
 // hand, not shared, precisely to avoid re-introducing that cross-boundary
 // dependency).
 
+import { randomInt } from 'node:crypto';
+
 const CODE_LENGTH = 10;
 const CODE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
+// Security review (commit 023dece), L1: the codespace size (26^10, ~47 bits)
+// is what actually makes guessing impractical, not RNG quality - but a real
+// CSPRNG is cheap and removes the category of concern outright. Only this
+// server-side copy needs it: the browser copy in src/session.js is
+// unreachable dead code post-MP2-STORE (session codes are generated here,
+// never client-side), kept only for its own existing tests/symmetry.
 function generateSessionCode() {
   let code = '';
   for (let i = 0; i < CODE_LENGTH; i++) {
-    code += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+    code += CODE_ALPHABET[randomInt(CODE_ALPHABET.length)];
   }
   return code;
 }
