@@ -343,3 +343,16 @@ export default {
 // since node:crypto's real randomInt can't be monkey-patched the way
 // Math.random can). 100% (24/24 non-timeout mutants killed), 6 timeouts on
 // the same documented increment-flip infinite loop.
+//
+// (MP4) per-player state publish: _session-logic.mjs's new publishPlayerState
+// (100%, 28/28 non-timeout mutants killed) and session.mjs's new validation/
+// dispatch for the publish action (99.05%, 203/211 non-timeout mutants
+// killed). 2 genuine equivalent survivors on validScoreOrError's leading
+// `typeof score !== 'number'` clause (both weakening it to `false` and
+// flipping its `||` to `&&`): for every value that isn't of type number,
+// Number.isFinite already returns false without coercing (unlike global
+// isFinite), so the second clause (`!Number.isFinite(score)`) already
+// rejects every one of those values on its own - no input exists where the
+// typeof clause's presence or absence changes the outcome. Verified by hand
+// across all non-number JS types (string, boolean, null, undefined, array,
+// object), not just the ones a test happened to try.

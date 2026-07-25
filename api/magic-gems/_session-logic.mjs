@@ -46,4 +46,15 @@ function joinSession(session, playerName) {
   return { ok: true, session: { ...session, players: [...session.players, playerName] } };
 }
 
-export { CODE_LENGTH, generateSessionCode, createSession, joinSession };
+// SPEC 13.4: each client continuously publishes its own board+score into the
+// shared session, keyed by name, so the other client can read it back and
+// render it on the remote side - never touching the other player's own
+// last-published state.
+function publishPlayerState(session, playerName, board, score) {
+  return {
+    ...session,
+    states: { ...session.states, [playerName]: { board, score } },
+  };
+}
+
+export { CODE_LENGTH, generateSessionCode, createSession, joinSession, publishPlayerState };

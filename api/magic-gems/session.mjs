@@ -6,10 +6,17 @@
 // production once this function and the static game ended up at different
 // relative locations after deployment.
 import { getStoredSession, setStoredSession, checkRateLimit } from './_upstash.mjs';
-import { generateSessionCode, createSession, joinSession, CODE_LENGTH } from './_session-logic.mjs';
+import { generateSessionCode, createSession, joinSession, publishPlayerState, CODE_LENGTH } from './_session-logic.mjs';
 
 const CODE_PATTERN = new RegExp(`^[A-Z]{${CODE_LENGTH}}$`);
 const MAX_NAME_LENGTH = 20;
+// MP4/M1: the real board is 8x8 of short gem-type names - capped generously
+// rather than exactly matching the game's own constants, so this doesn't
+// need to change in lockstep with board-size tuning, while still rejecting
+// the oversized-payload class of abuse M1 was about.
+const BOARD_SIZE = 8;
+const MAX_CELL_LENGTH = 30;
+const MAX_SCORE = 1e9;
 // Security review (commit 023dece), M2: no per-caller throttle previously -
 // tight enough to blunt a scripted flood against a zero-auth endpoint. must
 // stay comfortably above legitimate traffic - security review (commit
@@ -51,6 +58,30 @@ function validCodeOrError(code) {
   return null;
 }
 
+function validBoardOrError(board) {
+  if (!Array.isArray(board) || board.length !== BOARD_SIZE) {
+    return `board must be an array of ${BOARD_SIZE} rows`;
+  }
+  for (const row of board) {
+    if (!Array.isArray(row) || row.length !== BOARD_SIZE) {
+      return `each board row must be an array of ${BOARD_SIZE} cells`;
+    }
+    for (const cell of row) {
+      if (typeof cell !== 'string' || cell.length > MAX_CELL_LENGTH) {
+        return `each board cell must be a string of at most ${MAX_CELL_LENGTH} characters`;
+      }
+    }
+  }
+  return null;
+}
+
+function validScoreOrError(score) {
+  if (typeof score !== 'number' || !Number.isFinite(score) || score < 0 || score > MAX_SCORE) {
+    return `score must be a finite number between 0 and ${MAX_SCORE}`;
+  }
+  return null;
+}
+
 async function handleCreate(env, hostName) {
   let code = generateSessionCode();
   while (await getStoredSession(env, code)) code = generateSessionCode();
@@ -64,6 +95,14 @@ async function handleJoin(env, code, playerName) {
   const result = joinSession(existing, playerName);
   if (result.ok) await setStoredSession(env, result.session);
   return result;
+}
+
+async function handlePublish(env, code, playerName, board, score) {
+  const existing = await getStoredSession(env, code);
+  if (!existing) return { ok: false, error: 'not-found' };
+  const updated = publishPlayerState(existing, playerName, board, score);
+  await setStoredSession(env, updated);
+  return { ok: true, session: updated };
 }
 
 export default {
@@ -99,6 +138,18 @@ export default {
           const nameError = validNameOrError(body.playerName, 'playerName');
           if (nameError) return jsonResponse({ error: nameError }, 400);
           const result = await handleJoin(process.env, body.code, body.playerName);
+          return jsonResponse(result);
+        }
+        if (body.action === 'publish') {
+          const codeError = validCodeOrError(body.code);
+          if (codeError) return jsonResponse({ error: codeError }, 400);
+          const nameError = validNameOrError(body.playerName, 'playerName');
+          if (nameError) return jsonResponse({ error: nameError }, 400);
+          const boardError = validBoardOrError(body.board);
+          if (boardError) return jsonResponse({ error: boardError }, 400);
+          const scoreError = validScoreOrError(body.score);
+          if (scoreError) return jsonResponse({ error: scoreError }, 400);
+          const result = await handlePublish(process.env, body.code, body.playerName, body.board, body.score);
           return jsonResponse(result);
         }
         return jsonResponse({ error: 'unknown action' }, 400);

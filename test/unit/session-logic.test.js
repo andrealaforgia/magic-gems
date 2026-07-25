@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { CODE_LENGTH, generateSessionCode, createSession, joinSession } from '../../api/magic-gems/_session-logic.mjs';
+import {
+  CODE_LENGTH,
+  generateSessionCode,
+  createSession,
+  joinSession,
+  publishPlayerState,
+} from '../../api/magic-gems/_session-logic.mjs';
 
 // QA review (commit 87bd778): this server-side copy had no dedicated test
 // file of its own - only exercised indirectly through session-api.test.js's
@@ -55,4 +61,39 @@ test('joinSession refuses a third player - a session already at 2 reports full',
   assert.equal(result.ok, false);
   assert.equal(result.error, 'full');
   assert.deepEqual(joined.players, ['Alice', 'Bob'], 'a refused join must never touch the existing session');
+});
+
+// MP4: each player's own board/score is published into the session so the
+// other client can read it back and render it on the remote side (13.4).
+test('publishPlayerState records a player\'s board and score under their own name, without touching the other player\'s', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const { session: joined } = joinSession(session, 'Bob');
+  const board = [['red-square']];
+
+  const updated = publishPlayerState(joined, 'Alice', board, 42);
+
+  assert.deepEqual(updated.states.Alice, { board, score: 42 });
+  assert.equal(updated.states.Bob, undefined, 'must not fabricate a state for the other player');
+  assert.deepEqual(joined.players, ['Alice', 'Bob'], 'must never mutate the session it was given');
+});
+
+test('publishPlayerState updates a previously-published state, and never touches the other player\'s', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const { session: joined } = joinSession(session, 'Bob');
+  const afterBob = publishPlayerState(joined, 'Bob', [['blue-diamond']], 10);
+
+  const afterAlice = publishPlayerState(afterBob, 'Alice', [['red-square']], 20);
+  const afterAliceAgain = publishPlayerState(afterAlice, 'Alice', [['green-octagon']], 30);
+
+  assert.deepEqual(afterAliceAgain.states.Alice, { board: [['green-octagon']], score: 30 });
+  assert.deepEqual(afterAliceAgain.states.Bob, { board: [['blue-diamond']], score: 10 }, 'the other player\'s last-published state must survive untouched');
+});
+
+test('publishPlayerState never mutates the board array it was given', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const board = [['red-square']];
+
+  publishPlayerState(session, 'Alice', board, 5);
+
+  assert.deepEqual(board, [['red-square']]);
 });
