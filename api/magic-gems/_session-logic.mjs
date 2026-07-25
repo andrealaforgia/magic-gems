@@ -40,8 +40,12 @@ function createSession(code, hostName) {
   return { code, players: [hostName] };
 }
 
+// SPEC 13.2.6: a name already in the session is a RECONNECT - reclaiming
+// that same place, never rejected as full. "Full" only applies to a
+// genuinely third, different name once two distinct players are present.
 function joinSession(session, playerName) {
   if (!session) return { ok: false, error: 'not-found' };
+  if (session.players.includes(playerName)) return { ok: true, session };
   if (session.players.length >= 2) return { ok: false, error: 'full' };
   return { ok: true, session: { ...session, players: [...session.players, playerName] } };
 }

@@ -211,6 +211,31 @@ test('POST join against an already-full session reports full', async (t) => {
   assert.equal(body.error, 'full');
 });
 
+// MP-RECONNECT/SPEC 13.2.6: a player who left and comes back under their own
+// existing name reclaims their place, rather than being turned away as full.
+test('POST join with a name already in an already-full session reconnects instead of reporting full', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  withFetch(t, fakeUpstash());
+
+  const created = await createViaHandler('Alice');
+  await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'join', code: created.session.code, playerName: 'Bob' }),
+    })
+  );
+  const res = await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'join', code: created.session.code, playerName: 'Bob' }),
+    })
+  );
+  const body = await res.json();
+
+  assert.equal(body.ok, true);
+  assert.deepEqual(body.session.players, ['Alice', 'Bob']);
+});
+
 // MP4: each client publishes its own board+score for the other to read.
 function validBoardFixture() {
   return Array.from({ length: 8 }, () => Array.from({ length: 8 }, () => 'red-square'));

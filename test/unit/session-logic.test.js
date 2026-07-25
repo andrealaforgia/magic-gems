@@ -63,6 +63,27 @@ test('joinSession refuses a third player - a session already at 2 reports full',
   assert.deepEqual(joined.players, ['Alice', 'Bob'], 'a refused join must never touch the existing session');
 });
 
+// MP-RECONNECT/SPEC 13.2.6: a player who left and comes back under their own
+// existing name reclaims their place, rather than being turned away as full.
+test('joinSession treats a name already in the session as reconnecting, reclaiming their place rather than being rejected', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const { session: joined } = joinSession(session, 'Bob');
+
+  const result = joinSession(joined, 'Bob');
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.session.players, ['Alice', 'Bob']);
+});
+
+test('joinSession lets the host reconnect to their own still-waiting session under their own name', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+
+  const result = joinSession(session, 'Alice');
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.session.players, ['Alice']);
+});
+
 // MP4: each player's own board/score is published into the session so the
 // other client can read it back and render it on the remote side (13.4).
 test('publishPlayerState records a player\'s board and score under their own name, without touching the other player\'s', () => {
