@@ -20,7 +20,7 @@
   // SPEC 13.1.1: single-player is everything already delivered, started only
   // once the player actually chooses it from the start screen rather than on
   // page load directly.
-  async function startSinglePlayer() {
+  async function startSinglePlayer(onExit) {
     const {
       generateBoard,
       drawBoard,
@@ -59,6 +59,7 @@
     const multiplierMessageEl = document.getElementById('multiplier-message');
     const audioToastEl = document.getElementById('audio-toast');
     const autoplayIndicatorEl = document.getElementById('autoplay-indicator');
+    const exitConfirmEl = document.getElementById('exit-confirm');
     const cellSize = computeCellSize(window.innerWidth, window.innerHeight, BOARD_SIZE);
     canvas.width = BOARD_SIZE * cellSize;
     canvas.height = BOARD_SIZE * cellSize;
@@ -67,6 +68,7 @@
     const sprites = await loadGemSprites();
     let board = ensurePlayable(generateBoard()).board;
     let interaction = createInteractionState();
+    let exitConfirmOpen = false;
     let fragments = [];
     let animationQueue = [];
     let activeAnimation = null;
@@ -277,10 +279,10 @@
       // with - mixing the two would read a small negative elapsed on the exact tick
       // a reset happens (frameTimeMs is captured before this tick's own work runs).
       updateMultiplierBar(computeTimeMultiplier(performance.now() - lastCompletionTimeMs));
-      requestAnimationFrame(tick);
+      rafId = requestAnimationFrame(tick);
     }
 
-    requestAnimationFrame(tick);
+    let rafId = requestAnimationFrame(tick);
 
     // SPEC 11.5.1: shown instantly (via the 'visible' class, which has its own
     // zero-duration transition) then faded via the base rule's transition once
@@ -302,20 +304,46 @@
       showAudioToast(nowMuted ? 'SOUND OFF' : 'SOUND ON');
     }
 
+    function updateExitConfirmOverlay() {
+      exitConfirmEl.hidden = !exitConfirmOpen;
+    }
+
+    // SPEC 14.2: stops every timer/frame/listener this session owns, so a
+    // subsequent single-player restart never leaves a second copy of any of
+    // them running alongside the fresh one it creates.
+    function teardown() {
+      cancelAnimationFrame(rafId);
+      clearTimeout(autoplayTimer);
+      clearTimeout(audioToastTimeout);
+      document.removeEventListener('keydown', onKeydown);
+      autoplayIndicatorEl.classList.remove('active');
+      audioToastEl.classList.remove('visible');
+      exitConfirmEl.hidden = true;
+    }
+
     // Shared by real keydown input and autoplay's own emulated key presses
     // (SPEC 12.2), so a self-played move resolves through exactly the same
     // scoring/sound/animation/revive pipeline as a real one - no special-casing.
     function dispatchGameKey(key) {
-      const next = handleGameKey({ board, interaction }, key);
+      const next = handleGameKey({ board, interaction, exitConfirmOpen }, key);
+      const stateChanged = next.board !== board || next.interaction !== interaction || next.exitConfirmOpen !== exitConfirmOpen;
+      if (!stateChanged) return;
       if (next.board !== board || next.interaction !== interaction) {
         soundsForKeydown(key, interaction, next).forEach((name) => sound.play(name));
-        board = next.board;
-        interaction = next.interaction;
-        lastCommitSteps = next.steps;
-        animationQueue = animationQueue.concat(buildQueue(next));
-        advanceQueue();
-        render();
       }
+      board = next.board;
+      interaction = next.interaction;
+      exitConfirmOpen = next.exitConfirmOpen;
+      updateExitConfirmOverlay();
+      if (next.exitRequested) {
+        teardown();
+        onExit();
+        return;
+      }
+      lastCommitSteps = next.steps;
+      animationQueue = animationQueue.concat(buildQueue(next));
+      advanceQueue();
+      render();
     }
 
     let autoplayEnabled = false;
@@ -359,7 +387,13 @@
       }
     }
 
-    document.addEventListener('keydown', (event) => {
+    // SPEC 14.3: while the exit overlay is open, only Y/N are acted on - even
+    // the S/A toggles are suspended, so this check comes before either of them.
+    function onKeydown(event) {
+      if (exitConfirmOpen) {
+        dispatchGameKey(event.key);
+        return;
+      }
       const key = event.key.toLowerCase();
       if (key === 's') {
         toggleAudio();
@@ -372,7 +406,8 @@
       // SPEC 12.3: normal input is ignored outright while autoplay drives the game.
       if (autoplayEnabled) return;
       dispatchGameKey(event.key);
-    });
+    }
+    document.addEventListener('keydown', onKeydown);
 
     // Observability seam for tests: animation/shatter state is real, time-based
     // state that isn't otherwise reachable from outside this closure.
@@ -425,13 +460,24 @@
       startScreenEl.hidden = true;
       if (mode === 'single') {
         gameEl.hidden = false;
-        startSinglePlayer();
+        startSinglePlayer(returnToStartScreen);
       } else {
         // SPEC 13.1.2: multiplayer's real lobby isn't built yet - a placeholder
         // screen stands in for it, and single-player must stay fully reachable
         // regardless (this path never touches the single-player boot path).
         mpPlaceholderEl.hidden = false;
       }
+    }
+
+    // SPEC 14.2: single-player's own exit (Y at the confirmation) ends the
+    // game and lands back on a start screen that is fully re-operable, not a
+    // dead end - re-arms the same `confirmed` guard confirmMode() checks.
+    function returnToStartScreen() {
+      gameEl.hidden = true;
+      confirmed = false;
+      selectedIndex = 0;
+      updateHighlight();
+      startScreenEl.hidden = false;
     }
 
     singleBtn.addEventListener('click', () => confirmMode('single'));

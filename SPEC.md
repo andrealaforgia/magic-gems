@@ -6,9 +6,11 @@ This document is the single normative reference. Behaviours cite it by section.
 ## 1. Platform & delivery
 - 1.1 Runs in a modern browser with no build step: plain HTML, CSS, and JavaScript.
 - 1.2 Rendering uses an HTML5 `<canvas>`.
-- 1.3 Ships as a single self-contained folder (no external runtime dependencies),
-  deployable by copying it to `andrealaforgia.com/static/magic-gems` and served at
-  the path `/magic-gems`.
+- 1.3 Ships as a single self-contained folder, deployable by copying it to
+  `andrealaforgia.com/static/magic-gems` and served at the path `/magic-gems`.
+  Single-player has no external runtime dependencies. Multiplayer (§13) depends on a
+  small REST session service reached over the network, hosted on the game's own
+  hosting (Vercel).
 
 ## 2. The gems
 Seven distinct gem types, each rendered from a pre-rendered sprite image — a
@@ -59,7 +61,8 @@ glossy, faceted 3D gemstone. The seven identities are:
     invalid swap (6.5).
 - 6.5 The swap is applied only if it produces at least one match of 3+; otherwise
   the swap is reverted and the selection is cancelled (an invalid move cancels).
-- 6.6 ESC cancels the current selection at any point.
+- 6.6 ESC backs out one level: if a gem selection is active, ESC cancels the
+  selection. If no selection is active, ESC opens the exit confirmation (§14).
 - 6.7 Pressing A toggles autoplay on/off (see §12).
 
 ## 7. Resolution loop
@@ -240,3 +243,30 @@ clauses are added as each iteration lands.)
     control scheme (§6): the selection moves between options with the arrow keys and
     is confirmed with SPACE or ENTER, with the current choice visibly highlighted. A
     mouse is never required anywhere in the game.
+
+## 14. Exiting a game
+- 14.1 During play, pressing ESC when no gem selection is active (6.6) opens a
+  confirmation overlay reading "Are you sure you want to exit the game? Y/N",
+  centred and in the game's display font (9.4). It is operated by keyboard: Y
+  confirms, N cancels.
+- 14.2 Pressing Y exits the current game. In single-player the game ends and returns
+  to the start screen (13.1). In multiplayer, exiting counts as SURRENDER — the
+  player loses and the opponent is declared the winner (per the multiplayer end
+  rules, §13).
+- 14.3 Pressing N dismisses the overlay and resumes play exactly as it was. While the
+  overlay is shown, normal play input is suspended until Y or N is chosen.
+
+- 13.2 The multiplayer lobby and session. Multiplayer uses a game session held by a
+  small REST service on the game's own hosting: one player creates a session, the
+  other joins it by a shared code, and the service keeps that session's state keyed
+  by the code (no peer-to-peer).
+  - 13.2.1 On choosing Multiplayer, the player first enters their name, then chooses
+    "Generate code" or "Enter code". The lobby is keyboard-operable (§13.1.3).
+  - 13.2.2 "Generate code" creates a new session and shows a random 10-letter code,
+    then waits for a second player to join.
+  - 13.2.3 "Enter code" lets the player type a code and join the matching session.
+  - 13.2.4 When both players are present — the second player's presence is registered
+    and acknowledged to the first — both proceed together into the match (§13.3,
+    a later iteration).
+  - 13.2.5 Each player's name is shared through the session so both can see the
+    other's name.

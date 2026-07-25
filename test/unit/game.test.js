@@ -79,6 +79,8 @@ test('committing a swap that produces no match reverts the board and cancels the
   assert.equal(next.swapAnimation.matched, false);
   assert.equal(next.revived, false, 'a reverted (no-match) swap never triggers a revive check');
   assert.deepEqual(next.changedCells, [], 'a reverted swap must report no changed cells');
+  assert.equal(next.exitConfirmOpen, false, 'committing a swap must never leave the exit overlay open');
+  assert.equal(next.exitRequested, false, 'committing a swap must never request exit');
 });
 
 test('committing a swap that produces a match clears it, settles the board, and returns to plain cursor mode', () => {
@@ -127,6 +129,76 @@ test('committing a swap that produces a match clears it, settles the board, and 
   assert.ok(clearedPositions.includes('2,2'));
   for (const event of clearEvents) {
     assert.ok(GEM_TYPES.includes(event.gemType));
+  }
+});
+
+test('ESC with an active selection still just cancels the selection - no exit overlay opens (SPEC 6.6, EXIT-CONFIRM E1)', () => {
+  const board = buildMatchFreeBoard();
+  const selected = handleKey(createInteractionState(), SPACE);
+
+  const next = handleGameKey({ board, interaction: selected, exitConfirmOpen: false }, 'Escape');
+
+  assert.strictEqual(next.board, board);
+  assert.equal(next.interaction.selection, null);
+  assert.equal(next.exitConfirmOpen, false, 'a selection cancel must never open the exit overlay');
+  assert.equal(next.exitRequested, false);
+});
+
+test('ESC with no selection active opens the exit-confirmation overlay instead of doing nothing (EXIT-CONFIRM E2)', () => {
+  const board = buildMatchFreeBoard();
+  const interaction = createInteractionState();
+
+  const next = handleGameKey({ board, interaction, exitConfirmOpen: false }, 'Escape');
+
+  assert.strictEqual(next.board, board, 'opening the overlay must never touch the board');
+  assert.strictEqual(next.interaction, interaction, 'opening the overlay must never touch cursor/selection state');
+  assert.equal(next.exitConfirmOpen, true);
+  assert.equal(next.exitRequested, false);
+  assert.deepEqual(next.steps, [], 'opening the overlay must never report resolution steps');
+});
+
+test('while the exit overlay is open, ordinary play input (cursor, selection, any other key) is fully suspended (EXIT-CONFIRM E3)', () => {
+  const board = buildMatchFreeBoard();
+  const interaction = createInteractionState();
+  const gameState = { board, interaction, exitConfirmOpen: true };
+
+  for (const key of ['ArrowRight', ' ', 'q', 'Enter']) {
+    const next = handleGameKey(gameState, key);
+    assert.strictEqual(next.board, board, `key "${key}" must not touch the board while the overlay is open`);
+    assert.strictEqual(next.interaction, interaction, `key "${key}" must not move the cursor while the overlay is open`);
+    assert.equal(next.exitConfirmOpen, true, `key "${key}" must leave the overlay open - only Y/N are acted on`);
+    assert.equal(next.exitRequested, false);
+    assert.deepEqual(next.steps, [], `key "${key}" must never report resolution steps while the overlay is open`);
+  }
+});
+
+test('pressing Y while the exit overlay is open reports exitRequested, leaving board/interaction untouched (EXIT-CONFIRM E4)', () => {
+  const board = buildMatchFreeBoard();
+  const interaction = createInteractionState();
+  const gameState = { board, interaction, exitConfirmOpen: true };
+
+  for (const key of ['y', 'Y']) {
+    const next = handleGameKey(gameState, key);
+    assert.strictEqual(next.board, board);
+    assert.strictEqual(next.interaction, interaction);
+    assert.equal(next.exitConfirmOpen, false, `key "${key}" must close the overlay`);
+    assert.equal(next.exitRequested, true, `key "${key}" must request exit`);
+    assert.deepEqual(next.steps, [], `key "${key}" must never report resolution steps`);
+  }
+});
+
+test('pressing N while the exit overlay is open dismisses it and resumes exactly as before, with no exit requested (EXIT-CONFIRM E5)', () => {
+  const board = buildMatchFreeBoard();
+  const interaction = createInteractionState();
+  const gameState = { board, interaction, exitConfirmOpen: true };
+
+  for (const key of ['n', 'N']) {
+    const next = handleGameKey(gameState, key);
+    assert.strictEqual(next.board, board, `key "${key}" must leave the board exactly as it was`);
+    assert.strictEqual(next.interaction, interaction, `key "${key}" must leave cursor/selection exactly as it was`);
+    assert.equal(next.exitConfirmOpen, false, `key "${key}" must close the overlay`);
+    assert.equal(next.exitRequested, false, `key "${key}" must not request exit`);
+    assert.deepEqual(next.steps, [], `key "${key}" must never report resolution steps`);
   }
 });
 

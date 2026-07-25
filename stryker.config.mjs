@@ -270,3 +270,12 @@ export default {
 // survivor - the same UMD-wrapper case as every file above. No gap: the fixed
 // text, the "x"-prefix, and no-padding claims are each pinned by their own
 // unit test.
+//
+// (EXIT-CONFIRM) src/game.js's new handleExitConfirmKey + handleGameKey's ESC
+// branch (SPEC 6.6, 14): re-run scoped to this file, 87/88 mutants killed, 1
+// equivalent survivor - the same UMD-wrapper case as every file above. Two
+// real gaps this pass found and fixed: every branch's `steps: []` was
+// untested (no test asserted the resolution-steps field on the exit-overlay
+// open/suspend/Y/N returns), and committing an ordinary swap never asserted
+// `exitConfirmOpen`/`exitRequested` stayed false - both fixed by adding the
+// missing assertions to the existing/new tests, not by waiving anything.

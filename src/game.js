@@ -23,12 +23,34 @@
     return { board: playable, interaction: nextInteraction, swapAnimation, steps, revived: changedCells.length > 0, changedCells };
   }
 
-  function handleGameKey(gameState, key) {
+  // SPEC 14.3: while the overlay is open, only Y/N are acted on - every other
+  // key (including the ones that would otherwise move the cursor or select) is
+  // a pure no-op, which is what "suspended" means at this state-machine level.
+  function handleExitConfirmKey(gameState, key) {
     const { board, interaction } = gameState;
-    if (key === ' ' && interaction.selection && interaction.target) {
-      return commit(board, interaction);
+    if (key === 'y' || key === 'Y') {
+      return { board, interaction, exitConfirmOpen: false, exitRequested: true, swapAnimation: null, steps: [] };
     }
-    return { board, interaction: handleKey(interaction, key), swapAnimation: null, steps: [] };
+    if (key === 'n' || key === 'N') {
+      return { board, interaction, exitConfirmOpen: false, exitRequested: false, swapAnimation: null, steps: [] };
+    }
+    return { board, interaction, exitConfirmOpen: true, exitRequested: false, swapAnimation: null, steps: [] };
+  }
+
+  function handleGameKey(gameState, key) {
+    const { board, interaction, exitConfirmOpen } = gameState;
+    if (exitConfirmOpen) {
+      return handleExitConfirmKey(gameState, key);
+    }
+    // SPEC 6.6/14.1: ESC backs out one level - cancels an active selection, or
+    // (with none active) opens the exit confirmation instead of doing nothing.
+    if (key === 'Escape' && !interaction.selection) {
+      return { board, interaction, exitConfirmOpen: true, exitRequested: false, swapAnimation: null, steps: [] };
+    }
+    if (key === ' ' && interaction.selection && interaction.target) {
+      return { ...commit(board, interaction), exitConfirmOpen: false, exitRequested: false };
+    }
+    return { board, interaction: handleKey(interaction, key), exitConfirmOpen: false, exitRequested: false, swapAnimation: null, steps: [] };
   }
 
   global.MagicGems.handleGameKey = handleGameKey;
