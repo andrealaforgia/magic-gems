@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadMagicGems } from '../support/load-src.js';
+import { buildMatchFreeBoard as buildMatchFreeBoardFor } from '../support/board-fixtures.js';
 
 const { GEM_TYPES, generateBoard, hasMatch } = loadMagicGems([
   new URL('../../src/gems.js', import.meta.url),
@@ -13,22 +14,8 @@ function countCells(board) {
   return board.reduce((n, row) => n + row.length, 0);
 }
 
-// A deterministic, provably match-free 8x8 fixture: cell value cycles diagonally
-// through all known gem types, so any 3 consecutive cells in a row or column always
-// take 3 different residues mod GEM_TYPES.length (3 < length, no wraparound) — never
-// a coincidental run of 3. Unlike generateBoard() + a 3-cell overwrite, this can
-// never mask a broken detector behind an unrelated, incidental match elsewhere in
-// the grid.
 function buildMatchFreeBoard() {
-  const board = [];
-  for (let row = 0; row < SIZE; row++) {
-    const cells = [];
-    for (let col = 0; col < SIZE; col++) {
-      cells.push(GEM_TYPES[(row + col) % GEM_TYPES.length]);
-    }
-    board.push(cells);
-  }
-  return board;
+  return buildMatchFreeBoardFor(GEM_TYPES);
 }
 
 test('generateBoard produces an 8x8 grid', () => {

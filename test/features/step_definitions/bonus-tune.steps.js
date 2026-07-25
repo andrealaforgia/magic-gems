@@ -24,7 +24,11 @@ Then(
   'the multiplier bar\'s fill visibly shrinks from the right, its left edge staying put, after a short real interval',
   async function () {
     const before = await readEdges(this.page);
-    await this.page.waitForTimeout(1100);
+    // 1400ms, not 1100ms, against a 1-per-second countdown: 1100ms leaves only ~100ms
+    // margin over the tick boundary, the suite's most likely intermittent-failure point
+    // (QA test-design review, Farley Index baseline). 1400ms keeps this fast while
+    // giving real headroom.
+    await this.page.waitForTimeout(1400);
     const after = await readEdges(this.page);
     assert.ok(
       after.fillRight < before.fillRight,

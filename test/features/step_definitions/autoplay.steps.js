@@ -48,6 +48,12 @@ Then('the autoplay instruction line reads {string} in the pixel font, below the 
 // wait-then-sample pair can still catch a mid-cascade frame. Retries the whole
 // wait+sample within one generous overall deadline rather than trusting any
 // single sample.
+//
+// The overallTimeoutMs budgets passed to this function (15000ms at every call
+// site below) are sized against AUTOPLAY-SPEED's cadence constant
+// (AUTOPLAY_STEP_MS = 107ms in src/main.js), not derived independently - if that
+// constant is retuned again, re-check these budgets still give many multiples of
+// it rather than trusting the old margin (QA test-design review, baseline).
 async function waitForRealCondition(page, checkFn, overallTimeoutMs) {
   const deadline = Date.now() + overallTimeoutMs;
   let lastResult = false;

@@ -189,7 +189,11 @@ function readMultiplierFillWidth(page) {
 // @component scenario.
 Then('the time multiplier reads lower after a short real interval, live and continuously', async function () {
   const before = { value: await readMultiplierValue(this.page), width: await readMultiplierFillWidth(this.page) };
-  await this.page.waitForTimeout(1100);
+  // 1400ms, not 1100ms, against a 1-per-second countdown: 1100ms leaves only ~100ms
+  // margin over the tick boundary, the suite's most likely intermittent-failure point
+  // (QA test-design review, Farley Index baseline). 1400ms keeps this fast while
+  // giving real headroom.
+  await this.page.waitForTimeout(1400);
   const after = { value: await readMultiplierValue(this.page), width: await readMultiplierFillWidth(this.page) };
   assert.ok(after.value < before.value, `expected the multiplier to visibly count down over ~1s, was ${before.value}, still ${after.value}`);
   assert.ok(after.width < before.width, `expected the bar's fill width to visibly shrink over ~1s, was ${before.width}px, still ${after.width}px`);

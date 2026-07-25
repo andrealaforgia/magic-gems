@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { loadMagicGems } from '../support/load-src.js';
+import {
+  buildMatchFreeBoard as buildMatchFreeBoardFor,
+  buildStuckBoard as buildStuckBoardFor,
+  buildStuckBoardRequiringSearch as buildStuckBoardRequiringSearchFor,
+} from '../support/board-fixtures.js';
 
 const {
   GEM_TYPES,
@@ -24,48 +29,16 @@ const {
 
 const SIZE = 8;
 
-// Deterministic, provably match-free fixture (see test/unit/board.test.js): 3
-// consecutive cells in any row or column always take 3 distinct residues mod 6.
 function buildMatchFreeBoard() {
-  const board = [];
-  for (let row = 0; row < SIZE; row++) {
-    const cells = [];
-    for (let col = 0; col < SIZE; col++) {
-      cells.push(GEM_TYPES[(row + col) % GEM_TYPES.length]);
-    }
-    board.push(cells);
-  }
-  return board;
+  return buildMatchFreeBoardFor(GEM_TYPES);
 }
 
-// A 3x3 Latin square (each row/column a permutation of the same 3 types). At exactly
-// match-length wide and tall, a run of 3 requires ALL 3 cells in a row/column to
-// match; a swap within a row/column merely reorders that row/column's existing 3
-// distinct values (never 3-identical), and a swap across rows/columns can produce at
-// most 2 duplicates in a 3-wide/tall line, never all 3 — so this board provably has
-// no match and no valid move, verified directly against hasMatch/hasAnyValidMove.
 function buildStuckBoard() {
-  return [
-    [GEM_TYPES[0], GEM_TYPES[1], GEM_TYPES[2]],
-    [GEM_TYPES[1], GEM_TYPES[2], GEM_TYPES[0]],
-    [GEM_TYPES[2], GEM_TYPES[0], GEM_TYPES[1]],
-  ];
+  return buildStuckBoardFor(GEM_TYPES);
 }
 
-// A second stuck Latin square (same shape as buildStuckBoard, shifted to a
-// different 3 of the 7 types) chosen so tryReviveTwoCells's very first candidate
-// (cells (0,0)/(0,1), the first two GEM_TYPES) is genuinely rejected - it leaves
-// the board still stuck (hasAnyValidMove false), forcing the search to actually
-// advance past it. buildStuckBoard's own first candidate happens to already
-// satisfy the postcondition (verified directly), which is exactly why a mutant
-// that accepts unconditionally survived against it (QA review, commit 57dd1d6) -
-// this fixture is the fix, not another copy of the same blind spot.
 function buildStuckBoardRequiringSearch() {
-  return [
-    [GEM_TYPES[3], GEM_TYPES[4], GEM_TYPES[1]],
-    [GEM_TYPES[4], GEM_TYPES[1], GEM_TYPES[3]],
-    [GEM_TYPES[1], GEM_TYPES[3], GEM_TYPES[4]],
-  ];
+  return buildStuckBoardRequiringSearchFor(GEM_TYPES);
 }
 
 test('applySwap exchanges exactly the two given cells and leaves the rest untouched', () => {

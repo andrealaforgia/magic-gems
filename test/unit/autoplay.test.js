@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { loadMagicGems } from '../support/load-src.js';
+import {
+  buildMatchFreeBoard as buildMatchFreeBoardFor,
+  buildStuckBoard as buildStuckBoardFor,
+} from '../support/board-fixtures.js';
 
 const { GEM_TYPES, planAutoplaySteps } = loadMagicGems([
   new URL('../../src/gems.js', import.meta.url),
@@ -9,26 +13,12 @@ const { GEM_TYPES, planAutoplaySteps } = loadMagicGems([
   new URL('../../src/autoplay.js', import.meta.url),
 ]);
 
-const SIZE = 8;
-
 function buildMatchFreeBoard() {
-  const board = [];
-  for (let row = 0; row < SIZE; row++) {
-    const cells = [];
-    for (let col = 0; col < SIZE; col++) {
-      cells.push(GEM_TYPES[(row + col) % GEM_TYPES.length]);
-    }
-    board.push(cells);
-  }
-  return board;
+  return buildMatchFreeBoardFor(GEM_TYPES);
 }
 
 function buildStuckBoard() {
-  return [
-    [GEM_TYPES[0], GEM_TYPES[1], GEM_TYPES[2]],
-    [GEM_TYPES[1], GEM_TYPES[2], GEM_TYPES[0]],
-    [GEM_TYPES[2], GEM_TYPES[0], GEM_TYPES[1]],
-  ];
+  return buildStuckBoardFor(GEM_TYPES);
 }
 
 test('planAutoplaySteps returns no steps when no valid move exists (SPEC 8.3 guarantees this never happens live)', () => {

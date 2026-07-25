@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { loadMagicGems } from '../support/load-src.js';
+import { buildMatchFreeBoard as buildMatchFreeBoardFor } from '../support/board-fixtures.js';
 
 const {
   GEM_TYPES,
@@ -16,19 +17,10 @@ const {
   new URL('../../src/game.js', import.meta.url),
 ]);
 
-const SIZE = 8;
 const SPACE = ' ';
 
 function buildMatchFreeBoard() {
-  const board = [];
-  for (let row = 0; row < SIZE; row++) {
-    const cells = [];
-    for (let col = 0; col < SIZE; col++) {
-      cells.push(GEM_TYPES[(row + col) % GEM_TYPES.length]);
-    }
-    board.push(cells);
-  }
-  return board;
+  return buildMatchFreeBoardFor(GEM_TYPES);
 }
 
 test('a non-space, non-committing key only moves the interaction state; the board is untouched', () => {
