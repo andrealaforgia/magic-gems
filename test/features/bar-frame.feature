@@ -13,7 +13,8 @@ Feature: A thick white frame around the multiplier bar (BAR-FRAME)
     Then the multiplier bar has a thick white border
 
   # E1 (the bar's fill is anchored to its left edge and recedes at the right as the
-  # multiplier depletes) and E2 (full width at the 300 maximum) are covered by
+  # multiplier depletes) and E2 (full width at the 100 maximum, tuned down from 300
+  # by BONUS-TUNE's own B1) are covered by
   # bonus-tune.feature's own E3 scenario, corrected to this direction. Not
   # re-derived here.
 
@@ -29,7 +30,7 @@ Feature: A thick white frame around the multiplier bar (BAR-FRAME)
     Given I record the current score
     And I locate an adjacent swap that would produce a match on the live board
     When I commit that swap
-    Then the time multiplier bar reset to full, exactly 300, at the moment of that commit's completion
+    Then the time multiplier bar reset to full, exactly 100, at the moment of that commit's completion
     And the score has strictly increased since it was recorded
     When the shatter animation has settled
     Then the board contains no horizontal or vertical run of 3 or more identical gems

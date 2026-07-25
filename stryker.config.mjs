@@ -256,3 +256,11 @@ export default {
 // hand-waved. src/resolution.js's own new findValidMove (SPEC 12.2, returns the
 // pair hasAnyValidMove only confirmed existed) reuses the exact same search
 // shape already hardened for hasAnyValidMove - no new survivors of its own.
+//
+// (B1, re-tune of SCORE/BONUS-TUNE) src/scoring.js's TIME_MULTIPLIER_START:
+// 300 -> 100, re-run scoped to this file alone. 24/25 mutants killed, 1
+// equivalent survivor - the same UMD-wrapper case as every file above. No new
+// gap: the constant change is exercised by the same worked-example and
+// decay-rate tests already hardened when this file was first created (see the
+// (SCORE) note above), just re-pointed at the new ceiling and its own new
+// multiplier-reaches-0-scores-0 case (SPEC 10.7.2).

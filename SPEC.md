@@ -127,9 +127,9 @@ quickly and in bigger, chained clears.
   a 4-run = 100, a 5-run = 150, and so on.
 - 10.4 When several runs clear in the same completion (10.2), their base points are
   summed before any multiplier is applied.
-- 10.5 A time multiplier rewards fast play. It resets to 300 at each completion and
+- 10.5 A time multiplier rewards fast play. It resets to 100 at each completion and
   then counts down by 1 every second, never below 0. At the moment of a completion
-  its value is `300 − (whole seconds elapsed since the previous completion)`,
+  its value is `100 − (whole seconds elapsed since the previous completion)`,
   floored at 0. For the first completion of the game the elapsed time is measured
   from the start of play.
 - 10.6 A combo factor rewards chains. Within the cascade chain triggered by one
@@ -139,14 +139,19 @@ quickly and in bigger, chained clears.
 - 10.7 Each completion adds to the running score:
   `floor( summed_base (10.4) × time_multiplier (10.5) × combo_factor (10.6) / 100 )`.
   - 10.7.1 Worked examples: a lone 3-run 30 seconds after the previous completion
-    scores `floor(50 × (300−30) × 1 / 100)` = 135. A 3-run and a 4-run clearing
-    together, same 30-second gap, first in the chain: `floor((50+100) × 270 × 1
-    / 100)` = 405.
+    scores `floor(50 × (100−30) × 1 / 100)` = 35. A 3-run and a 4-run clearing
+    together, same 30-second gap, first in the chain: `floor((50+100) × 70 × 1
+    / 100)` = 105.
+  - 10.7.2 When the time multiplier (10.5) has reached 0, a completion adds
+    nothing to the score: the player scores no points at all until the multiplier
+    resets. This is a consequence of the formula in 10.7, not a separate rule.
+    Everything else about the completion is unaffected — the runs still clear and
+    the cascade still proceeds.
 - 10.8 The current time multiplier (10.5) is shown at the top of the grid, to the
   right of the score, as a horizontal gradient bar that occupies ALL the remaining
   horizontal space from the score across to the grid's right border. Its filled
-  length represents the multiplier as a fraction of its 300 maximum. The bar is full
-  at 300 and, as the multiplier counts down toward 0, it empties from the RIGHT: the
+  length represents the multiplier as a fraction of its 100 maximum. The bar is full
+  at 100 and, as the multiplier counts down toward 0, it empties from the RIGHT: the
   right end recedes leftward (it decreases right-to-left), so the remaining filled
   portion is anchored at the left edge and the last sliver to disappear is on the
   left. The bar is coloured with a green → yellow → red gradient. It is enclosed in

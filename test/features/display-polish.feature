@@ -44,7 +44,7 @@ Feature: Visual presentation polish (DISPLAY-POLISH)
     Given I record the current score
     And I locate an adjacent swap that would produce a match on the live board
     When I commit that swap
-    Then the time multiplier bar reset to full, exactly 300, at the moment of that commit's completion
+    Then the time multiplier bar reset to full, exactly 100, at the moment of that commit's completion
     And the score has strictly increased since it was recorded
     When the shatter animation has settled
     Then the board contains no horizontal or vertical run of 3 or more identical gems

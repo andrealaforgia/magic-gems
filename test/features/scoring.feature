@@ -7,7 +7,7 @@ Feature: Scoring system (SCORE)
   Scenario: The score starts at 0 and only ever increases over play
     Given I open "index.html" directly as a file:// URL with no server or build step
     Then the score is displayed and reads exactly 0
-    And the time multiplier bar is displayed and is full, at exactly 300
+    And the time multiplier bar is displayed and is full, at exactly 100
     Given I record the current score
     When I commit 3 matching swaps in a row, each settling before the next
     Then the score has not decreased since it was recorded
@@ -36,7 +36,7 @@ Feature: Scoring system (SCORE)
   @E4 @E7 @e2e
   Scenario: The time multiplier counts down by 1 per elapsed second, floored at 0, and resets after each completion
     Given I open "index.html" directly as a file:// URL with no server or build step
-    Then the live page's time multiplier for a 30s gap reads exactly 270
+    Then the live page's time multiplier for a 30s gap reads exactly 70
     And the live page's time multiplier for a 5000s gap reads exactly 0
     And the live page's time multiplier for a 6000s gap reads exactly 0
     # E7: displayed near the score, updating live and continuously between
@@ -46,7 +46,7 @@ Feature: Scoring system (SCORE)
     Given I record the current score
     And I locate an adjacent swap that would produce a match on the live board
     When I commit that swap
-    Then the time multiplier bar reset to full, exactly 300, at the moment of that commit's completion
+    Then the time multiplier bar reset to full, exactly 100, at the moment of that commit's completion
 
   @E5 @component
   Scenario: The combo factor follows 2^(k-1) within a chain and resets to x1 on each new swap
@@ -59,8 +59,8 @@ Feature: Scoring system (SCORE)
   @E6 @component
   Scenario: Both frozen worked examples reproduce exactly
     Given I open "index.html" directly as a file:// URL with no server or build step
-    Then the live page reproduces the frozen worked example: a lone 3-run, 30s gap, scores exactly 135
-    And the live page reproduces the frozen worked example: a 3-run and 4-run together, 30s gap, first in chain, scores exactly 405
+    Then the live page reproduces the frozen worked example: a lone 3-run, 30s gap, scores exactly 35
+    And the live page reproduces the frozen worked example: a 3-run and 4-run together, 30s gap, first in chain, scores exactly 105
 
   # E8 (scoring is purely additive; endless play, and all previously-delivered play
   # - swap with revert-on-no-match, gravity, refill, cascade, auto-revive -
@@ -71,11 +71,11 @@ Feature: Scoring system (SCORE)
   Scenario: A full fresh-load play cycle completes correctly with real scoring throughout
     Given I open "index.html" directly as a file:// URL with no server or build step
     Then the score is displayed and reads exactly 0
-    And the time multiplier bar is displayed and is full, at exactly 300
+    And the time multiplier bar is displayed and is full, at exactly 100
     Given I record the current score
     And I locate an adjacent swap that would produce a match on the live board
     When I commit that swap
-    Then the time multiplier bar reset to full, exactly 300, at the moment of that commit's completion
+    Then the time multiplier bar reset to full, exactly 100, at the moment of that commit's completion
     And the score has strictly increased since it was recorded
     When the shatter animation has settled
     Then the board contains no horizontal or vertical run of 3 or more identical gems

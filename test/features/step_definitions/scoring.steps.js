@@ -51,8 +51,8 @@ Then('the score is displayed and reads exactly 0', async function () {
   assert.equal(await readScore(this.page), 0);
 });
 
-Then('the time multiplier bar is displayed and is full, at exactly 300', async function () {
-  assert.equal(await readMultiplierValue(this.page), 300);
+Then('the time multiplier bar is displayed and is full, at exactly 100', async function () {
+  assert.equal(await readMultiplierValue(this.page), 100);
 });
 
 Given('I record the current score', async function () {
@@ -75,7 +75,7 @@ Then('the score has strictly increased since it was recorded', async function ()
 // well over a real second to fall off-screen, by which point the multiplier has
 // legitimately already ticked down from its just-reset value (SPEC 10.5). Requires
 // "I record the current score" beforehand so there's a prior value to compare against.
-Then('the time multiplier bar reset to full, exactly 300, at the moment of that commit\'s completion', async function () {
+Then('the time multiplier bar reset to full, exactly 100, at the moment of that commit\'s completion', async function () {
   assert.ok(this.recordedScore !== undefined, 'expected a previously recorded score to compare against');
   await this.page.waitForFunction(
     (scoreBefore) => Number(document.getElementById('score').textContent.replace('Score: ', '')) !== scoreBefore,
@@ -83,7 +83,7 @@ Then('the time multiplier bar reset to full, exactly 300, at the moment of that 
     { timeout: 3000 }
   );
   const multiplier = await readMultiplierValue(this.page);
-  assert.equal(multiplier, 300, `expected the multiplier to read exactly 300 right at the completion, got ${multiplier}`);
+  assert.equal(multiplier, 100, `expected the multiplier to read exactly 100 right at the completion, got ${multiplier}`);
 });
 
 // Verifies the base-points-per-run-length claim (SPEC 10.3/10.4) using the live
