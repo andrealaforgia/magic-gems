@@ -282,7 +282,7 @@ clauses are added as each iteration lands.)
     look of §3/§9 (sprites, chessboard cells).
   - 13.3.3 The CENTRE shows a countdown timer starting at 10:00 and counting down, and
     a tug-of-war gauge indicating who is winning by score (even at the start). Text in
-    the display font (§9.4).
+    the display font (§9.4). The tug-of-war gauge is VERTICALLY CENTRED on the screen.
   - 13.3.4 The local player plays their own grid with the usual controls (§6). The
     remote grid shows the opponent's board; live updates of the opponent's moves and
     score arrive in the next iteration (§13.4) — until then the remote side shows the
@@ -301,12 +301,19 @@ clauses are added as each iteration lands.)
     is surrender per §14.2; the winner proclamation is delivered by the end-game
     iteration, §13.5).
 
-- 13.4 Live opponent sync. During the match, each client continuously publishes its
-  own state (its board and score, reflecting the player's moves as they happen) to
-  the session on the server, and reads the opponent's latest published state,
-  rendering the opponent's grid and score on the remote (right) side. Player A sees
-  player B's moves and score, and player B sees player A's — each on the opposite
-  side of their own split screen.
+- 13.4 Live opponent sync — by replaying moves. During the match, each client sends
+  its own INPUT ACTIONS as they happen — cursor moves (up/down/left/right), gem
+  selection, and swap commits — to the session. The opponent's client REPLAYS those
+  actions on its mirror of that player's board: the remote (right) grid shows the
+  opponent's cursor moving, selecting, and swapping, AND the full resolution that
+  follows — matched gems SHATTER (§9.2) and gems FALL and refill (§7.2, §7.3) — with
+  the same on-screen animations as normal play but WITHOUT sound. So the remote grid
+  looks just like the opponent's own screen (minus sound): a faithful live REPLICA of
+  their actual play, not just a periodic board snapshot.
+  - 13.4.0 The mirror stays consistent by RECONSTRUCTION: the opponent's board is
+    rebuilt deterministically from the shared seeded start and the shared refill
+    sequence (13.3.1) with the replayed moves applied; the opponent's score follows
+    from that replayed play. (No sound plays for the replayed remote moves.)
   - 13.4.1 The centre who's-winning gauge (13.3.3) reflects the two players' current
     scores, tilting toward whoever leads.
   - 13.4.2 Talking to the server is ASYNCHRONOUS and low-priority — it must NEVER
@@ -315,3 +322,27 @@ clauses are added as each iteration lands.)
     slightly behind real time; a slow, delayed, or failed network request must not
     freeze, stutter, or delay the local game in any way. The game experience is
     privileged over sync latency.
+
+  - 13.2.6 Reconnecting. If a player leaves (e.g. closes the window) and then enters
+    the same code again with the SAME name, this is treated as that player
+    RECONNECTING and reclaiming their place in the session — NOT a new player, and
+    NOT rejected. A session is reported "full" only when a THIRD, different player
+    (a name not already in the session) tries to join a session that already holds
+    two distinct players.
+  - 13.3.7 The split-screen match layout must fit within the viewport width with NO
+    horizontal scrollbar on any screen (consistent with §3.4): the two grids, the
+    centre column, and the gaps are sized/scaled together so the whole match fits
+    horizontally without overflow. In particular, the LOCAL player's grid must be
+    FULLY VISIBLE from the moment the match starts — never truncated or clipped on
+    the left edge.
+
+- 13.5 End of match & winner. A multiplayer match ends in either of two ways, and
+  when it ends BOTH clients stop play and show a result proclaiming the winner.
+  - 13.5.1 Surrender: a player pressing ESC and confirming the exit (§14) SURRENDERS
+    — that player loses and the opponent wins. The end is communicated through the
+    session so the match ends on BOTH sides (not just the surrendering client), and
+    both see the winner proclaimed.
+  - 13.5.2 Timeout: when the countdown reaches 0:00, the match ends; the player with
+    the higher score wins, and equal scores are a draw.
+  - 13.5.3 On either ending, both clients show a result screen proclaiming the winner
+    (or a draw), in the display font (§9.4).

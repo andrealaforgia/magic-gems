@@ -137,17 +137,6 @@ Then('the second page is still in the match', async function () {
   assert.equal(hidden, false);
 });
 
-Then('the second page is back at the start screen', async function () {
-  await this.pageB.waitForSelector('#start-screen:not([hidden])', { timeout: 3000 });
-  const matchHidden = await this.pageB.evaluate(() => document.getElementById('match').hidden);
-  assert.equal(matchHidden, true);
-});
-
-Then('the first page is still in the match', async function () {
-  const hidden = await this.pageA.evaluate(() => document.getElementById('match').hidden);
-  assert.equal(hidden, false);
-});
-
 Then("the second page's match timer reads 10:00 or just under, in the pixel font", async function () {
   const result = await this.pageB.evaluate(async () => {
     await document.fonts.ready;

@@ -103,6 +103,15 @@
           clearInterval(timer);
         };
       },
+      // MP5/SPEC 13.5.1: a one-shot signal, not a continuous stream like
+      // moves - the surrendering client ends its own match immediately
+      // regardless of whether this send succeeds, so a network failure here
+      // never blocks that. If it never reaches the server, the opponent's
+      // own match simply runs to its own natural timeout instead (13.5.2)
+      // rather than ending early - a graceful fallback, not a hang.
+      surrender(code, playerName) {
+        return postAction({ action: 'surrender', code, playerName }).catch(() => undefined);
+      },
     };
   }
 

@@ -51,7 +51,7 @@ Feature: Each player fully controls their own side of the match (MP3-FIX)
     And autoplay is off on the second page
 
   @E5 @integration
-  Scenario: ESC opens the exit overlay for one player only, and Y exits just that player's match
+  Scenario: ESC opens the exit overlay for one player only, and N resumes just that player's own match
     Given two independent pages are both at the multiplayer lobby's name entry step
     When the first page enters the name "Alice" and generates a code
     And the second page enters the name "Bob" and enters that same code
@@ -62,10 +62,10 @@ Feature: Each player fully controls their own side of the match (MP3-FIX)
     When I press "n" on the second page
     Then the second page's match exit overlay is not shown
     And the second page is still in the match
-    When I press "Escape" on the second page
-    And I press "y" on the second page
-    Then the second page is back at the start screen
-    And the first page is still in the match
+  # Confirming with Y is now a SURRENDER (SPEC 13.5.1) - it ends the match on
+  # BOTH clients, with the opponent correctly proclaimed the winner, not just
+  # a plain per-player exit. That more precise claim, including the correct
+  # winner/loser on each side, is mp5.feature's own dedicated coverage.
 
   @E6 @E7 @integration
   Scenario: The countdown and gauge remain visible throughout, on both real clients

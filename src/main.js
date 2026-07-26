@@ -501,6 +501,8 @@
     const autoplayIndicatorEl = document.getElementById('match-autoplay-indicator');
     const audioToastEl = document.getElementById('match-audio-toast');
     const exitConfirmEl = document.getElementById('match-exit-confirm');
+    const matchResultEl = document.getElementById('match-result');
+    const matchResultMessageEl = document.getElementById('match-result-message');
 
     // MP3-FIX E1: a still-focused form element from the lobby (e.g. the code
     // entry field, only ever focused on the joiner's own path - the host
@@ -952,10 +954,16 @@
 
     const stopPolling = sessionSync.pollMatchState(session.code, (updated) => {
       const remoteMoves = (updated.moves && updated.moves[remotePlayerName]) || [];
-      if (remoteMoves.length <= remoteReplayedCount) return;
-      const newMoves = remoteMoves.slice(remoteReplayedCount);
-      remoteReplayedCount = remoteMoves.length;
-      replayRemoteMoves(newMoves);
+      if (remoteMoves.length > remoteReplayedCount) {
+        const newMoves = remoteMoves.slice(remoteReplayedCount);
+        remoteReplayedCount = remoteMoves.length;
+        replayRemoteMoves(newMoves);
+      }
+      // SPEC 13.5.1/MP5: the opponent surrendering ends THIS client's own
+      // match too, even though this player took no exit action themselves.
+      if (updated.surrenderedBy && updated.surrenderedBy !== localPlayerName) {
+        endMatch('win');
+      }
     });
 
     function updateExitConfirmOverlay() {
@@ -994,6 +1002,36 @@
       restoreRealRandom();
     }
 
+    // SPEC 13.5.3/MP5: shown on BOTH clients once the match ends (surrender
+    // or timeout) - dismissed by the player themselves, back to the start
+    // screen, same convention as every other keyboard-driven view here.
+    function showMatchResult(message) {
+      matchResultMessageEl.textContent = message;
+      matchEl.hidden = true;
+      matchResultEl.hidden = false;
+      function onResultKeydown(event) {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        document.removeEventListener('keydown', onResultKeydown);
+        matchResultEl.hidden = true;
+        onExit();
+      }
+      document.addEventListener('keydown', onResultKeydown);
+    }
+
+    // SPEC 13.5/MP5: the single entry point for ending this match, from
+    // either cause (this player's own surrender, the opponent's surrender
+    // arriving via poll, or the countdown reaching 0:00) - guarded so
+    // whichever cause gets there first is the one that's shown, not a
+    // second, contradictory ending racing in right behind it.
+    let matchEnded = false;
+    function endMatch(outcome) {
+      if (matchEnded) return;
+      matchEnded = true;
+      teardown();
+      const message = outcome === 'draw' ? 'DRAW' : outcome === 'win' ? 'YOU WIN!' : 'YOU LOSE';
+      showMatchResult(message);
+    }
+
     function dispatchGameKey(key) {
       const next = handleGameKey({ board, interaction, exitConfirmOpen }, key);
       const stateChanged = next.board !== board || next.interaction !== interaction || next.exitConfirmOpen !== exitConfirmOpen;
@@ -1012,8 +1050,14 @@
       exitConfirmOpen = next.exitConfirmOpen;
       updateExitConfirmOverlay();
       if (next.exitRequested) {
-        teardown();
-        onExit();
+        // SPEC 13.5.1/MP5: exiting a MATCH (unlike single-player's own
+        // plain exit, SPEC 14) is a SURRENDER - this player loses, the
+        // opponent wins, and the opponent is told via the session so their
+        // own match ends too. Fire-and-forget: this client ends its own
+        // match regardless of whether the signal actually reaches the
+        // server (E4/E6 non-blocking convention carried over from MP4).
+        sessionSync.surrender(session.code, localPlayerName);
+        endMatch('lose');
         return;
       }
       animationQueue = animationQueue.concat(buildQueue(next));
@@ -1104,9 +1148,19 @@
       } else {
         lastFrameTimeMs = null;
       }
-      timerEl.textContent = formatTimer(MATCH_DURATION_MS - (performance.now() - matchStartMs));
+      const remainingMs = MATCH_DURATION_MS - (performance.now() - matchStartMs);
+      timerEl.textContent = formatTimer(remainingMs);
       updateMultiplierBar(computeTimeMultiplier(performance.now() - lastCompletionTimeMs));
-      rafId = requestAnimationFrame(tick);
+      // SPEC 13.5.2/MP5: the countdown reaching 0:00 ends the match on this
+      // client independently - no server round trip needed, since the
+      // higher-score comparison only needs this player's own score and the
+      // opponent's already-synced one (13.4.0).
+      if (remainingMs <= 0 && !matchEnded) {
+        if (score > remoteScore) endMatch('win');
+        else if (score < remoteScore) endMatch('lose');
+        else endMatch('draw');
+      }
+      if (!matchEnded) rafId = requestAnimationFrame(tick);
     }
     let rafId = requestAnimationFrame(tick);
 
@@ -1344,6 +1398,7 @@
     function returnToStartScreen() {
       gameEl.hidden = true;
       document.getElementById('match').hidden = true;
+      document.getElementById('match-result').hidden = true;
       confirmed = false;
       selectedIndex = 0;
       updateHighlight();

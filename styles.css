@@ -402,3 +402,30 @@ body {
      its column by half that on each side. */
   box-sizing: border-box;
 }
+
+/* SPEC 13.5.3/MP5: a top-level view (sibling of #game/.match/.mp-lobby), not
+   an in-match overlay - shown once the match has ended, same
+   centred-column convention as .mp-lobby's own. */
+.match-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  color: #f2f6ff;
+  font-family: 'Press Start 2P', monospace;
+  text-align: center;
+}
+
+/* Same override as #game/.start-screen/.mp-lobby/.match above - this class's
+   own display:flex would otherwise beat the hidden attribute. */
+.match-result[hidden] {
+  display: none;
+}
+
+.match-result-message {
+  font-size: 1.5rem;
+}
+
+.match-result-hint {
+  font-size: 0.8rem;
+}
