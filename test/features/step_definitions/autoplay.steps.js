@@ -323,6 +323,13 @@ Then(
       }
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
+    // QA review (commit 3cb336e): 5 is a floor, not a target - a 250ms poll
+    // over this 60s window has up to 240 chances to land at rest (only
+    // cursor-only ticks and settled gaps between moves count; a genuine
+    // fragment-heavy stretch still leaves comfortable room above 5, since
+    // a single fragment's own fall time is only ~1.5-1.7s against the whole
+    // window). This just guards against a near-zero count that would mean
+    // the check performed almost no real verification at all.
     assert.ok(checks > 5, `expected to have performed several real render-vs-logic checks, only got ${checks}`);
   }
 );
