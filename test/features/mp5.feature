@@ -28,7 +28,23 @@ Feature: End of match & winner (MP5)
     Then the first page's match result eventually shows "YOU WIN!"
     And the second page's match result eventually shows "YOU LOSE"
 
-  @E4 @E5
+  # QA review (commit e6e6715): the implementation calls endMatch('lose')
+  # unconditionally, not gated on the surrender request's own network
+  # response - but that was only inference from reading the code. This
+  # proves it, mirroring mp4.feature's own E6 "slow and failing channel
+  # never blocks local play" pattern against the surrender action instead.
+  @E1 @E6 @integration
+  Scenario: Surrendering under a slow, failing sync channel still ends the surrendering client's own match promptly
+    Given two independent pages are both at the multiplayer lobby's name entry step
+    When the first page enters the name "Alice" and generates a code
+    And the second page enters the name "Bob" and enters that same code
+    Then the match begins on both pages
+    Given the second page's session network requests are now slow and failing
+    When I press "Escape" on the second page
+    And I press "y" on the second page
+    Then the second page's match result eventually shows "YOU LOSE" within a normal, short amount of time
+
+  @E4 @E5 @integration
   Scenario: A match tied on score at 0:00 ends in a draw on both clients
     Given two independent pages are both at the multiplayer lobby's name entry step
     When the first page enters the name "Alice" and generates a code

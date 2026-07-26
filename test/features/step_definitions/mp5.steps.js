@@ -1,5 +1,6 @@
 import { When, Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
+import { FAILING_NETWORK_DELAY_MS } from './mp4.steps.js';
 
 function pageFor(world, which) {
   return which === 'first' ? world.pageA : world.pageB;
@@ -11,6 +12,22 @@ Then(
   async function (which, expectedMessage) {
     const page = pageFor(this, which);
     await page.waitForFunction(() => document.getElementById('match-result').hidden === false, null, { timeout: 6000 });
+    const message = await page.textContent('#match-result-message');
+    assert.equal(message, expectedMessage);
+  }
+);
+
+// QA review (commit e6e6715)/SPEC 13.4.2 pattern reused against surrender:
+// deliberately much shorter than FAILING_NETWORK_DELAY_MS - if ending this
+// client's own match were ever gated on the surrender request's own
+// network response, this would time out instead of passing quickly.
+Then(
+  "the {word} page's match result eventually shows {string} within a normal, short amount of time",
+  async function (which, expectedMessage) {
+    const page = pageFor(this, which);
+    await page.waitForFunction(() => document.getElementById('match-result').hidden === false, null, {
+      timeout: FAILING_NETWORK_DELAY_MS - 1000,
+    });
     const message = await page.textContent('#match-result-message');
     assert.equal(message, expectedMessage);
   }

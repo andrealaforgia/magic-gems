@@ -544,6 +544,19 @@
     const sprites = await loadGemSprites();
     const sound = createSoundPlayer();
 
+    // MP4-FIX/SPEC 13.4.0: captured BEFORE Math.random is swapped below, so
+    // shatter fragments (purely cosmetic - never fed back into board/score
+    // logic) keep drawing from a real, non-deterministic source instead of
+    // stealing calls from the shared seeded stream board reconstruction
+    // depends on. Local's own fragment draws happen on real-time animation
+    // ticks, entirely decoupled from when its own refill draws happen
+    // (those run synchronously inside commit(), on every keypress,
+    // regardless of whether a prior move's animation has finished) - so a
+    // shared stream would have the two side's fragment/refill draws
+    // interleave in a different relative order depending on incidental
+    // real-time pacing, silently corrupting the refill draws that DO need
+    // to replay identically.
+    const cosmeticRandom = Math.random;
     // SPEC 13.3.1: both clients derive the identical starting board from the
     // shared session code - left active (not restored) for the rest of this
     // match's own refills too, so luck stays equal there as well. Security
@@ -629,7 +642,7 @@
       for (const { row, col, gemType } of clearEvents) {
         const { x, y } = cellCenter(row, col);
         const sprite = sprites[gemType][0];
-        const tagged = createFragments(x, y).map((f, i) => ({
+        const tagged = createFragments(x, y, cosmeticRandom).map((f, i) => ({
           ...f,
           sprite,
           ...computeSourceTile(i, sprite.naturalWidth, sprite.naturalHeight),
@@ -751,7 +764,7 @@
       for (const { row, col, gemType } of clearEvents) {
         const { x, y } = remoteCellCenter(row, col);
         const sprite = sprites[gemType][0];
-        const tagged = createFragments(x, y).map((f, i) => ({
+        const tagged = createFragments(x, y, cosmeticRandom).map((f, i) => ({
           ...f,
           sprite,
           ...computeSourceTile(i, sprite.naturalWidth, sprite.naturalHeight),
@@ -812,13 +825,12 @@
       remoteActiveAnimation = remoteAnimationQueue.shift();
       remoteActiveAnimation.elapsedMs = 0;
       if (remoteActiveAnimation.kind === 'cascade') {
-        // MP4-MOVES/SPEC 13.4: createFragments() below draws its own
-        // fragment velocities from Math.random - without this wrapper those
-        // draws would come from the ambient (local) generator instead of
-        // remoteRandom, silently corrupting the LOCAL player's own
-        // subsequent refills every time the opponent's replayed cascade
-        // shatters a gem.
-        withRandom(remoteRandom, () => remoteSpawnFragments(remoteActiveAnimation.clearEvents));
+        // MP4-FIX/SPEC 13.4.0: remoteSpawnFragments now draws from
+        // cosmeticRandom (see its own definition), not remoteRandom - no
+        // withRandom wrapper needed here, since these purely cosmetic draws
+        // no longer touch the deterministic stream board reconstruction
+        // depends on.
+        remoteSpawnFragments(remoteActiveAnimation.clearEvents);
         remoteApplyCompletionScore(remoteActiveAnimation.runLengths, remoteActiveAnimation.chainPosition);
         // MP4-MOVES/SPEC 13.4: replay is silent - deliberately no
         // sound.play() call here, unlike advanceQueue's own local

@@ -22,14 +22,19 @@
     return { sx: col * tileWidth, sy: row * tileHeight, sw: tileWidth, sh: tileHeight };
   }
 
-  function createFragments(centerX, centerY) {
+  // randomFn is injectable (defaulting to the ambient Math.random, unchanged
+  // for single-player) so a caller whose Math.random is temporarily swapped
+  // for deterministic replay purposes (MP4-MOVES) can route these purely
+  // cosmetic draws through a separate, non-deterministic source instead -
+  // see main.js's own cosmeticRandom for why that separation matters.
+  function createFragments(centerX, centerY, randomFn = Math.random) {
     const fragments = [];
     for (let i = 0; i < FRAGMENT_COUNT; i++) {
       fragments.push({
         x: centerX,
         y: centerY,
-        vx: (Math.random() * 2 - 1) * LATERAL_SPEED_RANGE,
-        vy: MIN_FALL_SPEED + Math.random() * FALL_SPEED_RANGE,
+        vx: (randomFn() * 2 - 1) * LATERAL_SPEED_RANGE,
+        vy: MIN_FALL_SPEED + randomFn() * FALL_SPEED_RANGE,
       });
     }
     return fragments;

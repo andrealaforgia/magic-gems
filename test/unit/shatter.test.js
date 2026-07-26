@@ -47,6 +47,30 @@ test('createFragments produces a different pattern on each call (randomised per 
   );
 });
 
+// MP4-FIX/SPEC 13.4.0: fragments are purely cosmetic (never fed back into
+// board/score logic), so their own velocity draws must NOT share a call
+// count with the deterministic stream a multiplayer match's board
+// reconstruction depends on - an injectable randomFn (defaulting to
+// Math.random, unchanged for single-player) lets both the local match and
+// its remote replica route fragments through a dedicated, non-deterministic
+// source instead, so a fragment draw can never shift the parity of a later
+// refill draw between the two sides.
+test('createFragments draws from an injected randomFn instead of the ambient Math.random, when given one', () => {
+  const calls = [];
+  const fixedRandom = () => {
+    calls.push('call');
+    return 0.5;
+  };
+  const fragments = createFragments(0, 0, fixedRandom);
+  assert.equal(calls.length, EXPECTED_FRAGMENT_COUNT * 2, 'expected exactly 2 draws per fragment from the injected function');
+  for (const f of fragments) {
+    // MIN_FALL_SPEED=20, FALL_SPEED_RANGE=40, LATERAL_SPEED_RANGE=60 (src/shatter.js) -
+    // a fixed 0.5 draw is the exact midpoint of both ranges.
+    assert.equal(f.vx, 0);
+    assert.equal(f.vy, 40);
+  }
+});
+
 test('updateFragments moves each fragment horizontally by exactly vx * elapsed time', () => {
   const fragments = [{ x: 10, y: 20, vx: 5, vy: 8 }];
   const [moved] = updateFragments(fragments, 3);

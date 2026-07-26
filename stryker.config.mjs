@@ -415,3 +415,36 @@ export default {
 // can never observe a sandboxed module's own Math.random reassignment,
 // since a function's free variables resolve in the realm where it was
 // defined, not the realm that later calls it.
+//
+// (MP4-FIX) root-caused a live-observed bug (Owner report: the remote
+// replica's board diverged from the opponent's real one, and its derived
+// score fell behind then froze solid) that no existing test had caught,
+// because every prior mp4/mp5 scenario only ever committed ONE swap and
+// waited for full settle before doing anything else - never a SUSTAINED
+// burst of moves. Root cause: shatter fragments (purely cosmetic - never
+// fed back into board/score logic) and cascade refills (board-affecting,
+// must replay identically) were drawing from the SAME shared seeded
+// Math.random stream. Locally, refill draws happen synchronously on every
+// keypress (inside commit()) while fragment draws happen lazily, gated by
+// real-time animation pacing (tick()) - so under rapid play, the two
+// categories interleave in whatever relative order real-time pacing
+// happens to produce. Remote's own replay batches all of a poll's moves'
+// refill draws eagerly, then drains fragment draws separately over
+// subsequent frames - a DIFFERENT relative order. Since mulberry32's output
+// at call N depends only on being the Nth call (not which call site made
+// it), this let a cosmetic fragment draw "steal" a call from the sequence
+// a later refill draw needed, corrupting it - and everything from that
+// point on, since each board state depends on the last. Fixed by giving
+// createFragments an injectable randomFn (src/shatter.js, defaulting to
+// Math.random - unchanged for single-player) and passing both the local
+// and remote match code's own dedicated, real (non-swapped) generator
+// captured once before Math.random is swapped for the match, so cosmetic
+// draws no longer touch the deterministic stream at all: 97.78%
+// (shatter.js, 1 documented UMD-wrapper equivalent, all other mutants
+// killed including on the new randomFn parameter itself). Confirmed both
+// before and after via a temporary two-real-client sustained-autoplay
+// debug script (not part of the suite) - before the fix, remote score
+// froze solid (e.g. stuck at 535 while the real score climbed past 4000);
+// after, both sides climb together with only brief, self-correcting lag,
+// which test/features/mp4-fix.feature's own new E7 scenario now guards
+// against regressing.

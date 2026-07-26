@@ -9,7 +9,9 @@ function pageFor(world, which) {
 // every one of its own session requests hangs for a while, then fails
 // outright. Used to prove the strongest form of E4: even permanent sync
 // failure on this client must never block or delay its own local play.
-const FAILING_NETWORK_DELAY_MS = 3000;
+// Exported so other step files (e.g. mp5.steps.js) can reuse it for the same
+// fault shape against a different action.
+export const FAILING_NETWORK_DELAY_MS = 3000;
 // A merely SLOW (not failing) channel for the combined scenario - degraded,
 // but sync still eventually gets through, since that scenario also proves
 // the opponent still sees this client's moves despite the degradation.
