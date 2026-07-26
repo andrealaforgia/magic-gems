@@ -31,7 +31,23 @@
     return mulberry32(seed);
   }
 
+  // MP4-MOVES/SPEC 13.4: temporarily routes every Math.random() call inside
+  // fn through randomFn instead - the seam that lets a remote replica's
+  // board generation, cascade refills, and shatter-fragment velocities all
+  // draw from its own seeded generator, never the ambient one driving local
+  // play, so two independently-seeded replicas stay byte-identical.
+  function withRandom(randomFn, fn) {
+    const previous = Math.random;
+    Math.random = randomFn;
+    try {
+      return fn();
+    } finally {
+      Math.random = previous;
+    }
+  }
+
   global.MagicGems = global.MagicGems || {};
   global.MagicGems.hashStringToSeed = hashStringToSeed;
   global.MagicGems.createSeededRandom = createSeededRandom;
+  global.MagicGems.withRandom = withRandom;
 })(typeof window !== 'undefined' ? window : globalThis);

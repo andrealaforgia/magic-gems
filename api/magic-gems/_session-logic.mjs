@@ -16,6 +16,12 @@ import { randomInt } from 'node:crypto';
 const CODE_LENGTH = 10;
 const CODE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
+// Security review: without a ceiling, a single player's own move log grows
+// (and its storage cost with it) without limit, entirely within the existing
+// rate-limit envelope. 8000 is generous headroom over what a real 10-minute
+// match ever produces, so only genuine abuse ever hits it.
+const MAX_STORED_MOVES_PER_PLAYER = 8000;
+
 // Security review (commit 023dece), L1: the codespace size (26^10, ~47 bits)
 // is what actually makes guessing impractical, not RNG quality - but a real
 // CSPRNG is cheap and removes the category of concern outright. Only this
@@ -64,6 +70,9 @@ function joinSession(session, playerName) {
 function appendPlayerMoves(session, playerName, newMoves) {
   if (!session.players.includes(playerName)) return { ok: false, error: 'not-a-player' };
   const existingMoves = (session.moves && session.moves[playerName]) || [];
+  if (existingMoves.length + newMoves.length > MAX_STORED_MOVES_PER_PLAYER) {
+    return { ok: false, error: 'too-many-moves' };
+  }
   return {
     ok: true,
     session: {
@@ -84,4 +93,12 @@ function recordSurrender(session, playerName) {
   return { ok: true, session: { ...session, surrenderedBy: playerName } };
 }
 
-export { CODE_LENGTH, generateSessionCode, createSession, joinSession, appendPlayerMoves, recordSurrender };
+export {
+  CODE_LENGTH,
+  generateSessionCode,
+  createSession,
+  joinSession,
+  appendPlayerMoves,
+  recordSurrender,
+  MAX_STORED_MOVES_PER_PLAYER,
+};

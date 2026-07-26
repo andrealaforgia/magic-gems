@@ -15,9 +15,13 @@ function fakeUpstash() {
   async function fetchImpl(url, options = {}) {
     const parsed = new URL(url);
     if (parsed.pathname === '/pipeline') {
-      const [, rateLimitKey] = JSON.parse(options.body)[0];
-      const count = (rateLimitCounts.get(rateLimitKey) || 0) + 1;
-      rateLimitCounts.set(rateLimitKey, count);
+      const [command, key, value] = JSON.parse(options.body)[0];
+      if (command === 'SET') {
+        store.set(key, value);
+        return { json: async () => [{ result: 'OK' }] };
+      }
+      const count = (rateLimitCounts.get(key) || 0) + 1;
+      rateLimitCounts.set(key, count);
       return { json: async () => [{ result: count }, { result: 1 }] };
     }
     const [command, ...rest] = parsed.pathname.split('/').filter(Boolean);
@@ -408,6 +412,31 @@ test('moves accepts every known cursor/select key, and a batch exactly at the si
   );
   assert.equal(atCap.status, 200);
   assert.equal((await atCap.json()).ok, true);
+});
+
+// Security review: an unbounded move log lets a single player's own storage
+// cost grow without limit, entirely within the existing rate-limit envelope.
+test('moves refuses once a player\'s stored moves would exceed the per-player cap, as a normal 200 result, not a 500', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  const fetchImpl = fakeUpstash();
+  withFetch(t, fetchImpl);
+  const created = await createViaHandler('Alice');
+  fetchImpl.store.set(
+    sessionKey(created.session.code),
+    JSON.stringify({ ...created.session, moves: { Alice: Array(8000).fill('ArrowUp') } })
+  );
+
+  const res = await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'moves', code: created.session.code, playerName: 'Alice', moves: ['ArrowUp'] }),
+    })
+  );
+  const body = await res.json();
+
+  assert.equal(res.status, 200);
+  assert.equal(body.ok, false);
+  assert.equal(body.error, 'too-many-moves');
 });
 
 // MP5/SPEC 13.5.1: a surrendering player's exit is communicated through the

@@ -483,6 +483,7 @@
       activateSeededRandom,
       hashStringToSeed,
       createSeededRandom,
+      withRandom,
       createRestSessionClient,
       SESSION_PUBLISH_INTERVAL_MS,
     } = global.MagicGems;
@@ -571,15 +572,6 @@
     // function of (seed, call count), so two separately-seeded instances
     // that consume calls in the same order produce identical output.
     const remoteRandom = createSeededRandom(hashStringToSeed(session.code));
-    function withRandom(randomFn, fn) {
-      const previous = Math.random;
-      Math.random = randomFn;
-      try {
-        return fn();
-      } finally {
-        Math.random = previous;
-      }
-    }
     // Advances remoteRandom through the same sequence of draws the
     // opponent's own local generator already consumed generating THEIR
     // starting board, so it's in lockstep for their subsequent refills too -
@@ -899,14 +891,30 @@
     // processed through the exact same pure game logic dispatchGameKey uses
     // for the local player, under the remote replica's own independent
     // seeded generator (never the ambient one driving local play).
+    //
+    // Security review: remoteReplayedCount only advances past a move once
+    // it has actually been replayed, and each move is its own try/catch -
+    // previously the caller advanced it for the WHOLE batch up front, so a
+    // mid-batch exception (silently swallowed by pollMatchState's own
+    // network-error catch) would permanently skip every move from that
+    // point on, with no error ever surfaced. A failure now stops this
+    // batch's replay (later moves depend on this one's board/cursor state,
+    // so skipping ahead would only replay them against a stale state) and
+    // is logged non-silently; the next poll retries from the same move.
     function replayRemoteMoves(moves) {
       for (const key of moves) {
-        const next = withRandom(remoteRandom, () =>
-          handleGameKey({ board: remoteBoard, interaction: remoteInteraction, exitConfirmOpen: false }, key)
-        );
-        remoteBoard = next.board;
-        remoteInteraction = next.interaction;
-        remoteAnimationQueue = remoteAnimationQueue.concat(remoteBuildQueue(next));
+        try {
+          const next = withRandom(remoteRandom, () =>
+            handleGameKey({ board: remoteBoard, interaction: remoteInteraction, exitConfirmOpen: false }, key)
+          );
+          remoteBoard = next.board;
+          remoteInteraction = next.interaction;
+          remoteAnimationQueue = remoteAnimationQueue.concat(remoteBuildQueue(next));
+          remoteReplayedCount++;
+        } catch (err) {
+          console.error('failed to replay a remote move, will retry it on the next poll:', err);
+          break;
+        }
       }
       remoteAdvanceQueue();
     }
@@ -955,9 +963,7 @@
     const stopPolling = sessionSync.pollMatchState(session.code, (updated) => {
       const remoteMoves = (updated.moves && updated.moves[remotePlayerName]) || [];
       if (remoteMoves.length > remoteReplayedCount) {
-        const newMoves = remoteMoves.slice(remoteReplayedCount);
-        remoteReplayedCount = remoteMoves.length;
-        replayRemoteMoves(newMoves);
+        replayRemoteMoves(remoteMoves.slice(remoteReplayedCount));
       }
       // SPEC 13.5.1/MP5: the opponent surrendering ends THIS client's own
       // match too, even though this player took no exit action themselves.

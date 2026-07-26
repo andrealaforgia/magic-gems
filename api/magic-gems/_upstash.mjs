@@ -55,6 +55,18 @@ async function setStoredSession(env, session) {
 // a plain INCR-then-EXPIRE-every-time would keep pushing the window out
 // forever under sustained traffic and never actually reset) via Upstash's own
 // pipeline endpoint - no new runtime dependency needed for this.
+async function updateStoredSession(env, session) {
+  const { url, token } = resolveConfig(env);
+  const key = sessionKey(session.code);
+  const res = await fetch(`${url}/pipeline`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify([['SET', key, JSON.stringify(session), 'KEEPTTL']]),
+  });
+  const results = await res.json();
+  if (results[0]?.error) throw new Error(results[0].error);
+}
+
 async function incrementRateLimitCount(env, bucketId, windowSeconds) {
   const { url, token } = resolveConfig(env);
   const key = RATE_LIMIT_KEY_PREFIX + bucketId;
@@ -84,6 +96,7 @@ export {
   sessionKey,
   getStoredSession,
   setStoredSession,
+  updateStoredSession,
   checkRateLimit,
   KEY_PREFIX,
   SESSION_TTL_SECONDS,

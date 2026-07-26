@@ -7,6 +7,7 @@ import {
   joinSession,
   appendPlayerMoves,
   recordSurrender,
+  MAX_STORED_MOVES_PER_PLAYER,
 } from '../../api/magic-gems/_session-logic.mjs';
 
 // QA review (commit 87bd778): this server-side copy had no dedicated test
@@ -134,6 +135,47 @@ test('appendPlayerMoves refuses to record moves for a name that isn\'t actually 
   assert.equal(result.ok, false);
   assert.equal(result.error, 'not-a-player');
   assert.equal(joined.moves, undefined, 'a refused append must never touch the existing session');
+});
+
+// Security review finding: an unbounded move log lets a single player's
+// stored session grow (and cost) without limit, entirely within the
+// existing rate-limit envelope - so the cap must reject once reached rather
+// than silently truncate (a truncation would corrupt the other side's replay).
+test('appendPlayerMoves accepts moves right up to the per-player cap', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const { session: joined } = joinSession(session, 'Bob');
+  const atCap = { ...joined, moves: { Alice: Array(MAX_STORED_MOVES_PER_PLAYER - 1).fill('ArrowUp') } };
+
+  const result = appendPlayerMoves(atCap, 'Alice', ['ArrowUp']);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.session.moves.Alice.length, MAX_STORED_MOVES_PER_PLAYER);
+});
+
+test('appendPlayerMoves refuses once a player\'s stored moves would exceed the per-player cap', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const { session: joined } = joinSession(session, 'Bob');
+  const atCap = { ...joined, moves: { Alice: Array(MAX_STORED_MOVES_PER_PLAYER).fill('ArrowUp') } };
+
+  const result = appendPlayerMoves(atCap, 'Alice', ['ArrowUp']);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'too-many-moves');
+  assert.equal(atCap.moves.Alice.length, MAX_STORED_MOVES_PER_PLAYER, 'a refused append must never touch the existing session');
+});
+
+test('appendPlayerMoves refusing one player\'s move cap must never touch the other player\'s own move log', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const { session: joined } = joinSession(session, 'Bob');
+  const atCap = {
+    ...joined,
+    moves: { Alice: Array(MAX_STORED_MOVES_PER_PLAYER).fill('ArrowUp'), Bob: ['ArrowLeft'] },
+  };
+
+  const result = appendPlayerMoves(atCap, 'Alice', ['ArrowUp']);
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(atCap.moves.Bob, ['ArrowLeft']);
 });
 
 // MP5/SPEC 13.5.1: a surrendering player's exit is communicated through the

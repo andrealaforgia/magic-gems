@@ -5,6 +5,7 @@ import {
   sessionKey,
   getStoredSession,
   setStoredSession,
+  updateStoredSession,
   checkRateLimit,
   SESSION_TTL_SECONDS,
   RATE_LIMIT_KEY_PREFIX,
@@ -106,6 +107,40 @@ test('setStoredSession surfaces a store-reported error instead of swallowing it'
     () => setStoredSession({ UPSTASH_REDIS_REST_URL: 'https://x', UPSTASH_REDIS_REST_TOKEN: 'tok' }, { code: 'ABC', players: ['Alice'] }),
     /OOM/
   );
+});
+
+test('updateStoredSession issues an authenticated pipeline SET...KEEPTTL, preserving whatever TTL the session already has', async (t) => {
+  const calls = [];
+  withFetch(t, async (url, options) => {
+    calls.push({ url, options });
+    return { json: async () => [{ result: 'OK' }] };
+  });
+
+  await updateStoredSession(
+    { UPSTASH_REDIS_REST_URL: 'https://x', UPSTASH_REDIS_REST_TOKEN: 'tok' },
+    { code: 'ABC', players: ['Alice'] }
+  );
+
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].url.endsWith('/pipeline'), calls[0].url);
+  assert.equal(calls[0].options.method, 'POST');
+  assert.equal(calls[0].options.headers['Content-Type'], 'application/json');
+  assert.equal(calls[0].options.headers.Authorization, 'Bearer tok');
+  const commands = JSON.parse(calls[0].options.body);
+  assert.deepEqual(commands[0], ['SET', sessionKey('ABC'), JSON.stringify({ code: 'ABC', players: ['Alice'] }), 'KEEPTTL']);
+});
+
+test('updateStoredSession surfaces a store-reported error instead of swallowing it', async (t) => {
+  withFetch(t, async () => ({ json: async () => [{ error: 'OOM command not allowed' }] }));
+  await assert.rejects(
+    () => updateStoredSession({ UPSTASH_REDIS_REST_URL: 'https://x', UPSTASH_REDIS_REST_TOKEN: 'tok' }, { code: 'ABC', players: ['Alice'] }),
+    /OOM/
+  );
+});
+
+test('updateStoredSession does not throw on a malformed empty pipeline response', async (t) => {
+  withFetch(t, async () => ({ json: async () => [] }));
+  await updateStoredSession({ UPSTASH_REDIS_REST_URL: 'https://x', UPSTASH_REDIS_REST_TOKEN: 'tok' }, { code: 'ABC', players: ['Alice'] });
 });
 
 test('checkRateLimit issues an authenticated pipeline INCR+EXPIRE(NX) against the namespaced bucket key', async (t) => {

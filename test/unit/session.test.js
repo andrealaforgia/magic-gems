@@ -2,8 +2,16 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import { loadMagicGems } from '../support/load-src.js';
 
-const { CODE_LENGTH, generateSessionCode, createSession, joinSession, isSessionReady, appendPlayerMoves, recordSurrender } =
-  loadMagicGems([new URL('../../src/session.js', import.meta.url)]);
+const {
+  CODE_LENGTH,
+  generateSessionCode,
+  createSession,
+  joinSession,
+  isSessionReady,
+  appendPlayerMoves,
+  recordSurrender,
+  MAX_STORED_MOVES_PER_PLAYER,
+} = loadMagicGems([new URL('../../src/session.js', import.meta.url)]);
 
 test('generateSessionCode returns a 10-letter uppercase code (SPEC 13.2.2)', () => {
   const code = generateSessionCode();
@@ -133,6 +141,45 @@ test('appendPlayerMoves refuses to record moves for a name that isn\'t actually 
   assert.equal(result.ok, false);
   assert.equal(result.error, 'not-a-player');
   assert.equal(joined.moves, undefined, 'a refused append must never touch the existing session');
+});
+
+// Security review: mirrors _session-logic.mjs's own coverage of the
+// server-side copy's move-log cap.
+test('appendPlayerMoves accepts moves right up to the per-player cap', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const { session: joined } = joinSession(session, 'Bob');
+  const atCap = { ...joined, moves: { Alice: Array(MAX_STORED_MOVES_PER_PLAYER - 1).fill('ArrowUp') } };
+
+  const result = appendPlayerMoves(atCap, 'Alice', ['ArrowUp']);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.session.moves.Alice.length, MAX_STORED_MOVES_PER_PLAYER);
+});
+
+test('appendPlayerMoves refuses once a player\'s stored moves would exceed the per-player cap', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const { session: joined } = joinSession(session, 'Bob');
+  const atCap = { ...joined, moves: { Alice: Array(MAX_STORED_MOVES_PER_PLAYER).fill('ArrowUp') } };
+
+  const result = appendPlayerMoves(atCap, 'Alice', ['ArrowUp']);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'too-many-moves');
+  assert.equal(atCap.moves.Alice.length, MAX_STORED_MOVES_PER_PLAYER, 'a refused append must never touch the existing session');
+});
+
+test('appendPlayerMoves refusing one player\'s move cap must never touch the other player\'s own move log', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const { session: joined } = joinSession(session, 'Bob');
+  const atCap = {
+    ...joined,
+    moves: { Alice: Array(MAX_STORED_MOVES_PER_PLAYER).fill('ArrowUp'), Bob: ['ArrowLeft'] },
+  };
+
+  const result = appendPlayerMoves(atCap, 'Alice', ['ArrowUp']);
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(atCap.moves.Bob, ['ArrowLeft']);
 });
 
 // MP5/SPEC 13.5.1: mirrors _session-logic.mjs's own coverage of the

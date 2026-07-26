@@ -6,6 +6,11 @@
   const CODE_LENGTH = 10;
   const CODE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
+  // Security review: mirrors api/magic-gems/_session-logic.mjs's own cap -
+  // without it a single player's move log grows without limit, entirely
+  // within the existing rate-limit envelope.
+  const MAX_STORED_MOVES_PER_PLAYER = 8000;
+
   function generateSessionCode() {
     let code = '';
     for (let i = 0; i < CODE_LENGTH; i++) {
@@ -51,6 +56,9 @@
   function appendPlayerMoves(session, playerName, newMoves) {
     if (!session.players.includes(playerName)) return { ok: false, error: 'not-a-player' };
     const existingMoves = (session.moves && session.moves[playerName]) || [];
+    if (existingMoves.length + newMoves.length > MAX_STORED_MOVES_PER_PLAYER) {
+      return { ok: false, error: 'too-many-moves' };
+    }
     return {
       ok: true,
       session: {
@@ -79,4 +87,5 @@
   global.MagicGems.isSessionReady = isSessionReady;
   global.MagicGems.appendPlayerMoves = appendPlayerMoves;
   global.MagicGems.recordSurrender = recordSurrender;
+  global.MagicGems.MAX_STORED_MOVES_PER_PLAYER = MAX_STORED_MOVES_PER_PLAYER;
 })(typeof window !== 'undefined' ? window : globalThis);

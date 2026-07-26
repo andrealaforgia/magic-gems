@@ -47,6 +47,15 @@ Then(
   }
 );
 
+// QA review (#538): a completion score's own time-multiplier is stamped
+// from EACH side's own real-time clock (elapsed since ITS OWN last
+// completion) - the source's at the moment of the real move, the remote
+// replica's at whatever later instant its replay actually lands - so even a
+// correct replay can land a whole-second boundary apart and score a point
+// or two differently. Real bugs (a missed chain step, double-counting) miss
+// by far more than this, so a tight tolerance still catches them.
+const SCORE_TOLERANCE_FRACTION = 0.1;
+
 Then(
   "the {word} page's remote match board and score eventually reflect the {word} page's own local board and score",
   { timeout: 25000 },
@@ -54,38 +63,42 @@ Then(
     const remotePage = pageFor(this, remoteWhich);
     const sourcePage = pageFor(this, sourceWhich);
 
-    // Polls both pages' CURRENT state each round, rather than freezing a
-    // single snapshot up front - a chain reaction can still be raising the
-    // source page's own score for a moment after "has increased" first
-    // becomes true, so a fixed target could race a still-climbing source.
-    // Generous margin: this same step also covers the scenario where one
-    // page's own channel is deliberately slowed (an extra ~1.2s per
-    // request, on both its publishes and its polls).
+    // Polls both pages' CURRENT state each round until the boards
+    // themselves actually match, rather than a fixed settle-then-sleep -
+    // the remote replica replays through the same real per-phase animation
+    // timing as normal play, so a merely-positive score only confirms the
+    // FIRST completion in a chain landed, not that every subsequent chained
+    // step has too; only a real board match confirms the whole chain has
+    // finished. Generous margin: this same step also covers the scenario
+    // where one page's own channel is deliberately slowed (an extra ~1.2s
+    // per request, on both its publishes and its polls).
+    // The remote replica's own board/interaction update SYNCHRONOUSLY as
+    // soon as a move is replayed, but its score only updates as its
+    // animation queue actually ticks through each chained completion over
+    // real time (see remoteAdvanceQueue) - so the board can reach its final
+    // state before the score has caught up. Both conditions must hold
+    // together before this loop is done waiting.
     const deadline = Date.now() + 20000;
-    let sourceScore, remoteScore;
+    let finalSourceScore, finalRemoteScore, finalSourceBoard, finalRemoteBoard, scoreTolerance;
     do {
-      [sourceScore, remoteScore] = await Promise.all([
+      [finalSourceScore, finalRemoteScore, finalSourceBoard, finalRemoteBoard] = await Promise.all([
         sourcePage.evaluate(() => window.MagicGems.getMatchScore()),
         remotePage.evaluate(() => window.MagicGems.getMatchRemoteScore()),
+        sourcePage.evaluate(() => window.MagicGems.getMatchBoard()),
+        remotePage.evaluate(() => window.MagicGems.getMatchRemoteBoard()),
       ]);
-      if (sourceScore > 0 && remoteScore > 0) break;
+      scoreTolerance = Math.max(1, Math.ceil(finalSourceScore * SCORE_TOLERANCE_FRACTION));
+      const boardsMatch = JSON.stringify(finalSourceBoard) === JSON.stringify(finalRemoteBoard);
+      const scoresMatch = finalSourceScore > 0 && Math.abs(finalRemoteScore - finalSourceScore) <= scoreTolerance;
+      if (boardsMatch && scoresMatch) break;
       await new Promise((resolve) => setTimeout(resolve, 200));
     } while (Date.now() < deadline);
 
-    // MP4-MOVES: the remote side replays the opponent's moves through the
-    // same real per-phase animation timing as normal play - a positive
-    // score only confirms the FIRST completion in a chain landed, not that
-    // every subsequent chained step (each its own animation phase) has too.
-    // Comfortably longer than the longest single phase's own duration.
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-
-    const finalSourceScore = await sourcePage.evaluate(() => window.MagicGems.getMatchScore());
-    const finalSourceBoard = await sourcePage.evaluate(() => window.MagicGems.getMatchBoard());
-    const finalRemoteScore = await remotePage.evaluate(() => window.MagicGems.getMatchRemoteScore());
-    const finalRemoteBoard = await remotePage.evaluate(() => window.MagicGems.getMatchRemoteBoard());
-
     assert.ok(finalSourceScore > 0, `expected a positive source score, got ${finalSourceScore}`);
-    assert.ok(finalRemoteScore > 0, `expected the remote score to eventually become positive too, got ${finalRemoteScore}`);
+    assert.ok(
+      Math.abs(finalRemoteScore - finalSourceScore) <= scoreTolerance,
+      `expected the remote score (${finalRemoteScore}) to be within ${scoreTolerance} of the source score (${finalSourceScore})`
+    );
     assert.deepEqual(finalRemoteBoard, finalSourceBoard);
   }
 );

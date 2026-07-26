@@ -5,7 +5,7 @@
 // import into the shipped game's own src/ folder, which crashed in
 // production once this function and the static game ended up at different
 // relative locations after deployment.
-import { getStoredSession, setStoredSession, checkRateLimit } from './_upstash.mjs';
+import { getStoredSession, setStoredSession, updateStoredSession, checkRateLimit } from './_upstash.mjs';
 import { generateSessionCode, createSession, joinSession, appendPlayerMoves, recordSurrender, CODE_LENGTH } from './_session-logic.mjs';
 
 const CODE_PATTERN = new RegExp(`^[A-Z]{${CODE_LENGTH}}$`);
@@ -88,7 +88,7 @@ async function handleCreate(env, hostName) {
 async function handleJoin(env, code, playerName) {
   const existing = await getStoredSession(env, code);
   const result = joinSession(existing, playerName);
-  if (result.ok) await setStoredSession(env, result.session);
+  if (result.ok) await updateStoredSession(env, result.session);
   return result;
 }
 
@@ -97,7 +97,7 @@ async function handleAppendMoves(env, code, playerName, moves) {
   if (!existing) return { ok: false, error: 'not-found' };
   const result = appendPlayerMoves(existing, playerName, moves);
   if (!result.ok) return result;
-  await setStoredSession(env, result.session);
+  await updateStoredSession(env, result.session);
   return result;
 }
 
@@ -106,7 +106,7 @@ async function handleSurrender(env, code, playerName) {
   if (!existing) return { ok: false, error: 'not-found' };
   const result = recordSurrender(existing, playerName);
   if (!result.ok) return result;
-  await setStoredSession(env, result.session);
+  await updateStoredSession(env, result.session);
   return result;
 }
 

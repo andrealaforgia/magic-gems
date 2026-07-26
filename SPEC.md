@@ -310,10 +310,14 @@ clauses are added as each iteration lands.)
   the same on-screen animations as normal play but WITHOUT sound. So the remote grid
   looks just like the opponent's own screen (minus sound): a faithful live REPLICA of
   their actual play, not just a periodic board snapshot.
-  - 13.4.0 The mirror stays consistent by RECONSTRUCTION: the opponent's board is
-    rebuilt deterministically from the shared seeded start and the shared refill
-    sequence (13.3.1) with the replayed moves applied; the opponent's score follows
-    from that replayed play. (No sound plays for the replayed remote moves.)
+  - 13.4.0 ACCURACY IS REQUIRED. The remote grid and the opponent's score shown on
+    it MUST match the opponent's ACTUAL board and ACTUAL score at all times (brief
+    async lag is acceptable, but they must NOT drift out of sync, show a different
+    board, or freeze). The opponent's own client is the source of truth for their
+    board and score; the replayed moves drive the visual animation on the mirror, but
+    the board and score displayed must be kept faithful to the opponent's real ones
+    (corrected / re-synchronised as needed so they never diverge). No sound plays for
+    the replayed remote moves.
   - 13.4.1 The centre who's-winning gauge (13.3.3) reflects the two players' current
     scores, tilting toward whoever leads.
   - 13.4.2 Talking to the server is ASYNCHRONOUS and low-priority — it must NEVER

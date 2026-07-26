@@ -388,3 +388,30 @@ export default {
 // 1 documented UMD-wrapper equivalent). One real gap this pass found and
 // fixed: the surrender action's own oversized-playerName rejection had no
 // dedicated test, unlike the same check on every other action.
+//
+// Security review (#536) fixes - a per-player move-log cap (reject once a
+// player's own stored moves would exceed 8000, replacing the unbounded
+// append) and swapping every write to an already-existing session from
+// setStoredSession's unconditional TTL-renewing SET to a new
+// updateStoredSession's SET...KEEPTTL (only the initial create still renews
+// the TTL): 100% (_upstash.mjs 70/70, _session-logic.mjs 69/69 non-timeout
+// mutants killed, session.mjs 174/174), 98.91% (session.js, 1 documented
+// UMD-wrapper equivalent). One real gap this pass found and fixed: an
+// `results[0]?.error` optional-chain mutated to a plain `.error` access
+// survived on the new updateStoredSession, since nothing exercised a
+// malformed/empty pipeline response for it the way checkRateLimit's own
+// "fails closed" test already did for that function - closed with a
+// dedicated malformed-response test.
+//
+// Extracted withRandom (the Math.random-swap-for-a-scope helper the MP4-MOVES
+// remote replica's determinism claim depends on) out of src/main.js's own
+// local closure into src/seeded-random.js as a reusable, directly
+// unit-tested export (QA review, #538 - previously only covered indirectly
+// through acceptance tests): 95.65% (seeded-random.js, 1 documented
+// UMD-wrapper equivalent, all other mutants killed including on withRandom
+// itself). Testing the real swap required a small same-realm probe fixture
+// (test/support/math-random-probe.js) loaded into the same vm sandbox as
+// the module under test - a probe written directly in the outer test file
+// can never observe a sandboxed module's own Math.random reassignment,
+// since a function's free variables resolve in the realm where it was
+// defined, not the realm that later calls it.
