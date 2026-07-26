@@ -17,18 +17,29 @@ Feature: A hands-off demo mode that plays the game itself (AUTOPLAY)
     Given I open "index.html" directly as a file:// URL with no server or build step
     Then the autoplay instruction line reads "A — TOGGLE AUTOPLAY" in the pixel font, below the grid
 
+  # AUTOPLAY-SLOW (SPEC 12.2 re-frozen, supersedes AUTOPLAY-SPEED entirely):
+  # the Owner wants to watch autoplay and visually confirm every swap is a
+  # legal 3+ match, so the emulated actions now run at a SLOW, clearly-
+  # watchable pace instead of a brisk one.
   @E3 @E4 @e2e
-  Scenario: Autoplay genuinely plays a full move, rapidly (AUTOPLAY-SPEED)
+  Scenario: Autoplay genuinely plays a full move, at a slow and watchable pace
     Given I open "index.html" directly as a file:// URL with no server or build step
     And I record the classified gem grid
     When I press "a"
     Then autoplay is on
     And the board settles into a new, match-free arrangement within a generous real timeout
     And the classified gem grid has changed from the one recorded before, within a generous real timeout
-    And autoplay's own key presses follow one another rapidly, clearly faster than manual play's own pace
+    And autoplay's own key presses are clearly slow and watchable, with a real pause between every one
+
+  @E10 @e2e
+  Scenario: The resulting swap, shatter, and fall are not sped up during autoplay
+    Given I open "index.html" directly as a file:// URL with no server or build step
+    When I press "a"
+    Then autoplay is on
+    And the resulting swap, shatter, and fall play at the normal deliberate pace, not sped up
 
   @E3 @e2e
-  Scenario: Autoplay stays coherent across multiple rapid cycles (AUTOPLAY-SPEED)
+  Scenario: Autoplay stays coherent across multiple cycles at the slow pace
     Given I open "index.html" directly as a file:// URL with no server or build step
     When I press "a"
     Then autoplay is on
@@ -47,14 +58,6 @@ Feature: A hands-off demo mode that plays the game itself (AUTOPLAY)
     When I press "a"
     Then autoplay is on
     And every autoplay-committed swap actually matches - no invalid swap sound plays, across an extended real run
-
-  # E2 of AUTOPLAY-SPEED (board transitions may run faster than the deliberate
-  # 9.3 pace specifically during autoplay) is exercised by every scenario above
-  # that waits on a real completion at autoplay's own cadence - none of them need
-  # anywhere near the pre-existing 400ms/700ms manual-pace durations to settle.
-  # E5 of AUTOPLAY-SPEED (manual play keeps its normal deliberate 9.3 pace,
-  # unaffected) is animation-timing.feature's own coverage, untouched by this
-  # refinement since it never toggles autoplay on. Not re-derived here.
 
   @E5
   Scenario: While autoplay is on, normal player input is ignored

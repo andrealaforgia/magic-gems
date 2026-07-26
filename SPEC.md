@@ -215,11 +215,13 @@ A hands-off demo mode in which the game plays itself.
   the cursor to a gem, selects it (6.2), designates an orthogonally-adjacent gem
   (6.3), and commits a swap (6.4) that completes a match. It only makes valid moves
   that create a run of 3+ (6.5), so runs clear and play keeps progressing — there is
-  always at least one valid move available (8.3). The emulated actions run faster
-  than manual play but at a brisk, MODERATE, easy-to-follow pace — clearly quicker
-  than manual play, not a frantic blur (the exact pace is a tuning choice, adjusted
-  by feel). Board transitions may play somewhat faster than the deliberate 9.3 pace
-  during autoplay. It stays coherent — real valid moves, not frozen or skipped.
+  always at least one valid move available (8.3). The emulated actions run at a SLOW,
+  clearly-watchable pace, with a visible pause between moves and before each swap
+  commits, and the resulting swap/shatter/fall play at the normal deliberate 9.3 pace
+  (no speed-up) — so a watcher can follow each move and confirm every committed swap
+  really forms a valid run of 3+. (Pace is a tuning choice, adjusted by feel; it is
+  currently set slow deliberately so the moves can be verified.) It stays coherent —
+  real valid moves, not frozen or skipped.
 - 12.3 While autoplay is ON, the game ignores normal player input — cursor
   movement, selection, swap-target designation, and cancel are not acted on.
   Pressing A again turns autoplay OFF and returns control to the player.

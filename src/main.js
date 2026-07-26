@@ -5,17 +5,15 @@
   const SWAP_DURATION_MS = 400;
   const FALL_DURATION_MS = 400;
   const REVIVE_SPIN_DURATION_MS = 700;
-  // SPEC 12.2 (re-frozen, AUTOPLAY-SPEED): autoplay runs at a brisk MODERATE
-  // pace - clearly faster than manual play, easy to follow rather than a blur.
-  // Explicitly a tuning choice adjusted by feel, not a fixed frozen figure - the
-  // values below are the moderate pass (80/160/160/300) each stretched by ~1.33x
-  // (a further "run it a notch slower" nudge, ~75% of that rate): 80->107,
-  // 160->213 (twice), 300->400. Ordinary player-driven play keeps the
-  // deliberate 9.3 pace above untouched.
-  const AUTOPLAY_STEP_MS = 107;
-  const AUTOPLAY_SWAP_DURATION_MS = 213;
-  const AUTOPLAY_FALL_DURATION_MS = 213;
-  const AUTOPLAY_REVIVE_SPIN_DURATION_MS = 400;
+  // SPEC 12.2 (re-frozen, AUTOPLAY-SLOW): supersedes the prior AUTOPLAY-SPEED
+  // tuning entirely - the Owner wants to watch autoplay and visually confirm
+  // every swap is a legal 3+ match, so the emulated actions now run at a
+  // SLOW, clearly-watchable pace instead of a brisk one, with the resulting
+  // swap/shatter/fall played at the SAME normal deliberate 9.3 pace as manual
+  // play (no speed-up at all - the separate AUTOPLAY_*_DURATION_MS constants
+  // this used to need are gone). A tuning choice adjusted by feel, not a
+  // fixed frozen figure.
+  const AUTOPLAY_STEP_MS = 900;
 
   // Test-observability only (QA review, commit 280629a): lives outside any one
   // session's own closure so it survives across an exit+restart, letting a test
@@ -130,7 +128,7 @@
     function buildSwapPhase(fromBoard, a, b) {
       return {
         kind: 'swap',
-        duration: autoplayEnabled ? AUTOPLAY_SWAP_DURATION_MS : SWAP_DURATION_MS,
+        duration: SWAP_DURATION_MS,
         board: fromBoard,
         a,
         b,
@@ -140,13 +138,11 @@
     }
 
     function buildCascadePhase(step, chainPosition) {
-      const duration = autoplayEnabled ? AUTOPLAY_FALL_DURATION_MS : FALL_DURATION_MS;
-      return { kind: 'cascade', duration, chainPosition, ...step };
+      return { kind: 'cascade', duration: FALL_DURATION_MS, chainPosition, ...step };
     }
 
     function buildRevivePhase(finalBoard, changedCells) {
-      const duration = autoplayEnabled ? AUTOPLAY_REVIVE_SPIN_DURATION_MS : REVIVE_SPIN_DURATION_MS;
-      return { kind: 'revive', duration, board: finalBoard, changedCells };
+      return { kind: 'revive', duration: REVIVE_SPIN_DURATION_MS, board: finalBoard, changedCells };
     }
 
     function buildQueue(result) {
@@ -654,7 +650,7 @@
     function buildSwapPhase(fromBoard, a, b) {
       return {
         kind: 'swap',
-        duration: autoplayEnabled ? AUTOPLAY_SWAP_DURATION_MS : SWAP_DURATION_MS,
+        duration: SWAP_DURATION_MS,
         board: fromBoard,
         a,
         b,
@@ -664,13 +660,11 @@
     }
 
     function buildCascadePhase(step, chainPosition) {
-      const duration = autoplayEnabled ? AUTOPLAY_FALL_DURATION_MS : FALL_DURATION_MS;
-      return { kind: 'cascade', duration, chainPosition, ...step };
+      return { kind: 'cascade', duration: FALL_DURATION_MS, chainPosition, ...step };
     }
 
     function buildRevivePhase(finalBoard, changedCells) {
-      const duration = autoplayEnabled ? AUTOPLAY_REVIVE_SPIN_DURATION_MS : REVIVE_SPIN_DURATION_MS;
-      return { kind: 'revive', duration, board: finalBoard, changedCells };
+      return { kind: 'revive', duration: REVIVE_SPIN_DURATION_MS, board: finalBoard, changedCells };
     }
 
     function buildQueue(result) {

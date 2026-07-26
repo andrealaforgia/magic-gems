@@ -91,55 +91,110 @@ async function autoplayRealTimeoutMs(page) {
   return stepMs * STEPS_OF_HEADROOM;
 }
 
-Then('the board settles into a new, match-free arrangement within a generous real timeout', async function () {
-  const overallTimeoutMs = await autoplayRealTimeoutMs(this.page);
-  // isAnimating() alone is trivially true-before-anything-starts right after
-  // toggling autoplay on (its own first move hasn't been scheduled yet) - wait
-  // for real evidence a completion actually happened first (the score leaving
-  // its starting value, true for every fresh-load scenario using this step).
-  await this.page.waitForFunction(
-    () => document.getElementById('score').textContent !== 'Score: 0',
-    null,
-    { timeout: overallTimeoutMs }
-  );
-  await waitForRealCondition(
-    this.page,
-    async () => {
-      const grid = await classifiedGrid(this.page);
-      return (await this.page.evaluate((g) => window.MagicGems.hasMatch(g), grid)) === false;
-    },
-    overallTimeoutMs
-  );
-});
+Then(
+  'the board settles into a new, match-free arrangement within a generous real timeout',
+  { timeout: 150000 },
+  async function () {
+    const overallTimeoutMs = await autoplayRealTimeoutMs(this.page);
+    // isAnimating() alone is trivially true-before-anything-starts right after
+    // toggling autoplay on (its own first move hasn't been scheduled yet) - wait
+    // for real evidence a completion actually happened first (the score leaving
+    // its starting value, true for every fresh-load scenario using this step).
+    await this.page.waitForFunction(
+      () => document.getElementById('score').textContent !== 'Score: 0',
+      null,
+      { timeout: overallTimeoutMs }
+    );
+    await waitForRealCondition(
+      this.page,
+      async () => {
+        const grid = await classifiedGrid(this.page);
+        return (await this.page.evaluate((g) => window.MagicGems.hasMatch(g), grid)) === false;
+      },
+      overallTimeoutMs
+    );
+  }
+);
 
-Then('the classified gem grid has changed from the one recorded before, within a generous real timeout', async function () {
-  await waitForRealCondition(
-    this.page,
-    async () => {
-      const grid = await classifiedGrid(this.page);
-      return JSON.stringify(grid) !== JSON.stringify(this.recordedGemGrid);
-    },
-    await autoplayRealTimeoutMs(this.page)
-  );
-});
+Then(
+  'the classified gem grid has changed from the one recorded before, within a generous real timeout',
+  { timeout: 150000 },
+  async function () {
+    await waitForRealCondition(
+      this.page,
+      async () => {
+        const grid = await classifiedGrid(this.page);
+        return JSON.stringify(grid) !== JSON.stringify(this.recordedGemGrid);
+      },
+      await autoplayRealTimeoutMs(this.page)
+    );
+  }
+);
 
-// SPEC 12.2 (re-frozen, AUTOPLAY-SPEED): checked against the previously-delivered
-// watchable pace (450ms between key presses). Some gaps legitimately include a
-// cascade/fall/revive animation settling between moves (longer, and variable
-// with chain depth) - the smallest observed gap is the robust signal instead,
-// reflecting two steps within the very same move with no animation wait between
-// them, i.e. autoplay's own base cadence directly.
-Then('autoplay\'s own key presses follow one another rapidly, clearly faster than manual play\'s own pace', async function () {
+// SPEC 12.2 (re-frozen, AUTOPLAY-SLOW): supersedes the prior AUTOPLAY-SPEED
+// claim entirely - the Owner wants to watch and verify each swap by eye, so
+// autoplay's own emitted key presses (cursor move, select, aim, commit) must
+// now have a clearly-watchable pause between EVERY one of them, including
+// between two steps within the very same move - the smallest observed gap
+// is the robust signal, since some gaps legitimately also include a
+// cascade/fall/revive animation settling on top of the base pace (longer
+// still, and variable with chain depth).
+Then('autoplay\'s own key presses are clearly slow and watchable, with a real pause between every one', async function () {
   const log = await this.page.evaluate(() => window.MagicGems.getAutoplayKeyLog());
   assert.ok(log.length >= 2, `expected at least two logged autoplay key presses, got ${log.length}`);
   const gaps = [];
   for (let i = 1; i < log.length; i++) gaps.push(log[i].ts - log[i - 1].ts);
   assert.ok(gaps.every((gap) => gap >= 0), 'expected every gap to be a real, non-negative elapsed time');
   assert.ok(
-    Math.min(...gaps) < 200,
-    `expected the fastest observed gap to reflect a brisk cadence well under the previous 450ms pace, got ${JSON.stringify(gaps)}`
+    Math.min(...gaps) >= 700,
+    `expected even the fastest observed gap to reflect a slow, clearly-watchable pace, got ${JSON.stringify(gaps)}`
   );
 });
+
+// SPEC 12.2 (re-frozen)/9.3, AUTOPLAY-SLOW E2: the resulting swap/shatter/fall
+// must play at the SAME normal deliberate pace as manual play - no autoplay-
+// specific speed-up. Polls isAnimating() at a fine grain to catch each real
+// animation cycle's own start/end and measures its wall-clock length
+// directly, rather than inferring it from the key-emission cadence above
+// (which now runs slower than any single animation cycle anyway, so it
+// alone couldn't distinguish a sped-up cycle from a normal one). The
+// smallest observed cycle is the robust signal - even a plain 3-run with no
+// cascade/revive takes swap+fall (800ms) at normal pace, comfortably above
+// the previous sped-up total (426ms).
+Then(
+  'the resulting swap, shatter, and fall play at the normal deliberate pace, not sped up',
+  { timeout: 90000 },
+  async function () {
+    // AUTOPLAY-SLOW: derived directly from the live AUTOPLAY_STEP_MS -
+    // generous headroom to observe up to 3 real animation cycles at this
+    // cadence, without inheriting the much larger single-move settle budget
+    // above (that one already bakes in its own separate multiplier).
+    const stepMs = await this.page.evaluate(() => window.MagicGems.AUTOPLAY_STEP_MS);
+    const timeoutMs = stepMs * 60;
+    const cycles = await this.page.evaluate(async (deadlineMs) => {
+      const results = [];
+      const deadline = performance.now() + deadlineMs;
+      let wasAnimating = window.MagicGems.isAnimating();
+      let cycleStart = null;
+      while (performance.now() < deadline && results.length < 3) {
+        const nowAnimating = window.MagicGems.isAnimating();
+        if (!wasAnimating && nowAnimating) cycleStart = performance.now();
+        if (wasAnimating && !nowAnimating && cycleStart !== null) {
+          results.push(performance.now() - cycleStart);
+          cycleStart = null;
+        }
+        wasAnimating = nowAnimating;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      return results;
+    }, timeoutMs);
+    assert.ok(cycles.length > 0, 'expected to observe at least one real animation cycle within the timeout');
+    assert.ok(
+      Math.min(...cycles) >= 700,
+      `expected every observed animation cycle to take a normal deliberate duration, got ${JSON.stringify(cycles)}`
+    );
+  }
+);
 
 Then('injecting an arrow key, SPACE, and Escape right now has no effect on the cursor or selection', async function () {
   // Done as one synchronous in-page pass (not separate Playwright round-trips) so
@@ -156,24 +211,28 @@ Then('injecting an arrow key, SPACE, and Escape right now has no effect on the c
   assert.equal(result.after, result.before, 'expected injected input to have no effect on cursor/selection while autoplay is on');
 });
 
-Then('the score strictly increases across at least 3 separate real completions within a generous timeout', async function () {
-  await this.page.evaluate(() => {
-    window.__scoreIncreaseCount = 0;
-    window.__lastSeenScore = 0;
-  });
-  await this.page.waitForFunction(
-    () => {
-      const current = Number(document.getElementById('score').textContent.replace('Score: ', ''));
-      if (current > window.__lastSeenScore) {
-        window.__scoreIncreaseCount++;
-        window.__lastSeenScore = current;
-      }
-      return window.__scoreIncreaseCount >= 3;
-    },
-    null,
-    { timeout: await autoplayRealTimeoutMs(this.page) }
-  );
-});
+Then(
+  'the score strictly increases across at least 3 separate real completions within a generous timeout',
+  { timeout: 150000 },
+  async function () {
+    await this.page.evaluate(() => {
+      window.__scoreIncreaseCount = 0;
+      window.__lastSeenScore = 0;
+    });
+    await this.page.waitForFunction(
+      () => {
+        const current = Number(document.getElementById('score').textContent.replace('Score: ', ''));
+        if (current > window.__lastSeenScore) {
+          window.__scoreIncreaseCount++;
+          window.__lastSeenScore = current;
+        }
+        return window.__scoreIncreaseCount >= 3;
+      },
+      null,
+      { timeout: await autoplayRealTimeoutMs(this.page) }
+    );
+  }
+);
 
 // Owner report/AUTOPLAY-FIX (SPEC 12.2/6.5): the score-rising check above
 // only proves SOME completions happened, which could mask an occasional
@@ -186,13 +245,16 @@ Then('the score strictly increases across at least 3 separate real completions w
 // not a sample, the complete real log.
 Then(
   'every autoplay-committed swap actually matches - no invalid swap sound plays, across an extended real run',
-  { timeout: 90000 },
+  { timeout: 300000 },
   async function () {
-    // QA review (commit e968a4b): this file's own established convention is
-    // a 1x autoplayRealTimeoutMs budget (~15s) per 3 real completions - this
-    // check waits for 15 (5x as many), so its own budget scales by the same
-    // 5x, not the previous, thinner 3x.
-    const timeout = (await autoplayRealTimeoutMs(this.page)) * 5;
+    // AUTOPLAY-SLOW: derived directly from the live AUTOPLAY_STEP_MS (not
+    // the single-move-oriented autoplayRealTimeoutMs budget above, which
+    // bakes in its own much larger multiplier for a different purpose) -
+    // 15 real time-units per completion is generous headroom over the ~6-8
+    // keys one real move actually takes at this cadence, across the 15
+    // completions this check waits for.
+    const stepMs = await this.page.evaluate(() => window.MagicGems.AUTOPLAY_STEP_MS);
+    const timeout = stepMs * 15 * 15;
     await this.page.evaluate(() => {
       window.__completionCount = 0;
       window.__lastSeenScoreForInvalidCheck = 0;

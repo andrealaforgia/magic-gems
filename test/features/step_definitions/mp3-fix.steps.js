@@ -117,6 +117,34 @@ Then('autoplay is off on the second page', async function () {
   assert.equal(await this.pageB.evaluate(() => window.MagicGems.isMatchAutoplayOn()), false);
 });
 
+// AUTOPLAY-SLOW (SPEC 12.2 re-frozen) E5: same slow-pace/always-valid
+// properties as single-player's own coverage (test/features/autoplay.feature),
+// demonstrated live in a real match instead of inferred from shared code.
+Then(
+  "the {word} page's own match autoplay is clearly slow and watchable, and every committed swap actually matches, over several real moves",
+  { timeout: 240000 },
+  async function (which) {
+    const page = pageFor(this, which);
+    // A live two-real-page match is far costlier than single-player (a
+    // second browser page, a real publish/poll cycle on top) - a smaller
+    // target here keeps typical wall-clock cost down while still covering
+    // several real moves; the dedicated single-player scenario is the
+    // exhaustive, larger-N version of this same check.
+    await page.waitForFunction(() => window.MagicGems.getMatchAutoplayKeyLog().length >= 12, null, { timeout: 180000 });
+    const log = await page.evaluate(() => window.MagicGems.getMatchAutoplayKeyLog());
+    const gaps = [];
+    for (let i = 1; i < log.length; i++) gaps.push(log[i].ts - log[i - 1].ts);
+    assert.ok(gaps.every((gap) => gap >= 0), 'expected every gap to be a real, non-negative elapsed time');
+    assert.ok(
+      Math.min(...gaps) >= 700,
+      `expected even the fastest observed gap to reflect a slow, clearly-watchable pace, got ${JSON.stringify(gaps)}`
+    );
+    const soundLog = await page.evaluate(() => window.MagicGems.getMatchSoundLog());
+    const invalidCount = soundLog.filter((s) => s === 'invalid').length;
+    assert.equal(invalidCount, 0, `expected zero invalid-swap sounds, got ${invalidCount} out of ${soundLog.length}`);
+  }
+);
+
 Then("the second page's match exit overlay is shown", async function () {
   const hidden = await this.pageB.evaluate(() => document.getElementById('match-exit-confirm').hidden);
   assert.equal(hidden, false);

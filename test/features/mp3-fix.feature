@@ -50,6 +50,18 @@ Feature: Each player fully controls their own side of the match (MP3-FIX)
     Then autoplay is on on the first page
     And autoplay is off on the second page
 
+  # AUTOPLAY-SLOW (SPEC 12.2 re-frozen) E5: the slow-pace fix must hold in a
+  # real match too, not just single-player - both share the same tuning
+  # constants, but this proves it live rather than by inference.
+  @E4 @integration
+  Scenario: Autoplay in a real match also runs at the new slow, watchable pace and only ever commits valid matches
+    Given two independent pages are both at the multiplayer lobby's name entry step
+    When the first page enters the name "Alice" and generates a code
+    And the second page enters the name "Bob" and enters that same code
+    Then the match begins on both pages
+    When I press "a" on the first page
+    Then the first page's own match autoplay is clearly slow and watchable, and every committed swap actually matches, over several real moves
+
   @E5 @integration
   Scenario: ESC opens the exit overlay for one player only, and N resumes just that player's own match
     Given two independent pages are both at the multiplayer lobby's name entry step
