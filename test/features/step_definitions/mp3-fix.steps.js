@@ -136,7 +136,11 @@ Then(
     // in this feature area already follows, instead of a bare literal.
     const TARGET_KEY_COUNT = 12;
     const stepMs = await page.evaluate(() => window.MagicGems.AUTOPLAY_STEP_MS);
-    await page.waitForFunction(() => window.MagicGems.getMatchAutoplayKeyLog().length >= 12, null, {
+    // QA review (commit c35cbda): TARGET_KEY_COUNT passed explicitly as an
+    // argument, not duplicated as a bare 12 inside the predicate -
+    // Playwright's in-page callback can't close over the Node-side const,
+    // so this is the one way to thread it through as a single source of truth.
+    await page.waitForFunction((target) => window.MagicGems.getMatchAutoplayKeyLog().length >= target, TARGET_KEY_COUNT, {
       timeout: stepMs * TARGET_KEY_COUNT * 15,
     });
     const log = await page.evaluate(() => window.MagicGems.getMatchAutoplayKeyLog());
