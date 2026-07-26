@@ -130,7 +130,15 @@ Then(
     // target here keeps typical wall-clock cost down while still covering
     // several real moves; the dedicated single-player scenario is the
     // exhaustive, larger-N version of this same check.
-    await page.waitForFunction(() => window.MagicGems.getMatchAutoplayKeyLog().length >= 12, null, { timeout: 180000 });
+    //
+    // QA review (commit 036dfdc), Finding 3: derived from the live
+    // AUTOPLAY_STEP_MS, matching the same convention every sibling timeout
+    // in this feature area already follows, instead of a bare literal.
+    const TARGET_KEY_COUNT = 12;
+    const stepMs = await page.evaluate(() => window.MagicGems.AUTOPLAY_STEP_MS);
+    await page.waitForFunction(() => window.MagicGems.getMatchAutoplayKeyLog().length >= 12, null, {
+      timeout: stepMs * TARGET_KEY_COUNT * 15,
+    });
     const log = await page.evaluate(() => window.MagicGems.getMatchAutoplayKeyLog());
     const gaps = [];
     for (let i = 1; i < log.length; i++) gaps.push(log[i].ts - log[i - 1].ts);

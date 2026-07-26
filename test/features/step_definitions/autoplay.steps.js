@@ -153,46 +153,56 @@ Then('autoplay\'s own key presses are clearly slow and watchable, with a real pa
 
 // SPEC 12.2 (re-frozen)/9.3, AUTOPLAY-SLOW E2: the resulting swap/shatter/fall
 // must play at the SAME normal deliberate pace as manual play - no autoplay-
-// specific speed-up. Polls isAnimating() at a fine grain to catch each real
-// animation cycle's own start/end and measures its wall-clock length
-// directly, rather than inferring it from the key-emission cadence above
-// (which now runs slower than any single animation cycle anyway, so it
-// alone couldn't distinguish a sped-up cycle from a normal one). The
-// smallest observed cycle is the robust signal - even a plain 3-run with no
-// cascade/revive takes swap+fall (800ms) at normal pace, comfortably above
-// the previous sped-up total (426ms).
+// specific speed-up.
+//
+// QA review (commit 036dfdc), Finding 1: isAnimating() never toggles false
+// BETWEEN phases within one chain (advanceQueue refills activeAnimation from
+// the queue in the same tick a phase's duration elapses), so measuring
+// whole-isAnimating()-cycles only proves the CHAIN's cumulative duration, not
+// any single phase's own - a chain with a revive (213+213+400=826ms sped up)
+// or 3+ cascades could still clear a 700ms floor even if every INDIVIDUAL
+// phase were still secretly sped up. This instead tracks getAnimationPhase()'s
+// own KIND transitions, measuring each individual swap/cascade/revive
+// SEGMENT's own duration directly - the exact granularity a regression back
+// to per-phase speed-up would need to hide at.
+const NORMAL_PHASE_DURATION_FLOOR_MS = { swap: 300, cascade: 300, revive: 550 };
+
 Then(
   'the resulting swap, shatter, and fall play at the normal deliberate pace, not sped up',
   { timeout: 90000 },
   async function () {
     // AUTOPLAY-SLOW: derived directly from the live AUTOPLAY_STEP_MS -
-    // generous headroom to observe up to 3 real animation cycles at this
+    // generous headroom to observe several real phase segments at this
     // cadence, without inheriting the much larger single-move settle budget
     // above (that one already bakes in its own separate multiplier).
     const stepMs = await this.page.evaluate(() => window.MagicGems.AUTOPLAY_STEP_MS);
     const timeoutMs = stepMs * 60;
-    const cycles = await this.page.evaluate(async (deadlineMs) => {
+    const segments = await this.page.evaluate(async (deadlineMs) => {
       const results = [];
       const deadline = performance.now() + deadlineMs;
-      let wasAnimating = window.MagicGems.isAnimating();
-      let cycleStart = null;
-      while (performance.now() < deadline && results.length < 3) {
-        const nowAnimating = window.MagicGems.isAnimating();
-        if (!wasAnimating && nowAnimating) cycleStart = performance.now();
-        if (wasAnimating && !nowAnimating && cycleStart !== null) {
-          results.push(performance.now() - cycleStart);
-          cycleStart = null;
+      let previousKind = window.MagicGems.getAnimationPhase();
+      let segmentStart = previousKind ? performance.now() : null;
+      while (performance.now() < deadline && results.length < 6) {
+        const currentKind = window.MagicGems.getAnimationPhase();
+        if (currentKind !== previousKind) {
+          if (previousKind && segmentStart !== null) {
+            results.push({ kind: previousKind, durationMs: performance.now() - segmentStart });
+          }
+          segmentStart = currentKind ? performance.now() : null;
+          previousKind = currentKind;
         }
-        wasAnimating = nowAnimating;
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 10));
       }
       return results;
     }, timeoutMs);
-    assert.ok(cycles.length > 0, 'expected to observe at least one real animation cycle within the timeout');
-    assert.ok(
-      Math.min(...cycles) >= 700,
-      `expected every observed animation cycle to take a normal deliberate duration, got ${JSON.stringify(cycles)}`
-    );
+    assert.ok(segments.length > 0, 'expected to observe at least one real animation phase segment within the timeout');
+    for (const segment of segments) {
+      const floor = NORMAL_PHASE_DURATION_FLOOR_MS[segment.kind];
+      assert.ok(
+        segment.durationMs >= floor,
+        `expected every "${segment.kind}" phase to take a normal deliberate duration (>=${floor}ms), got ${segment.durationMs}ms - segments: ${JSON.stringify(segments)}`
+      );
+    }
   }
 );
 
