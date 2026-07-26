@@ -6,6 +6,7 @@ import {
   createSession,
   joinSession,
   appendPlayerMoves,
+  recordSurrender,
 } from '../../api/magic-gems/_session-logic.mjs';
 
 // QA review (commit 87bd778): this server-side copy had no dedicated test
@@ -133,4 +134,40 @@ test('appendPlayerMoves refuses to record moves for a name that isn\'t actually 
   assert.equal(result.ok, false);
   assert.equal(result.error, 'not-a-player');
   assert.equal(joined.moves, undefined, 'a refused append must never touch the existing session');
+});
+
+// MP5/SPEC 13.5.1: a surrendering player's exit is communicated through the
+// session so the opponent's own match can end too, even though they took no
+// exit action themselves.
+test('recordSurrender records which player surrendered, without touching anything else', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const { session: joined } = joinSession(session, 'Bob');
+
+  const result = recordSurrender(joined, 'Alice');
+
+  assert.equal(result.ok, true);
+  assert.equal(result.session.surrenderedBy, 'Alice');
+  assert.deepEqual(joined.players, ['Alice', 'Bob'], 'must never mutate the session it was given');
+});
+
+test('recordSurrender is idempotent - a second surrender never overwrites the first', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const { session: joined } = joinSession(session, 'Bob');
+  const afterAlice = recordSurrender(joined, 'Alice').session;
+
+  const result = recordSurrender(afterAlice, 'Bob');
+
+  assert.equal(result.ok, true);
+  assert.equal(result.session.surrenderedBy, 'Alice', 'the first surrender must stand, not the second');
+});
+
+test('recordSurrender refuses to record a surrender for a name that isn\'t actually one of the session\'s players', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const { session: joined } = joinSession(session, 'Bob');
+
+  const result = recordSurrender(joined, 'Mallory');
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'not-a-player');
+  assert.equal(joined.surrenderedBy, undefined, 'a refused surrender must never touch the existing session');
 });

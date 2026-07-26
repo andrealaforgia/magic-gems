@@ -6,7 +6,7 @@
 // production once this function and the static game ended up at different
 // relative locations after deployment.
 import { getStoredSession, setStoredSession, checkRateLimit } from './_upstash.mjs';
-import { generateSessionCode, createSession, joinSession, appendPlayerMoves, CODE_LENGTH } from './_session-logic.mjs';
+import { generateSessionCode, createSession, joinSession, appendPlayerMoves, recordSurrender, CODE_LENGTH } from './_session-logic.mjs';
 
 const CODE_PATTERN = new RegExp(`^[A-Z]{${CODE_LENGTH}}$`);
 const MAX_NAME_LENGTH = 20;
@@ -101,6 +101,15 @@ async function handleAppendMoves(env, code, playerName, moves) {
   return result;
 }
 
+async function handleSurrender(env, code, playerName) {
+  const existing = await getStoredSession(env, code);
+  if (!existing) return { ok: false, error: 'not-found' };
+  const result = recordSurrender(existing, playerName);
+  if (!result.ok) return result;
+  await setStoredSession(env, result.session);
+  return result;
+}
+
 export default {
   async fetch(request) {
     try {
@@ -144,6 +153,14 @@ export default {
           const movesError = validMovesOrError(body.moves);
           if (movesError) return jsonResponse({ error: movesError }, 400);
           const result = await handleAppendMoves(process.env, body.code, body.playerName, body.moves);
+          return jsonResponse(result);
+        }
+        if (body.action === 'surrender') {
+          const codeError = validCodeOrError(body.code);
+          if (codeError) return jsonResponse({ error: codeError }, 400);
+          const nameError = validNameOrError(body.playerName, 'playerName');
+          if (nameError) return jsonResponse({ error: nameError }, 400);
+          const result = await handleSurrender(process.env, body.code, body.playerName);
           return jsonResponse(result);
         }
         return jsonResponse({ error: 'unknown action' }, 400);

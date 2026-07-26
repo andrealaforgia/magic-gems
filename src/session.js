@@ -60,6 +60,17 @@
     };
   }
 
+  // SPEC 13.5.1/MP5: a surrendering player's exit is communicated through
+  // the session so the opponent's own match ends too. Mirrors
+  // api/magic-gems/_session-logic.mjs's own copy. Idempotent - the first
+  // surrender stands, so both clients agree on a single loser even if both
+  // happen to exit near-simultaneously.
+  function recordSurrender(session, playerName) {
+    if (!session.players.includes(playerName)) return { ok: false, error: 'not-a-player' };
+    if (session.surrenderedBy) return { ok: true, session };
+    return { ok: true, session: { ...session, surrenderedBy: playerName } };
+  }
+
   global.MagicGems = global.MagicGems || {};
   global.MagicGems.CODE_LENGTH = CODE_LENGTH;
   global.MagicGems.generateSessionCode = generateSessionCode;
@@ -67,4 +78,5 @@
   global.MagicGems.joinSession = joinSession;
   global.MagicGems.isSessionReady = isSessionReady;
   global.MagicGems.appendPlayerMoves = appendPlayerMoves;
+  global.MagicGems.recordSurrender = recordSurrender;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import { loadMagicGems } from '../support/load-src.js';
 
-const { CODE_LENGTH, generateSessionCode, createSession, joinSession, isSessionReady, appendPlayerMoves } =
+const { CODE_LENGTH, generateSessionCode, createSession, joinSession, isSessionReady, appendPlayerMoves, recordSurrender } =
   loadMagicGems([new URL('../../src/session.js', import.meta.url)]);
 
 test('generateSessionCode returns a 10-letter uppercase code (SPEC 13.2.2)', () => {
@@ -133,4 +133,39 @@ test('appendPlayerMoves refuses to record moves for a name that isn\'t actually 
   assert.equal(result.ok, false);
   assert.equal(result.error, 'not-a-player');
   assert.equal(joined.moves, undefined, 'a refused append must never touch the existing session');
+});
+
+// MP5/SPEC 13.5.1: mirrors _session-logic.mjs's own coverage of the
+// server-side copy.
+test('recordSurrender records which player surrendered, without touching anything else', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const { session: joined } = joinSession(session, 'Bob');
+
+  const result = recordSurrender(joined, 'Alice');
+
+  assert.equal(result.ok, true);
+  assert.equal(result.session.surrenderedBy, 'Alice');
+  assert.deepEqual(joined.players, ['Alice', 'Bob'], 'must never mutate the session it was given');
+});
+
+test('recordSurrender is idempotent - a second surrender never overwrites the first', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const { session: joined } = joinSession(session, 'Bob');
+  const afterAlice = recordSurrender(joined, 'Alice').session;
+
+  const result = recordSurrender(afterAlice, 'Bob');
+
+  assert.equal(result.ok, true);
+  assert.equal(result.session.surrenderedBy, 'Alice', 'the first surrender must stand, not the second');
+});
+
+test('recordSurrender refuses to record a surrender for a name that isn\'t actually one of the session\'s players', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const { session: joined } = joinSession(session, 'Bob');
+
+  const result = recordSurrender(joined, 'Mallory');
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'not-a-player');
+  assert.equal(joined.surrenderedBy, undefined, 'a refused surrender must never touch the existing session');
 });

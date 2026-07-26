@@ -381,3 +381,10 @@ export default {
 // key like 'Tab' rejected alongside the 5 real ones all accepted) closed
 // every mutant on the new size-cap and key-membership checks with no
 // survivors.
+//
+// (MP5) recordSurrender / the 'surrender' action (ownership-checked and
+// idempotent, same patterns as publish/moves): 100% (_session-logic.mjs
+// 60/60, session.mjs 174/174 non-timeout mutants killed), 98.80% (session.js,
+// 1 documented UMD-wrapper equivalent). One real gap this pass found and
+// fixed: the surrender action's own oversized-playerName rejection had no
+// dedicated test, unlike the same check on every other action.

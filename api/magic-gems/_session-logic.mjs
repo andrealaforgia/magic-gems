@@ -73,4 +73,15 @@ function appendPlayerMoves(session, playerName, newMoves) {
   };
 }
 
-export { CODE_LENGTH, generateSessionCode, createSession, joinSession, appendPlayerMoves };
+// SPEC 13.5.1/MP5: a surrendering player's exit is communicated through the
+// session so the opponent's own match ends too, even though they took no
+// exit action themselves. Idempotent - the first surrender stands; a
+// second one (e.g. both players exiting near-simultaneously) never
+// overwrites it, so both clients agree on a single loser.
+function recordSurrender(session, playerName) {
+  if (!session.players.includes(playerName)) return { ok: false, error: 'not-a-player' };
+  if (session.surrenderedBy) return { ok: true, session };
+  return { ok: true, session: { ...session, surrenderedBy: playerName } };
+}
+
+export { CODE_LENGTH, generateSessionCode, createSession, joinSession, appendPlayerMoves, recordSurrender };

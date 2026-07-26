@@ -410,6 +410,109 @@ test('moves accepts every known cursor/select key, and a batch exactly at the si
   assert.equal((await atCap.json()).ok, true);
 });
 
+// MP5/SPEC 13.5.1: a surrendering player's exit is communicated through the
+// session so the opponent's own match can end too.
+test('surrender records which player surrendered', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  withFetch(t, fakeUpstash());
+  const created = await createViaHandler('Alice');
+
+  const res = await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'surrender', code: created.session.code, playerName: 'Alice' }),
+    })
+  );
+  const body = await res.json();
+
+  assert.equal(res.status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(body.session.surrenderedBy, 'Alice');
+});
+
+test('surrender refuses a name that is not actually one of the session\'s own players, as a normal 200 result, not a 500', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  withFetch(t, fakeUpstash());
+  const created = await createViaHandler('Alice');
+
+  const res = await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'surrender', code: created.session.code, playerName: 'Mallory' }),
+    })
+  );
+  const body = await res.json();
+
+  assert.equal(res.status, 200);
+  assert.equal(body.ok, false);
+  assert.equal(body.error, 'not-a-player');
+});
+
+test('surrender against an unknown code reports not-found as a normal 200 result, not a 500', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  withFetch(t, fakeUpstash());
+
+  const res = await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'surrender', code: 'NOSUCHCODE', playerName: 'Alice' }),
+    })
+  );
+  const body = await res.json();
+
+  assert.equal(res.status, 200);
+  assert.equal(body.ok, false);
+  assert.equal(body.error, 'not-found');
+});
+
+test('surrender rejects a malformed code with 400, never reaching the store', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  withFetch(t, fakeUpstash());
+
+  const res = await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'surrender', code: 'not-a-code', playerName: 'Alice' }),
+    })
+  );
+  const body = await res.json();
+  assert.equal(res.status, 400);
+  assert.equal(body.error, 'code must be exactly 10 uppercase letters');
+});
+
+test('surrender rejects an oversized playerName with 400', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  withFetch(t, fakeUpstash());
+  const created = await createViaHandler('Alice');
+
+  const res = await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'surrender', code: created.session.code, playerName: 'B'.repeat(21) }),
+    })
+  );
+  const body = await res.json();
+  assert.equal(res.status, 400);
+  assert.equal(body.error, 'playerName must be a string between 1 and 20 characters');
+});
+
+test('a successful surrender is actually persisted, not just echoed back in its own response', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  withFetch(t, fakeUpstash());
+  const created = await createViaHandler('Alice');
+
+  await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'surrender', code: created.session.code, playerName: 'Alice' }),
+    })
+  );
+
+  const getRes = await handler.fetch(new Request(`https://x/api/magic-gems/session?code=${created.session.code}`));
+  const getBody = await getRes.json();
+  assert.equal(getBody.session.surrenderedBy, 'Alice');
+});
+
 test('a missing/misconfigured store surfaces a clear, handled 500 rather than hanging or crashing uncontrolled (E4)', async (t) => {
   withEnv(t, {});
   withFetch(t, fakeUpstash());
