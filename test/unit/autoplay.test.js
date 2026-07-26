@@ -6,11 +6,23 @@ import {
   buildStuckBoard as buildStuckBoardFor,
 } from '../support/board-fixtures.js';
 
-const { GEM_TYPES, planAutoplaySteps } = loadMagicGems([
+const {
+  GEM_TYPES,
+  planAutoplaySteps,
+  generateBoard,
+  ensurePlayable,
+  createInteractionState,
+  handleGameKey,
+  createSeededRandom,
+  withRandom,
+} = loadMagicGems([
   new URL('../../src/gems.js', import.meta.url),
   new URL('../../src/board.js', import.meta.url),
   new URL('../../src/resolution.js', import.meta.url),
+  new URL('../../src/interaction.js', import.meta.url),
+  new URL('../../src/game.js', import.meta.url),
   new URL('../../src/autoplay.js', import.meta.url),
+  new URL('../../src/seeded-random.js', import.meta.url),
 ]);
 
 function buildMatchFreeBoard() {
@@ -107,4 +119,47 @@ test('planAutoplaySteps aims ArrowDown when the found move\'s pair is a vertical
 
   const steps = planAutoplaySteps(board, { row: 1, col: 2 });
   assert.deepEqual(steps, [' ', 'ArrowDown', ' ']);
+});
+
+// Owner report/AUTOPLAY-FIX (SPEC 12.2/6.5): every scenario above only checks
+// planAutoplaySteps' own STRUCTURE against a hand-planted board with one
+// known move - it never actually executes the plan and confirms the swap it
+// produces really matches. That is exactly the class of gap the Owner
+// flagged: an aggregate signal (score rising, a scenario "passing") can
+// look correct while occasional individual swaps are invalid. This drives
+// planAutoplaySteps end-to-end through handleGameKey across many
+// generated boards and many moves per board, checking EVERY single
+// committed swap, not a sample - a fixed seed per trial keeps this fully
+// reproducible in CI while still covering a wide range of real board
+// states (including whatever revive/reshuffle states arise along the way).
+test('every move planAutoplaySteps produces, once actually played through handleGameKey, is a real match', () => {
+  const TRIALS = 300;
+  const MOVES_PER_TRIAL = 60;
+  let totalMoves = 0;
+
+  for (let trial = 0; trial < TRIALS; trial++) {
+    const seededRandom = createSeededRandom(trial);
+    let board, interaction;
+    withRandom(seededRandom, () => {
+      board = ensurePlayable(generateBoard()).board;
+      interaction = createInteractionState();
+    });
+
+    for (let move = 0; move < MOVES_PER_TRIAL; move++) {
+      const plan = planAutoplaySteps(board, interaction.cursor);
+      assert.ok(plan.length > 0, `trial ${trial} move ${move}: expected a valid move to always be available (SPEC 8.3)`);
+
+      let matched = null;
+      for (const key of plan) {
+        const next = withRandom(seededRandom, () => handleGameKey({ board, interaction, exitConfirmOpen: false }, key));
+        if (next.swapAnimation) matched = next.swapAnimation.matched;
+        board = next.board;
+        interaction = next.interaction;
+      }
+      totalMoves++;
+      assert.equal(matched, true, `trial ${trial} move ${move}: autoplay committed a swap that did not produce a match`);
+    }
+  }
+
+  assert.equal(totalMoves, TRIALS * MOVES_PER_TRIAL, 'sanity check: every planned move must have actually run');
 });

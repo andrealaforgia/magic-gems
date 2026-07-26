@@ -48,13 +48,13 @@ async function setStoredSession(env, session) {
   if (body.error) throw new Error(body.error);
 }
 
-// Security review (commit 023dece), M2: no per-caller throttle previously -
-// every create/join/lookup cost a real store operation with no cap, an
-// unauthenticated cost/quota-exhaustion vector. A fixed-window counter (INCR
-// + EXPIRE ... NX, so only the FIRST request in a window starts its clock -
-// a plain INCR-then-EXPIRE-every-time would keep pushing the window out
-// forever under sustained traffic and never actually reset) via Upstash's own
-// pipeline endpoint - no new runtime dependency needed for this.
+// Security review, HIGH finding remediation: unlike setStoredSession (only
+// ever used for a session's initial create, which must set the TTL), every
+// write to an ALREADY-EXISTING session must not renew it - otherwise a
+// session's lifetime, and the storage cost tied to it, could be extended
+// indefinitely by sustained writes. Upstash's own pipeline endpoint is the
+// only way to send a flag-only argument like KEEPTTL (the simple
+// /set/{key}?EX= query-param shorthand doesn't support it).
 async function updateStoredSession(env, session) {
   const { url, token } = resolveConfig(env);
   const key = sessionKey(session.code);
@@ -67,6 +67,13 @@ async function updateStoredSession(env, session) {
   if (results[0]?.error) throw new Error(results[0].error);
 }
 
+// Security review (commit 023dece), M2: no per-caller throttle previously -
+// every create/join/lookup cost a real store operation with no cap, an
+// unauthenticated cost/quota-exhaustion vector. A fixed-window counter (INCR
+// + EXPIRE ... NX, so only the FIRST request in a window starts its clock -
+// a plain INCR-then-EXPIRE-every-time would keep pushing the window out
+// forever under sustained traffic and never actually reset) via Upstash's own
+// pipeline endpoint - no new runtime dependency needed for this.
 async function incrementRateLimitCount(env, bucketId, windowSeconds) {
   const { url, token } = resolveConfig(env);
   const key = RATE_LIMIT_KEY_PREFIX + bucketId;

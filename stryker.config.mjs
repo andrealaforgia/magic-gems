@@ -448,3 +448,27 @@ export default {
 // after, both sides climb together with only brief, self-correcting lag,
 // which test/features/mp4-fix.feature's own new E7 scenario now guards
 // against regressing.
+//
+// (AUTOPLAY-FIX) investigated an Owner-reported live defect (autoplay
+// "sometimes completes rows randomly" instead of always forming a valid
+// 3+ run): could not reproduce it despite very rigorous testing - a 1.2
+// million-move offline simulation (planAutoplaySteps driven end-to-end
+// through handleGameKey, both under real Math.random and under the
+// multiplayer match's own seeded generator) and 6+ minutes of live
+// single-player dogfooding, all with zero invalid swaps. The confirmed,
+// genuine gap was in VERIFICATION, not (as far as this investigation could
+// establish) the production code: every prior autoplay.feature/
+// autoplay.test.js check only sampled aggregate signals (score rising,
+// board eventually match-free) or planAutoplaySteps' own structural
+// output against a hand-planted board - none of them executed a plan
+// end-to-end and confirmed the resulting swap actually matched, and none
+// checked more than a handful of moves. Closed with two new regression
+// checks matching the Owner's own stated rigor bar (many moves, every one
+// checked, not an aggregate signal): 93.62% (autoplay.js, 2 new equivalent
+// mutants alongside the 1 documented UMD-wrapper one, all real mutants
+// killed). The 2 new equivalents are pathKeys' own tie-case ternaries
+// (`to.row > from.row` / `to.col > from.col`, each mutated to `>=`) - when
+// the rows (or columns) are already equal, the movement loop those
+// ternaries feed runs zero iterations regardless of which branch was
+// taken, so the mutated value is computed but never observably pushed
+// into the returned key sequence.

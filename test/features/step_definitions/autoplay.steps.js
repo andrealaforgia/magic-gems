@@ -175,6 +175,46 @@ Then('the score strictly increases across at least 3 separate real completions w
   );
 });
 
+// Owner report/AUTOPLAY-FIX (SPEC 12.2/6.5): the score-rising check above
+// only proves SOME completions happened, which could mask an occasional
+// invalid swap interspersed among valid ones - the Owner's own framing
+// ("a short window can look correct... do not rely on aggregate score
+// rising"). Runs autoplay for real, on a live client, until many
+// completions have actually happened, then checks the sound log (which
+// records an 'invalid' cue for every swap that fails to match, distinct
+// from the reverted-swap no-op) never contains one across that whole run -
+// not a sample, the complete real log.
+Then(
+  'every autoplay-committed swap actually matches - no invalid swap sound plays, across an extended real run',
+  { timeout: 60000 },
+  async function () {
+    const timeout = (await autoplayRealTimeoutMs(this.page)) * 3;
+    await this.page.evaluate(() => {
+      window.__completionCount = 0;
+      window.__lastSeenScoreForInvalidCheck = 0;
+    });
+    await this.page.waitForFunction(
+      () => {
+        const current = Number(document.getElementById('score').textContent.replace('Score: ', ''));
+        if (current > window.__lastSeenScoreForInvalidCheck) {
+          window.__completionCount++;
+          window.__lastSeenScoreForInvalidCheck = current;
+        }
+        return window.__completionCount >= 15;
+      },
+      null,
+      { timeout }
+    );
+    const soundLog = await this.page.evaluate(() => window.MagicGems.getSoundLog());
+    const invalidCount = soundLog.filter((s) => s === 'invalid').length;
+    assert.equal(
+      invalidCount,
+      0,
+      `expected zero invalid-swap sounds across this run, got ${invalidCount} out of ${soundLog.length} total sounds`
+    );
+  }
+);
+
 Then('the score reads greater than 0', async function () {
   const score = await this.page.evaluate(() => Number(document.getElementById('score').textContent.replace('Score: ', '')));
   assert.ok(score > 0, `expected the score to have increased, was ${score}`);

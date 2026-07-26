@@ -35,6 +35,19 @@ Feature: A hands-off demo mode that plays the game itself (AUTOPLAY)
     And the score strictly increases across at least 3 separate real completions within a generous timeout
     And the board settles into a new, match-free arrangement within a generous real timeout
 
+  # Owner report/AUTOPLAY-FIX: "it sometimes completes rows randomly" - every
+  # other scenario in this file only samples the board/score at a few
+  # points, which could pass even if an occasional swap in between didn't
+  # actually match. This checks the complete real record of every swap
+  # autoplay commits across an extended run, on a live client - not a
+  # sample.
+  @E1 @E4 @integration
+  Scenario: Every single swap autoplay commits, across an extended real run, actually produces a match
+    Given I open "index.html" directly as a file:// URL with no server or build step
+    When I press "a"
+    Then autoplay is on
+    And every autoplay-committed swap actually matches - no invalid swap sound plays, across an extended real run
+
   # E2 of AUTOPLAY-SPEED (board transitions may run faster than the deliberate
   # 9.3 pace specifically during autoplay) is exercised by every scenario above
   # that waits on a real completion at autoplay's own cadence - none of them need
