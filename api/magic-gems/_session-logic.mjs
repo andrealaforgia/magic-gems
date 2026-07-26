@@ -50,23 +50,27 @@ function joinSession(session, playerName) {
   return { ok: true, session: { ...session, players: [...session.players, playerName] } };
 }
 
-// SPEC 13.4: each client continuously publishes its own board+score into the
-// shared session, keyed by name, so the other client can read it back and
-// render it on the remote side - never touching the other player's own
-// last-published state.
+// SPEC 13.4 (re-frozen)/MP4-MOVES: each client sends its own input actions
+// (moves) as they happen; the opponent replays them to reconstruct that
+// player's board deterministically, rather than receiving periodic
+// board/score snapshots (MP4's own original approach, now superseded).
+// Append-only - never replaces a player's own prior moves, and never
+// touches the other player's own log.
 //
-// Security review (commit be737cd), Finding 1: playerName must actually be
-// one of this session's own players - otherwise anyone holding the code
-// could overwrite the live broadcast of a slot they were never part of.
-function publishPlayerState(session, playerName, board, score) {
+// Security review (commit be737cd), Finding 1 pattern carried over:
+// playerName must actually be one of this session's own players - otherwise
+// anyone holding the code could inject moves into a slot they were never
+// part of.
+function appendPlayerMoves(session, playerName, newMoves) {
   if (!session.players.includes(playerName)) return { ok: false, error: 'not-a-player' };
+  const existingMoves = (session.moves && session.moves[playerName]) || [];
   return {
     ok: true,
     session: {
       ...session,
-      states: { ...session.states, [playerName]: { board, score } },
+      moves: { ...session.moves, [playerName]: [...existingMoves, ...newMoves] },
     },
   };
 }
 
-export { CODE_LENGTH, generateSessionCode, createSession, joinSession, publishPlayerState };
+export { CODE_LENGTH, generateSessionCode, createSession, joinSession, appendPlayerMoves };

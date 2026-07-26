@@ -7,11 +7,12 @@
   // stub's native "storage" event - a real request each interval, not a
   // hardcoded readiness flag.
   const POLL_INTERVAL_MS = 1500;
-  // MP4/SPEC 13.4: how often each client publishes its own board+score during
-  // a match - defined alongside POLL_INTERVAL_MS (not in main.js, where the
-  // match loop itself lives) so both of this session service's own traffic
-  // rates can be checked together against the server's rate limit the same
-  // lightweight way, without needing a live browser.
+  // MP4-MOVES/SPEC 13.4 (re-frozen): how often each client sends its own
+  // batch of input actions (moves) during a match - defined alongside
+  // POLL_INTERVAL_MS (not in main.js, where the match loop itself lives) so
+  // both of this session service's own traffic rates can be checked together
+  // against the server's rate limit the same lightweight way, without
+  // needing a live browser.
   const PUBLISH_INTERVAL_MS = 500;
 
   async function parseOrThrow(res) {
@@ -71,11 +72,16 @@
           clearInterval(timer);
         };
       },
-      // MP4/SPEC 13.4: fire-and-forget - a failed publish never surfaces to
-      // the caller, so a transient network hiccup can't block or slow down
-      // local play (E4). The next publish on the timer just tries again.
-      publishState(code, playerName, board, score) {
-        return postAction({ action: 'publish', code, playerName, board, score }).catch(() => {});
+      // MP4-MOVES/SPEC 13.4 (re-frozen): sends a batch of this player's own
+      // input actions (moves) for the opponent to replay - superseding MP4's
+      // own board/score snapshot approach. Resolves to the real {ok, ...}
+      // result on success so the caller can retry a batch that failed to
+      // send (order-preserving - unlike the old snapshot, a dropped batch
+      // here would otherwise permanently gap the opponent's replay), but
+      // never throws - a network failure resolves to undefined instead, so
+      // it can never block or stutter local play either way (E4/E6).
+      sendMoves(code, playerName, moves) {
+        return postAction({ action: 'moves', code, playerName, moves }).catch(() => undefined);
       },
       // MP4/SPEC 13.4: continuous poll (unlike subscribeSession's one-shot
       // stop-on-2-players) - runs for the whole match so the remote side

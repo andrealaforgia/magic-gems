@@ -38,21 +38,24 @@
     return !!session && session.players.length === 2;
   }
 
-  // SPEC 13.4: each client continuously publishes its own board+score into the
-  // shared session, keyed by name, so the other client can read it back and
-  // render it on the remote side - never touching the other player's own
-  // last-published state. Mirrors api/magic-gems/_session-logic.mjs's own copy
-  // (kept in sync by hand, not shared - see that file's own comment).
+  // SPEC 13.4 (re-frozen)/MP4-MOVES: each client sends its own input actions
+  // (moves) as they happen; the opponent replays them to reconstruct that
+  // player's board deterministically, superseding MP4's own original
+  // board/score snapshot approach. Mirrors api/magic-gems/_session-logic.mjs's
+  // own copy (kept in sync by hand, not shared - see that file's own
+  // comment). Append-only - never replaces a player's own prior moves, and
+  // never touches the other player's own log.
   //
-  // Security review (commit be737cd), Finding 1: playerName must actually be
-  // one of this session's own players.
-  function publishPlayerState(session, playerName, board, score) {
+  // Security review (commit be737cd), Finding 1 pattern carried over:
+  // playerName must actually be one of this session's own players.
+  function appendPlayerMoves(session, playerName, newMoves) {
     if (!session.players.includes(playerName)) return { ok: false, error: 'not-a-player' };
+    const existingMoves = (session.moves && session.moves[playerName]) || [];
     return {
       ok: true,
       session: {
         ...session,
-        states: { ...session.states, [playerName]: { board, score } },
+        moves: { ...session.moves, [playerName]: [...existingMoves, ...newMoves] },
       },
     };
   }
@@ -63,5 +66,5 @@
   global.MagicGems.createSession = createSession;
   global.MagicGems.joinSession = joinSession;
   global.MagicGems.isSessionReady = isSessionReady;
-  global.MagicGems.publishPlayerState = publishPlayerState;
+  global.MagicGems.appendPlayerMoves = appendPlayerMoves;
 })(typeof window !== 'undefined' ? window : globalThis);

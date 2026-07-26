@@ -6,29 +6,20 @@
 // production once this function and the static game ended up at different
 // relative locations after deployment.
 import { getStoredSession, setStoredSession, checkRateLimit } from './_upstash.mjs';
-import { generateSessionCode, createSession, joinSession, publishPlayerState, CODE_LENGTH } from './_session-logic.mjs';
+import { generateSessionCode, createSession, joinSession, appendPlayerMoves, CODE_LENGTH } from './_session-logic.mjs';
 
 const CODE_PATTERN = new RegExp(`^[A-Z]{${CODE_LENGTH}}$`);
 const MAX_NAME_LENGTH = 20;
-// MP4/M1: the real board is 8x8 of short gem-type names.
-const BOARD_SIZE = 8;
-// Security review (commit be737cd), Finding 2: shape/length alone let any
-// string through, including one that isn't a real gem - which broke the
-// opponent's remote rendering irrecoverably for the rest of the match. A
-// self-contained copy of src/gems.js's own GEM_TYPES (kept in sync by hand,
-// not shared - same convention as this file's other duplicated constants, to
-// avoid re-introducing the cross-boundary import that broke production once
-// already).
-const VALID_GEM_TYPES = new Set([
-  'blue-teardrop',
-  'green-octagon',
-  'orange-hexagon',
-  'purple-triangle',
-  'red-square',
-  'silver-octagon',
-  'yellow-diamond',
-]);
-const MAX_SCORE = 1e9;
+// MP4-MOVES/SPEC 13.4 (re-frozen): the only keys that affect board/cursor
+// state - matches src/interaction.js's own DIRECTIONS plus the select/swap
+// key. ESC/S/A/Y/N are deliberately excluded: they're local-only UI concerns
+// (exit confirmation, audio, autoplay), never part of the opponent's replay.
+const VALID_MOVE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ']);
+// A real player (or autoplay, at its own ~107ms/step pace) can't plausibly
+// generate anywhere near this many keys between two publishes on the
+// client's own ~500ms timer - generous headroom while still bounding a
+// scripted flood (M1-style).
+const MAX_MOVES_PER_REQUEST = 50;
 // Security review (commit 023dece), M2: no per-caller throttle previously -
 // tight enough to blunt a scripted flood against a zero-auth endpoint. must
 // stay comfortably above legitimate traffic - security review (commit
@@ -74,26 +65,14 @@ function validCodeOrError(code) {
   return null;
 }
 
-function validBoardOrError(board) {
-  if (!Array.isArray(board) || board.length !== BOARD_SIZE) {
-    return `board must be an array of ${BOARD_SIZE} rows`;
+function validMovesOrError(moves) {
+  if (!Array.isArray(moves) || moves.length < 1 || moves.length > MAX_MOVES_PER_REQUEST) {
+    return `moves must be an array of 1 to ${MAX_MOVES_PER_REQUEST} moves`;
   }
-  for (const row of board) {
-    if (!Array.isArray(row) || row.length !== BOARD_SIZE) {
-      return `each board row must be an array of ${BOARD_SIZE} cells`;
+  for (const move of moves) {
+    if (!VALID_MOVE_KEYS.has(move)) {
+      return 'each move must be one of the known cursor/select keys';
     }
-    for (const cell of row) {
-      if (cell !== null && !VALID_GEM_TYPES.has(cell)) {
-        return 'each board cell must be a real gem type, or null for an empty cell';
-      }
-    }
-  }
-  return null;
-}
-
-function validScoreOrError(score) {
-  if (typeof score !== 'number' || !Number.isFinite(score) || score < 0 || score > MAX_SCORE) {
-    return `score must be a finite number between 0 and ${MAX_SCORE}`;
   }
   return null;
 }
@@ -113,10 +92,10 @@ async function handleJoin(env, code, playerName) {
   return result;
 }
 
-async function handlePublish(env, code, playerName, board, score) {
+async function handleAppendMoves(env, code, playerName, moves) {
   const existing = await getStoredSession(env, code);
   if (!existing) return { ok: false, error: 'not-found' };
-  const result = publishPlayerState(existing, playerName, board, score);
+  const result = appendPlayerMoves(existing, playerName, moves);
   if (!result.ok) return result;
   await setStoredSession(env, result.session);
   return result;
@@ -157,16 +136,14 @@ export default {
           const result = await handleJoin(process.env, body.code, body.playerName);
           return jsonResponse(result);
         }
-        if (body.action === 'publish') {
+        if (body.action === 'moves') {
           const codeError = validCodeOrError(body.code);
           if (codeError) return jsonResponse({ error: codeError }, 400);
           const nameError = validNameOrError(body.playerName, 'playerName');
           if (nameError) return jsonResponse({ error: nameError }, 400);
-          const boardError = validBoardOrError(body.board);
-          if (boardError) return jsonResponse({ error: boardError }, 400);
-          const scoreError = validScoreOrError(body.score);
-          if (scoreError) return jsonResponse({ error: scoreError }, 400);
-          const result = await handlePublish(process.env, body.code, body.playerName, body.board, body.score);
+          const movesError = validMovesOrError(body.moves);
+          if (movesError) return jsonResponse({ error: movesError }, 400);
+          const result = await handleAppendMoves(process.env, body.code, body.playerName, body.moves);
           return jsonResponse(result);
         }
         return jsonResponse({ error: 'unknown action' }, 400);

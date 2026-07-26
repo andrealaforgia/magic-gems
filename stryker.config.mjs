@@ -370,3 +370,14 @@ export default {
 // response. Remaining survivors are the same documented equivalents already
 // listed above (the leading `typeof score !== 'number'` clause, the
 // UMD-wrapper case).
+//
+// (MP4-MOVES) replaced the board/score snapshot mechanism (publishPlayerState
+// / the 'publish' action / validBoardOrError+validScoreOrError) with an
+// append-only per-player move-log (appendPlayerMoves / the 'moves' action /
+// validMovesOrError, capped at 50 moves per request): 100%
+// (_session-logic.mjs 46/46, session.mjs 152/152 non-timeout mutants
+// killed), 98.55% (session.js, 1 documented UMD-wrapper equivalent). The
+// boundary tests (a batch of exactly 50 accepted, 51 rejected; an unknown
+// key like 'Tab' rejected alongside the 5 real ones all accepted) closed
+// every mutant on the new size-cap and key-membership checks with no
+// survivors.

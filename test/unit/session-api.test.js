@@ -236,12 +236,9 @@ test('POST join with a name already in an already-full session reconnects instea
   assert.deepEqual(body.session.players, ['Alice', 'Bob']);
 });
 
-// MP4: each client publishes its own board+score for the other to read.
-function validBoardFixture() {
-  return Array.from({ length: 8 }, () => Array.from({ length: 8 }, () => 'red-square'));
-}
-
-test('publish records the caller\'s board and score under their own name in the session', async (t) => {
+// MP4-MOVES: each client sends its own input actions (moves) for the other
+// to replay, superseding MP4's own board/score snapshot approach.
+test('moves records the caller\'s moves in order under their own name in the session', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   const fetchImpl = fakeUpstash();
   withFetch(t, fetchImpl);
@@ -250,17 +247,17 @@ test('publish records the caller\'s board and score under their own name in the 
   const res = await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'publish', code: created.session.code, playerName: 'Alice', board: validBoardFixture(), score: 42 }),
+      body: JSON.stringify({ action: 'moves', code: created.session.code, playerName: 'Alice', moves: ['ArrowUp', ' '] }),
     })
   );
   const body = await res.json();
 
   assert.equal(res.status, 200);
   assert.equal(body.ok, true);
-  assert.deepEqual(body.session.states.Alice, { board: validBoardFixture(), score: 42 });
+  assert.deepEqual(body.session.moves.Alice, ['ArrowUp', ' ']);
 });
 
-test('a successful publish is actually persisted, not just echoed back in its own response', async (t) => {
+test('a successful moves append is actually persisted, not just echoed back in its own response', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   const fetchImpl = fakeUpstash();
   withFetch(t, fetchImpl);
@@ -269,18 +266,22 @@ test('a successful publish is actually persisted, not just echoed back in its ow
   await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'publish', code: created.session.code, playerName: 'Alice', board: validBoardFixture(), score: 42 }),
+      body: JSON.stringify({ action: 'moves', code: created.session.code, playerName: 'Alice', moves: ['ArrowUp'] }),
+    })
+  );
+  await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'moves', code: created.session.code, playerName: 'Alice', moves: [' '] }),
     })
   );
 
-  const getRes = await handler.fetch(
-    new Request(`https://x/api/magic-gems/session?code=${created.session.code}`)
-  );
+  const getRes = await handler.fetch(new Request(`https://x/api/magic-gems/session?code=${created.session.code}`));
   const getBody = await getRes.json();
-  assert.deepEqual(getBody.session.states.Alice, { board: validBoardFixture(), score: 42 });
+  assert.deepEqual(getBody.session.moves.Alice, ['ArrowUp', ' '], 'expected the second append to add to the first, not replace it');
 });
 
-test('publish refuses a name that is not actually one of the session\'s own players, as a normal 200 result, not a 500', async (t) => {
+test('moves refuses a name that is not actually one of the session\'s own players, as a normal 200 result, not a 500', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   const fetchImpl = fakeUpstash();
   withFetch(t, fetchImpl);
@@ -289,7 +290,7 @@ test('publish refuses a name that is not actually one of the session\'s own play
   const res = await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'publish', code: created.session.code, playerName: 'Mallory', board: validBoardFixture(), score: 0 }),
+      body: JSON.stringify({ action: 'moves', code: created.session.code, playerName: 'Mallory', moves: ['ArrowUp'] }),
     })
   );
   const body = await res.json();
@@ -299,14 +300,14 @@ test('publish refuses a name that is not actually one of the session\'s own play
   assert.equal(body.error, 'not-a-player');
 });
 
-test('publish against an unknown code reports not-found as a normal 200 result, not a 500', async (t) => {
+test('moves against an unknown code reports not-found as a normal 200 result, not a 500', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   withFetch(t, fakeUpstash());
 
   const res = await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'publish', code: 'NOSUCHCODE', playerName: 'Alice', board: validBoardFixture(), score: 0 }),
+      body: JSON.stringify({ action: 'moves', code: 'NOSUCHCODE', playerName: 'Alice', moves: ['ArrowUp'] }),
     })
   );
   const body = await res.json();
@@ -316,14 +317,14 @@ test('publish against an unknown code reports not-found as a normal 200 result, 
   assert.equal(body.error, 'not-found');
 });
 
-test('publish rejects a malformed code with 400, never reaching the store', async (t) => {
+test('moves rejects a malformed code with 400, never reaching the store', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   withFetch(t, fakeUpstash());
 
   const res = await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'publish', code: 'not-a-code', playerName: 'Alice', board: validBoardFixture(), score: 0 }),
+      body: JSON.stringify({ action: 'moves', code: 'not-a-code', playerName: 'Alice', moves: ['ArrowUp'] }),
     })
   );
   const body = await res.json();
@@ -331,7 +332,7 @@ test('publish rejects a malformed code with 400, never reaching the store', asyn
   assert.equal(body.error, 'code must be exactly 10 uppercase letters');
 });
 
-test('publish rejects an oversized playerName with 400', async (t) => {
+test('moves rejects an oversized playerName with 400', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   withFetch(t, fakeUpstash());
   const created = await createViaHandler('Alice');
@@ -339,7 +340,7 @@ test('publish rejects an oversized playerName with 400', async (t) => {
   const res = await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'publish', code: created.session.code, playerName: 'B'.repeat(21), board: validBoardFixture(), score: 0 }),
+      body: JSON.stringify({ action: 'moves', code: created.session.code, playerName: 'B'.repeat(21), moves: ['ArrowUp'] }),
     })
   );
   const body = await res.json();
@@ -347,120 +348,66 @@ test('publish rejects an oversized playerName with 400', async (t) => {
   assert.equal(body.error, 'playerName must be a string between 1 and 20 characters');
 });
 
-test('publish rejects a board that is not an 8x8 array of short strings with 400', async (t) => {
+test('moves rejects a payload that is not a real array of known move keys with 400', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   withFetch(t, fakeUpstash());
   const created = await createViaHandler('Alice');
 
-  async function publishBoard(board) {
+  async function postMoves(moves) {
     const res = await handler.fetch(
       new Request('https://x/api/magic-gems/session', {
         method: 'POST',
-        body: JSON.stringify({ action: 'publish', code: created.session.code, playerName: 'Alice', board, score: 0 }),
+        body: JSON.stringify({ action: 'moves', code: created.session.code, playerName: 'Alice', moves }),
       })
     );
     return { status: res.status, body: await res.json() };
   }
 
-  const tooFewRows = await publishBoard([['red-square']]);
-  assert.equal(tooFewRows.status, 400);
-
-  const notAnArray = await publishBoard('not-a-board');
+  const notAnArray = await postMoves('ArrowUp');
   assert.equal(notAnArray.status, 400);
-  assert.equal(notAnArray.body.error, 'board must be an array of 8 rows');
+  assert.equal(notAnArray.body.error, 'moves must be an array of 1 to 50 moves');
 
-  // Every row is individually valid (array of 8 short strings) - only the
-  // outer row-count is wrong - so this can't be caught by the per-row checks
-  // below, only by the board-level length check itself.
-  const wrongRowCount = await publishBoard(Array.from({ length: 9 }, () => Array(8).fill('red-square')));
-  assert.equal(wrongRowCount.status, 400);
+  const empty = await postMoves([]);
+  assert.equal(empty.status, 400);
 
-  // A row that isn't an array - unguarded, a string row's own characters
-  // could otherwise slip past a per-cell check too, so this can only be
-  // caught by the row's own Array.isArray check.
-  const rowNotAnArray = [...Array.from({ length: 7 }, () => Array(8).fill('red-square')), '12345678'];
-  const rowNotAnArrayResult = await publishBoard(rowNotAnArray);
-  assert.equal(rowNotAnArrayResult.status, 400);
+  const tooMany = await postMoves(Array(51).fill('ArrowUp'));
+  assert.equal(tooMany.status, 400);
 
-  // A row with only 7 valid cells - short by exactly one, with every cell
-  // otherwise valid - so only the row-length check itself can catch it.
-  const tooFewCells = [...Array.from({ length: 7 }, () => Array(8).fill('red-square')), Array(7).fill('red-square')];
-  const tooFewCellsResult = await publishBoard(tooFewCells);
-  assert.equal(tooFewCellsResult.status, 400);
-
-  const nonStringCell = [[42, ...Array(7).fill('red-square')], ...Array.from({ length: 7 }, () => Array(8).fill('red-square'))];
-  const nonStringCellResult = await publishBoard(nonStringCell);
-  assert.equal(nonStringCellResult.status, 400);
-
-  // Security review (commit be737cd), Finding 2: shape/length alone let any
-  // string through, including one that isn't a real gem - which broke the
-  // opponent's remote rendering irrecoverably for the rest of the match.
-  const notARealGem = await publishBoard([
-    ['not-a-real-gem', ...Array(7).fill('red-square')],
-    ...Array.from({ length: 7 }, () => Array(8).fill('red-square')),
-  ]);
-  assert.equal(notARealGem.status, 400);
-  assert.equal(notARealGem.body.error, 'each board cell must be a real gem type, or null for an empty cell');
+  // Security review pattern carried over from MP4's own board-cell finding:
+  // shape alone isn't enough - each element must be a real move key, not any
+  // arbitrary string.
+  const unknownKey = await postMoves(['ArrowUp', 'Tab']);
+  assert.equal(unknownKey.status, 400);
+  assert.equal(unknownKey.body.error, 'each move must be one of the known cursor/select keys');
 });
 
-test('publish accepts every real gem type, and null for an empty cell', async (t) => {
+test('moves accepts every known cursor/select key, and a batch exactly at the size cap', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   withFetch(t, fakeUpstash());
   const created = await createViaHandler('Alice');
-  const realGemRow = ['blue-teardrop', 'green-octagon', 'orange-hexagon', 'purple-triangle', 'red-square', 'silver-octagon', 'yellow-diamond', null];
-  const board = [realGemRow, ...Array.from({ length: 7 }, () => Array(8).fill('red-square'))];
 
-  const res = await handler.fetch(
+  const allKeys = await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'publish', code: created.session.code, playerName: 'Alice', board, score: 0 }),
+      body: JSON.stringify({
+        action: 'moves',
+        code: created.session.code,
+        playerName: 'Alice',
+        moves: ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '],
+      }),
     })
   );
-  const body = await res.json();
-  assert.equal(res.status, 200);
-  assert.equal(body.ok, true);
-});
+  assert.equal(allKeys.status, 200);
+  assert.equal((await allKeys.json()).ok, true);
 
-test('publish rejects a non-finite, negative, or over-the-cap score with 400', async (t) => {
-  withEnv(t, CONFIGURED_ENV);
-  withFetch(t, fakeUpstash());
-  const created = await createViaHandler('Alice');
-
-  async function publishScore(score) {
-    const res = await handler.fetch(
-      new Request('https://x/api/magic-gems/session', {
-        method: 'POST',
-        body: JSON.stringify({ action: 'publish', code: created.session.code, playerName: 'Alice', board: validBoardFixture(), score }),
-      })
-    );
-    return { status: res.status, body: await res.json() };
-  }
-
-  const negative = await publishScore(-1);
-  assert.equal(negative.status, 400);
-  assert.equal(negative.body.error, 'score must be a finite number between 0 and 1000000000');
-
-  const nonNumber = await publishScore('lots');
-  assert.equal(nonNumber.status, 400);
-
-  const overCap = await publishScore(1e9 + 1);
-  assert.equal(overCap.status, 400);
-});
-
-test('publish accepts a score exactly at the cap', async (t) => {
-  withEnv(t, CONFIGURED_ENV);
-  withFetch(t, fakeUpstash());
-  const created = await createViaHandler('Alice');
-
-  const res = await handler.fetch(
+  const atCap = await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'publish', code: created.session.code, playerName: 'Alice', board: validBoardFixture(), score: 1e9 }),
+      body: JSON.stringify({ action: 'moves', code: created.session.code, playerName: 'Alice', moves: Array(50).fill('ArrowUp') }),
     })
   );
-  const body = await res.json();
-  assert.equal(res.status, 200);
-  assert.equal(body.ok, true);
+  assert.equal(atCap.status, 200);
+  assert.equal((await atCap.json()).ok, true);
 });
 
 test('a missing/misconfigured store surfaces a clear, handled 500 rather than hanging or crashing uncontrolled (E4)', async (t) => {

@@ -481,6 +481,8 @@
       reviveSpinFrameIndex,
       planAutoplaySteps,
       activateSeededRandom,
+      hashStringToSeed,
+      createSeededRandom,
       createRestSessionClient,
       SESSION_PUBLISH_INTERVAL_MS,
     } = global.MagicGems;
@@ -557,16 +559,47 @@
     let activeAnimation = null;
     let score = 0;
     let lastCompletionTimeMs = performance.now();
-    // SPEC 13.4: shows the opponent's latest published state - the shared
-    // starting board until their first publish lands, then whatever the most
-    // recent poll returned.
-    let remoteState = { board: startingBoard, score: 0 };
+
+    // MP4-MOVES/SPEC 13.4 (re-frozen): a parallel "replica" of the
+    // opponent's own board, reconstructed by replaying their published
+    // moves through the exact same pure game logic - not a pre-computed
+    // snapshot. Its own independent seeded generator (below), started from
+    // the same shared session code, is what makes its refills match the
+    // opponent's real ones exactly, move for move: mulberry32 is a pure
+    // function of (seed, call count), so two separately-seeded instances
+    // that consume calls in the same order produce identical output.
+    const remoteRandom = createSeededRandom(hashStringToSeed(session.code));
+    function withRandom(randomFn, fn) {
+      const previous = Math.random;
+      Math.random = randomFn;
+      try {
+        return fn();
+      } finally {
+        Math.random = previous;
+      }
+    }
+    // Advances remoteRandom through the same sequence of draws the
+    // opponent's own local generator already consumed generating THEIR
+    // starting board, so it's in lockstep for their subsequent refills too -
+    // the result itself is discarded (already known to be byte-identical to
+    // startingBoard, per SPEC 13.3.1's shared seed).
+    withRandom(remoteRandom, () => ensurePlayable(generateBoard()));
+
+    let remoteBoard = startingBoard;
+    let remoteInteraction = createInteractionState();
+    let remoteScore = 0;
+    let remoteFragments = [];
+    let remoteAnimationQueue = [];
+    let remoteActiveAnimation = null;
+    let remoteLastCompletionTimeMs = performance.now();
+    let remoteReplayedCount = 0;
 
     // SPEC 13.3.3/13.4.1: a sensible 50/50 state even at 0-0, not a
-    // divide-by-zero - tilts toward whoever currently leads once the
-    // opponent's own published score starts arriving (13.4).
+    // divide-by-zero - tilts toward whoever currently leads, both scores
+    // now derived from real play on each side rather than one being
+    // self-reported (13.4.0).
     function updateGauge() {
-      const total = score + remoteState.score;
+      const total = score + remoteScore;
       const fraction = total === 0 ? 0.5 : score / total;
       gaugeFillEl.style.width = `${fraction * 100}%`;
     }
@@ -716,8 +749,164 @@
       drawFragments(localCtx, fragments);
     }
 
+    function remoteCellCenter(row, col) {
+      return { x: col * cellSize + cellSize / 2, y: row * cellSize + cellSize / 2 };
+    }
+
+    function remoteSpawnFragments(clearEvents) {
+      for (const { row, col, gemType } of clearEvents) {
+        const { x, y } = remoteCellCenter(row, col);
+        const sprite = sprites[gemType][0];
+        const tagged = createFragments(x, y).map((f, i) => ({
+          ...f,
+          sprite,
+          ...computeSourceTile(i, sprite.naturalWidth, sprite.naturalHeight),
+        }));
+        remoteFragments = remoteFragments.concat(tagged);
+      }
+    }
+
+    // MP4-MOVES/SPEC 13.4: replayed animations always use normal-play timing
+    // (SWAP_DURATION_MS/FALL_DURATION_MS/REVIVE_SPIN_DURATION_MS) - the
+    // opponent's own autoplay on/off state isn't synced, so replay can't
+    // (and needn't) distinguish it.
+    function remoteBuildSwapPhase(fromBoard, a, b) {
+      return {
+        kind: 'swap',
+        duration: SWAP_DURATION_MS,
+        board: fromBoard,
+        a,
+        b,
+        gemAtA: fromBoard[a.row][a.col],
+        gemAtB: fromBoard[b.row][b.col],
+      };
+    }
+
+    function remoteBuildCascadePhase(step, chainPosition) {
+      return { kind: 'cascade', duration: FALL_DURATION_MS, chainPosition, ...step };
+    }
+
+    function remoteBuildRevivePhase(finalBoard, changedCells) {
+      return { kind: 'revive', duration: REVIVE_SPIN_DURATION_MS, board: finalBoard, changedCells };
+    }
+
+    function remoteBuildQueue(result) {
+      const queue = [];
+      if (result.swapAnimation) {
+        const { a, b, preSwapBoard, matched } = result.swapAnimation;
+        queue.push(remoteBuildSwapPhase(preSwapBoard, a, b));
+        if (!matched) queue.push(remoteBuildSwapPhase(applySwap(preSwapBoard, a, b), a, b));
+      }
+      result.steps.forEach((step, i) => queue.push(remoteBuildCascadePhase(step, i + 1)));
+      if (result.revived) queue.push(remoteBuildRevivePhase(result.board, result.changedCells));
+      return queue;
+    }
+
+    function remoteApplyCompletionScore(runLengths, chainPosition) {
+      const now = performance.now();
+      const timeMultiplier = computeTimeMultiplier(now - remoteLastCompletionTimeMs);
+      const base = summedBasePoints(runLengths);
+      const combo = comboFactorForChainIndex(chainPosition);
+      remoteScore += computeCompletionScore(base, timeMultiplier, combo);
+      remoteLastCompletionTimeMs = now;
+      remoteScoreEl.textContent = `Score: ${remoteScore}`;
+      updateGauge();
+    }
+
+    function remoteAdvanceQueue() {
+      if (remoteActiveAnimation !== null || remoteAnimationQueue.length === 0) return;
+      remoteActiveAnimation = remoteAnimationQueue.shift();
+      remoteActiveAnimation.elapsedMs = 0;
+      if (remoteActiveAnimation.kind === 'cascade') {
+        // MP4-MOVES/SPEC 13.4: createFragments() below draws its own
+        // fragment velocities from Math.random - without this wrapper those
+        // draws would come from the ambient (local) generator instead of
+        // remoteRandom, silently corrupting the LOCAL player's own
+        // subsequent refills every time the opponent's replayed cascade
+        // shatters a gem.
+        withRandom(remoteRandom, () => remoteSpawnFragments(remoteActiveAnimation.clearEvents));
+        remoteApplyCompletionScore(remoteActiveAnimation.runLengths, remoteActiveAnimation.chainPosition);
+        // MP4-MOVES/SPEC 13.4: replay is silent - deliberately no
+        // sound.play() call here, unlike advanceQueue's own local
+        // equivalent above.
+      }
+    }
+
+    function remoteRenderSwapPhase(anim, progress) {
+      const hidden = new Set([`${anim.a.row},${anim.a.col}`, `${anim.b.row},${anim.b.col}`]);
+      drawBoard(remoteCtx, anim.board, cellSize, sprites, hidden);
+      const posA = remoteCellCenter(anim.a.row, anim.a.col);
+      const posB = remoteCellCenter(anim.b.row, anim.b.col);
+      const spriteA = interpolatePoint(posA.x, posA.y, posB.x, posB.y, progress);
+      const spriteB = interpolatePoint(posB.x, posB.y, posA.x, posA.y, progress);
+      global.MagicGems.drawGem(remoteCtx, anim.gemAtA, spriteA.x, spriteA.y, cellSize, sprites);
+      global.MagicGems.drawGem(remoteCtx, anim.gemAtB, spriteB.x, spriteB.y, cellSize, sprites);
+    }
+
+    function remoteRenderCascadePhase(anim, progress) {
+      const hidden = new Set();
+      for (const e of anim.clearEvents) hidden.add(`${e.row},${e.col}`);
+      for (const e of anim.fallEvents) {
+        hidden.add(`${e.fromRow},${e.col}`);
+        hidden.add(`${e.toRow},${e.col}`);
+      }
+      for (const e of anim.refillEvents) hidden.add(`${e.row},${e.col}`);
+
+      drawBoard(remoteCtx, anim.boardBeforeStep, cellSize, sprites, hidden);
+
+      for (const e of anim.fallEvents) {
+        const from = remoteCellCenter(e.fromRow, e.col);
+        const to = remoteCellCenter(e.toRow, e.col);
+        const pos = interpolatePoint(from.x, from.y, to.x, to.y, progress);
+        global.MagicGems.drawGem(remoteCtx, e.gemType, pos.x, pos.y, cellSize, sprites);
+      }
+      for (const e of anim.refillEvents) {
+        const fromX = e.col * cellSize + cellSize / 2;
+        const fromY = e.startRow * cellSize + cellSize / 2;
+        const to = remoteCellCenter(e.row, e.col);
+        const pos = interpolatePoint(fromX, fromY, to.x, to.y, progress);
+        global.MagicGems.drawGem(remoteCtx, e.gemType, pos.x, pos.y, cellSize, sprites);
+      }
+    }
+
+    function remoteRenderRevivePhase(anim, progress) {
+      const hidden = new Set(anim.changedCells.map((c) => `${c.row},${c.col}`));
+      drawBoard(remoteCtx, anim.board, cellSize, sprites, hidden);
+      const frameIndex = reviveSpinFrameIndex(progress);
+      for (const { row, col } of anim.changedCells) {
+        const { x, y } = remoteCellCenter(row, col);
+        global.MagicGems.drawGem(remoteCtx, anim.board[row][col], x, y, cellSize, sprites, frameIndex);
+      }
+    }
+
     function renderRemote() {
-      drawBoard(remoteCtx, remoteState.board, cellSize, sprites);
+      if (remoteActiveAnimation) {
+        const progress = clampProgress(remoteActiveAnimation.elapsedMs, remoteActiveAnimation.duration);
+        if (remoteActiveAnimation.kind === 'swap') remoteRenderSwapPhase(remoteActiveAnimation, progress);
+        else if (remoteActiveAnimation.kind === 'revive') remoteRenderRevivePhase(remoteActiveAnimation, progress);
+        else remoteRenderCascadePhase(remoteActiveAnimation, progress);
+      } else {
+        drawBoard(remoteCtx, remoteBoard, cellSize, sprites);
+      }
+      drawInteraction(remoteCtx, remoteInteraction, cellSize);
+      drawFragments(remoteCtx, remoteFragments);
+    }
+
+    // MP4-MOVES/SPEC 13.4: replays a batch of the opponent's own moves,
+    // freshly arrived from a poll, against the remote replica - each move
+    // processed through the exact same pure game logic dispatchGameKey uses
+    // for the local player, under the remote replica's own independent
+    // seeded generator (never the ambient one driving local play).
+    function replayRemoteMoves(moves) {
+      for (const key of moves) {
+        const next = withRandom(remoteRandom, () =>
+          handleGameKey({ board: remoteBoard, interaction: remoteInteraction, exitConfirmOpen: false }, key)
+        );
+        remoteBoard = next.board;
+        remoteInteraction = next.interaction;
+        remoteAnimationQueue = remoteAnimationQueue.concat(remoteBuildQueue(next));
+      }
+      remoteAdvanceQueue();
     }
 
     renderLocal();
@@ -726,24 +915,47 @@
     // multiplier bar/label would show nothing until the first frame.
     updateMultiplierBar(computeTimeMultiplier(0));
 
-    // SPEC 13.4/13.4.2: publishing and polling each run on their own timer,
-    // entirely separate from the rAF render loop (tick(), below) and never
-    // awaited from within it - a slow or failing request can only delay the
-    // NEXT tick of its own timer, never the local game's input, animation, or
-    // rendering (E4).
+    // SPEC 13.4/13.4.2 (re-frozen)/MP4-MOVES: sending and polling each run on
+    // their own timer, entirely separate from the rAF render loop (tick(),
+    // below) and never awaited from within it - a slow or failing request
+    // can only delay the NEXT tick of its own timer, never the local game's
+    // input, animation, or rendering (E4).
     const sessionSync = createRestSessionClient();
     const localPlayerName = session.players[localIndex];
     const remotePlayerName = session.players[remoteIndex];
-    const publishTimer = setInterval(() => {
-      sessionSync.publishState(session.code, localPlayerName, board, score);
-    }, SESSION_PUBLISH_INTERVAL_MS);
+
+    // MP4-MOVES/SPEC 13.4: this player's own input actions, captured as they
+    // happen (see dispatchGameKey below) and flushed on this timer. Unlike
+    // MP4's old board/score snapshot (where a dropped send was harmless -
+    // the next one just carried a newer, still-complete snapshot), a dropped
+    // batch here would permanently gap the opponent's replay, since moves
+    // are an ordered, append-only log - so a batch is only ever removed once
+    // its send has actually succeeded; a failure leaves it queued for the
+    // next tick to retry, alongside whatever's accumulated since.
+    let pendingMoves = [];
+    let sendingMoves = false;
+    // Comfortably under the server's own 50-move-per-request cap, so a
+    // large backlog (e.g. after an extended outage) flushes over a few
+    // ticks instead of being rejected outright by exceeding it in one shot.
+    const MOVES_BATCH_LIMIT = 40;
+    async function flushMoves() {
+      if (sendingMoves || pendingMoves.length === 0) return;
+      sendingMoves = true;
+      const toSend = pendingMoves.slice(0, MOVES_BATCH_LIMIT);
+      const result = await sessionSync.sendMoves(session.code, localPlayerName, toSend);
+      if (result && result.ok) {
+        pendingMoves = pendingMoves.slice(toSend.length);
+      }
+      sendingMoves = false;
+    }
+    const movesSendTimer = setInterval(flushMoves, SESSION_PUBLISH_INTERVAL_MS);
+
     const stopPolling = sessionSync.pollMatchState(session.code, (updated) => {
-      const remote = updated.states && updated.states[remotePlayerName];
-      if (!remote) return;
-      remoteState = remote;
-      remoteScoreEl.textContent = `Score: ${remoteState.score}`;
-      updateGauge();
-      renderRemote();
+      const remoteMoves = (updated.moves && updated.moves[remotePlayerName]) || [];
+      if (remoteMoves.length <= remoteReplayedCount) return;
+      const newMoves = remoteMoves.slice(remoteReplayedCount);
+      remoteReplayedCount = remoteMoves.length;
+      replayRemoteMoves(newMoves);
     });
 
     function updateExitConfirmOverlay() {
@@ -773,7 +985,7 @@
       cancelAnimationFrame(rafId);
       clearTimeout(autoplayTimer);
       clearTimeout(audioToastTimeout);
-      clearInterval(publishTimer);
+      clearInterval(movesSendTimer);
       stopPolling();
       document.removeEventListener('keydown', onKeydown);
       autoplayIndicatorEl.classList.remove('active');
@@ -788,6 +1000,12 @@
       if (!stateChanged) return;
       if (next.board !== board || next.interaction !== interaction) {
         soundsForKeydown(key, interaction, next).forEach((name) => sound.play(name));
+        // MP4-MOVES/SPEC 13.4: only keys that actually moved the cursor,
+        // changed the selection, or committed a swap are ever replayed on
+        // the opponent's side - Escape/exit-confirm keys change neither
+        // board nor interaction, so they're already excluded by this same
+        // condition without needing their own separate check.
+        pendingMoves = pendingMoves.concat(key);
       }
       board = next.board;
       interaction = next.interaction;
@@ -851,19 +1069,36 @@
 
     let lastFrameTimeMs = null;
     function tick(frameTimeMs) {
-      const isActive = fragments.length > 0 || activeAnimation !== null || animationQueue.length > 0;
-      if (isActive) {
+      const localActive = fragments.length > 0 || activeAnimation !== null || animationQueue.length > 0;
+      // MP4-MOVES/SPEC 13.4: the remote replica's own animations/fragments
+      // advance on this exact same real-time loop, entirely independent of
+      // when its underlying moves actually arrived from a poll.
+      const remoteActive = remoteFragments.length > 0 || remoteActiveAnimation !== null || remoteAnimationQueue.length > 0;
+      if (localActive || remoteActive) {
         if (lastFrameTimeMs !== null) {
           const dtMs = frameTimeMs - lastFrameTimeMs;
-          if (fragments.length > 0) {
-            fragments = pruneOffscreen(updateFragments(fragments, dtMs / 1000), localCanvas.height);
+          if (localActive) {
+            if (fragments.length > 0) {
+              fragments = pruneOffscreen(updateFragments(fragments, dtMs / 1000), localCanvas.height);
+            }
+            if (activeAnimation) {
+              activeAnimation.elapsedMs += dtMs;
+              if (activeAnimation.elapsedMs >= activeAnimation.duration) activeAnimation = null;
+            }
+            advanceQueue();
+            renderLocal();
           }
-          if (activeAnimation) {
-            activeAnimation.elapsedMs += dtMs;
-            if (activeAnimation.elapsedMs >= activeAnimation.duration) activeAnimation = null;
+          if (remoteActive) {
+            if (remoteFragments.length > 0) {
+              remoteFragments = pruneOffscreen(updateFragments(remoteFragments, dtMs / 1000), remoteCanvas.height);
+            }
+            if (remoteActiveAnimation) {
+              remoteActiveAnimation.elapsedMs += dtMs;
+              if (remoteActiveAnimation.elapsedMs >= remoteActiveAnimation.duration) remoteActiveAnimation = null;
+            }
+            remoteAdvanceQueue();
+            renderRemote();
           }
-          advanceQueue();
-          renderLocal();
         }
         lastFrameTimeMs = frameTimeMs;
       } else {
@@ -901,8 +1136,8 @@
     // Test-observability seam, same convention as single-player's own.
     global.MagicGems.getMatchInteractionState = () => interaction;
     global.MagicGems.getMatchBoard = () => board;
-    global.MagicGems.getMatchRemoteBoard = () => remoteState.board;
-    global.MagicGems.getMatchRemoteScore = () => remoteState.score;
+    global.MagicGems.getMatchRemoteBoard = () => remoteBoard;
+    global.MagicGems.getMatchRemoteScore = () => remoteScore;
     global.MagicGems.getMatchScore = () => score;
     global.MagicGems.getMatchSoundLog = () => sound.getLog();
     global.MagicGems.isMatchAudioMuted = () => sound.isMuted();

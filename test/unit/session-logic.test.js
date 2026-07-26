@@ -5,7 +5,7 @@ import {
   generateSessionCode,
   createSession,
   joinSession,
-  publishPlayerState,
+  appendPlayerMoves,
 } from '../../api/magic-gems/_session-logic.mjs';
 
 // QA review (commit 87bd778): this server-side copy had no dedicated test
@@ -84,53 +84,53 @@ test('joinSession lets the host reconnect to their own still-waiting session und
   assert.deepEqual(result.session.players, ['Alice']);
 });
 
-// MP4: each player's own board/score is published into the session so the
-// other client can read it back and render it on the remote side (13.4).
-test('publishPlayerState records a player\'s board and score under their own name, without touching the other player\'s', () => {
+// MP4-MOVES/SPEC 13.4 (re-frozen): each player's own input actions (moves)
+// are appended to the session as they happen, so the other client can
+// replay them and reconstruct that player's board deterministically -
+// superseding MP4's own periodic board/score snapshot approach.
+test('appendPlayerMoves records a player\'s moves in order under their own name, without touching the other player\'s', () => {
   const session = createSession('ABCDEFGHIJ', 'Alice');
   const { session: joined } = joinSession(session, 'Bob');
-  const board = [['red-square']];
 
-  const result = publishPlayerState(joined, 'Alice', board, 42);
+  const result = appendPlayerMoves(joined, 'Alice', ['ArrowUp', ' ']);
 
   assert.equal(result.ok, true);
-  assert.deepEqual(result.session.states.Alice, { board, score: 42 });
-  assert.equal(result.session.states.Bob, undefined, 'must not fabricate a state for the other player');
+  assert.deepEqual(result.session.moves.Alice, ['ArrowUp', ' ']);
+  assert.equal(result.session.moves.Bob, undefined, 'must not fabricate a move log for the other player');
   assert.deepEqual(joined.players, ['Alice', 'Bob'], 'must never mutate the session it was given');
 });
 
-test('publishPlayerState updates a previously-published state, and never touches the other player\'s', () => {
+test('appendPlayerMoves appends to a previously-recorded move log rather than replacing it, and never touches the other player\'s', () => {
   const session = createSession('ABCDEFGHIJ', 'Alice');
   const { session: joined } = joinSession(session, 'Bob');
-  const afterBob = publishPlayerState(joined, 'Bob', [['blue-diamond']], 10).session;
+  const afterBob = appendPlayerMoves(joined, 'Bob', ['ArrowLeft']).session;
 
-  const afterAlice = publishPlayerState(afterBob, 'Alice', [['red-square']], 20).session;
-  const afterAliceAgain = publishPlayerState(afterAlice, 'Alice', [['green-octagon']], 30).session;
+  const afterAlice1 = appendPlayerMoves(afterBob, 'Alice', ['ArrowUp']).session;
+  const afterAlice2 = appendPlayerMoves(afterAlice1, 'Alice', [' ', 'ArrowRight']).session;
 
-  assert.deepEqual(afterAliceAgain.states.Alice, { board: [['green-octagon']], score: 30 });
-  assert.deepEqual(afterAliceAgain.states.Bob, { board: [['blue-diamond']], score: 10 }, 'the other player\'s last-published state must survive untouched');
+  assert.deepEqual(afterAlice2.moves.Alice, ['ArrowUp', ' ', 'ArrowRight']);
+  assert.deepEqual(afterAlice2.moves.Bob, ['ArrowLeft'], 'the other player\'s own move log must survive untouched');
 });
 
-test('publishPlayerState never mutates the board array it was given', () => {
+test('appendPlayerMoves never mutates the moves array it was given', () => {
   const session = createSession('ABCDEFGHIJ', 'Alice');
-  const board = [['red-square']];
+  const newMoves = ['ArrowUp'];
 
-  publishPlayerState(session, 'Alice', board, 5);
+  appendPlayerMoves(session, 'Alice', newMoves);
 
-  assert.deepEqual(board, [['red-square']]);
+  assert.deepEqual(newMoves, ['ArrowUp']);
 });
 
-// Security review (commit be737cd), Finding 1: a name that isn't actually one
-// of the session's own players must be refused, not silently accepted as a
-// new broadcaster - otherwise anyone holding the code could overwrite a
-// slot they were never part of.
-test('publishPlayerState refuses to publish for a name that isn\'t actually one of the session\'s players', () => {
+// Security review (commit be737cd), Finding 1 pattern: a name that isn't
+// actually one of the session's own players must be refused, not silently
+// accepted as a new broadcaster.
+test('appendPlayerMoves refuses to record moves for a name that isn\'t actually one of the session\'s players', () => {
   const session = createSession('ABCDEFGHIJ', 'Alice');
   const { session: joined } = joinSession(session, 'Bob');
 
-  const result = publishPlayerState(joined, 'Mallory', [['red-square']], 5);
+  const result = appendPlayerMoves(joined, 'Mallory', ['ArrowUp']);
 
   assert.equal(result.ok, false);
   assert.equal(result.error, 'not-a-player');
-  assert.equal(joined.states, undefined, 'a refused publish must never touch the existing session');
+  assert.equal(joined.moves, undefined, 'a refused append must never touch the existing session');
 });
