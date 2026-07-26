@@ -1,6 +1,6 @@
 import { Given, Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
-import { classifiedGrid } from '../support/board-reader.js';
+import { classifiedGrid, readGemPalette, renderedVsLogicalMismatches } from '../support/board-reader.js';
 
 Given('I record the cursor position', async function () {
   // Autoplay can be toggled off mid-move (after SPACE selects but before the
@@ -278,6 +278,42 @@ Then(
       0,
       `expected zero invalid-swap sounds across this run, got ${invalidCount} out of ${soundLog.length} total sounds`
     );
+  }
+);
+
+// AUTOPLAY-LEGALITY (RE-OPEN): the checks above only ever verified the pure
+// game LOGIC (the matched flag, the invalid sound cue) - never that the
+// ACTUAL RENDERED PIXELS the Owner watches match that logic at every
+// instant. Root cause found by exactly this gap: fragments (shatter debris)
+// have their own gravity-driven lifetime, independent of and often longer
+// than the cascade phase's own fixed duration - autoplay's own pacing
+// didn't wait for them, so its next swap could start (and its own
+// swap/shatter animation render) while an EARLIER match's fragments were
+// STILL visibly falling across the board, making the new swap look like it
+// caused the still-lingering clear effect. Fixed by folding fragments into
+// the same busy/animating check autoplay's own pacing already respects.
+// This check proves the fix holds: the rendered board never disagrees with
+// the logical one at any real rest point across an extended live run.
+Then(
+  'gems only ever visually clear at cells that form a real 3+ line, checked against the rendered pixels, across an extended real run',
+  { timeout: 90000 },
+  async function () {
+    const palette = await readGemPalette(this.page);
+    const deadline = Date.now() + 60000;
+    let checks = 0;
+    while (Date.now() < deadline) {
+      const mismatches = await renderedVsLogicalMismatches(this.page, palette);
+      if (mismatches !== null) {
+        checks++;
+        assert.equal(
+          mismatches.length,
+          0,
+          `expected the rendered board to always match the logical board at rest, got: ${JSON.stringify(mismatches)}`
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    assert.ok(checks > 5, `expected to have performed several real render-vs-logic checks, only got ${checks}`);
   }
 );
 

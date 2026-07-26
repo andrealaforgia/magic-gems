@@ -10,15 +10,24 @@ function pageFor(world, which) {
 // regression back to "permanently frozen while diverged" would show up as
 // the remote score never moving across this whole window, which a single
 // before/after snapshot could miss if it happened to land after the freeze.
+//
+// The sampling window is derived from the live AUTOPLAY_STEP_MS (AUTOPLAY-
+// SLOW made autoplay's own cadence deliberately much slower and no longer
+// speeds up its own animations) rather than a fixed literal, so a real
+// completion has a fair chance of happening at all within the window,
+// whatever pace autoplay is currently tuned to.
 Then(
   "the {word} page's remote match score never permanently freezes while the {word} page's own local score keeps climbing, over several seconds of sustained play",
-  { timeout: 15000 },
+  { timeout: 120000 },
   async function (remoteWhich, sourceWhich) {
     const remotePage = pageFor(this, remoteWhich);
     const sourcePage = pageFor(this, sourceWhich);
 
+    const stepMs = await sourcePage.evaluate(() => window.MagicGems.AUTOPLAY_STEP_MS);
+    const windowMs = stepMs * 40;
+
     const samples = [];
-    const deadline = Date.now() + 8000;
+    const deadline = Date.now() + windowMs;
     while (Date.now() < deadline) {
       const [sourceScore, remoteScore] = await Promise.all([
         sourcePage.evaluate(() => window.MagicGems.getMatchScore()),

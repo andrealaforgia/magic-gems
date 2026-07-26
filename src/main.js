@@ -357,8 +357,15 @@
     // timestamp trail to verify against, not just that moves eventually happen).
     const autoplayKeyLog = [];
 
+    // AUTOPLAY-LEGALITY root cause: fragments (shatter debris) have their own
+    // gravity-driven lifetime, independent of and often longer than the
+    // cascade phase's own fixed duration - without checking them here,
+    // autoplay's next move (and its own swap/shatter animation) could start
+    // while an EARLIER match's fragments were still visibly falling across
+    // the board, making the new swap look like it caused the still-lingering
+    // clear effect.
     function isBoardBusy() {
-      return activeAnimation !== null || animationQueue.length > 0;
+      return activeAnimation !== null || animationQueue.length > 0 || fragments.length > 0;
     }
 
     function runAutoplayStep() {
@@ -417,7 +424,7 @@
     // Observability seam for tests: animation/shatter state is real, time-based
     // state that isn't otherwise reachable from outside this closure.
     global.MagicGems.getActiveFragments = () => fragments;
-    global.MagicGems.isAnimating = () => activeAnimation !== null || animationQueue.length > 0;
+    global.MagicGems.isAnimating = () => activeAnimation !== null || animationQueue.length > 0 || fragments.length > 0;
     global.MagicGems.getAnimationPhase = () => (activeAnimation ? activeAnimation.kind : null);
     global.MagicGems.getLastCommitSteps = () => lastCommitSteps;
     global.MagicGems.getSpriteImages = () => sprites;
@@ -426,6 +433,7 @@
     global.MagicGems.isAutoplayOn = () => autoplayEnabled;
     global.MagicGems.getInteractionState = () => interaction;
     global.MagicGems.getAutoplayKeyLog = () => autoplayKeyLog.slice();
+    global.MagicGems.getBoard = () => board;
     global.MagicGems.AUTOPLAY_STEP_MS = AUTOPLAY_STEP_MS;
     global.MagicGems.getActiveSinglePlayerSessions = () => activeSinglePlayerSessions;
     // The only mutator in this seam: backdates lastCompletionTimeMs so a real
@@ -1082,8 +1090,15 @@
     let autoplayTimer = null;
     const autoplayKeyLog = [];
 
+    // AUTOPLAY-LEGALITY root cause: fragments (shatter debris) have their own
+    // gravity-driven lifetime, independent of and often longer than the
+    // cascade phase's own fixed duration - without checking them here,
+    // autoplay's next move (and its own swap/shatter animation) could start
+    // while an EARLIER match's fragments were still visibly falling across
+    // the board, making the new swap look like it caused the still-lingering
+    // clear effect.
     function isBoardBusy() {
-      return activeAnimation !== null || animationQueue.length > 0;
+      return activeAnimation !== null || animationQueue.length > 0 || fragments.length > 0;
     }
 
     function runAutoplayStep() {
@@ -1209,6 +1224,11 @@
     global.MagicGems.isMatchAudioMuted = () => sound.isMuted();
     global.MagicGems.isMatchAutoplayOn = () => autoplayEnabled;
     global.MagicGems.getMatchAutoplayKeyLog = () => autoplayKeyLog.slice();
+    // AUTOPLAY_STEP_MS is a shared, module-level constant (not per-mode), but
+    // startSinglePlayer's own export of it never runs for a page that goes
+    // straight to multiplayer - re-exported here so a test on THIS mode can
+    // still read the live pace without depending on single-player having run.
+    global.MagicGems.AUTOPLAY_STEP_MS = AUTOPLAY_STEP_MS;
   }
 
   // MP2/MP2-STORE: the multiplayer lobby - name entry, then Generate/Enter

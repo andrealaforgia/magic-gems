@@ -59,6 +59,20 @@ Feature: A hands-off demo mode that plays the game itself (AUTOPLAY)
     Then autoplay is on
     And every autoplay-committed swap actually matches - no invalid swap sound plays, across an extended real run
 
+  # AUTOPLAY-LEGALITY (RE-OPEN): the Owner, watching move-by-move at the new
+  # slow pace, still occasionally saw gems clear as if a swap had matched
+  # when it hadn't - despite the check above (pure logic + a sound cue)
+  # showing zero failures. Root cause: lingering shatter fragments from an
+  # EARLIER match, still visibly falling, overlapping the NEXT move's own
+  # animation. This checks the actual RENDERED PIXELS the Owner watches, not
+  # just the internal logic, across an extended live run.
+  @E11 @integration
+  Scenario: The rendered board never disagrees with the logical board, across an extended real autoplay run
+    Given I open "index.html" directly as a file:// URL with no server or build step
+    When I press "a"
+    Then autoplay is on
+    And gems only ever visually clear at cells that form a real 3+ line, checked against the rendered pixels, across an extended real run
+
   @E5
   Scenario: While autoplay is on, normal player input is ignored
     Given I open "index.html" directly as a file:// URL with no server or build step
