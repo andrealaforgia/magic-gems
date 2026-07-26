@@ -186,9 +186,13 @@ Then('the score strictly increases across at least 3 separate real completions w
 // not a sample, the complete real log.
 Then(
   'every autoplay-committed swap actually matches - no invalid swap sound plays, across an extended real run',
-  { timeout: 60000 },
+  { timeout: 90000 },
   async function () {
-    const timeout = (await autoplayRealTimeoutMs(this.page)) * 3;
+    // QA review (commit e968a4b): this file's own established convention is
+    // a 1x autoplayRealTimeoutMs budget (~15s) per 3 real completions - this
+    // check waits for 15 (5x as many), so its own budget scales by the same
+    // 5x, not the previous, thinner 3x.
+    const timeout = (await autoplayRealTimeoutMs(this.page)) * 5;
     await this.page.evaluate(() => {
       window.__completionCount = 0;
       window.__lastSeenScoreForInvalidCheck = 0;
