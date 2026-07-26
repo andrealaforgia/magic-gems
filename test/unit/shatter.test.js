@@ -71,6 +71,25 @@ test('createFragments draws from an injected randomFn instead of the ambient Mat
   }
 });
 
+// QA review (commit 1be859d): belt-and-suspenders alongside the exact-value
+// proof above - a direct call-count spy on the ambient Math.random makes
+// "this no longer touches the ambient generator" explicit rather than only
+// inferred from the injected function's own values appearing in the result.
+test('createFragments never calls the ambient Math.random at all when a randomFn is given', () => {
+  const originalRandom = Math.random;
+  let ambientCalls = 0;
+  Math.random = () => {
+    ambientCalls++;
+    return originalRandom();
+  };
+  try {
+    createFragments(0, 0, () => 0.5);
+  } finally {
+    Math.random = originalRandom;
+  }
+  assert.equal(ambientCalls, 0, 'expected zero calls to the ambient Math.random when an explicit randomFn is provided');
+});
+
 test('updateFragments moves each fragment horizontally by exactly vx * elapsed time', () => {
   const fragments = [{ x: 10, y: 20, vx: 5, vy: 8 }];
   const [moved] = updateFragments(fragments, 3);
