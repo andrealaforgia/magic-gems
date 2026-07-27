@@ -14,6 +14,8 @@ Feature: End of match & winner (MP5)
     Then the first page's match result eventually shows "YOU WIN!"
     And the second page's match result eventually shows "YOU LOSE"
     And the first page's match result is a large, white, translucent watermark in the display font, over the still-visible frozen match view, with both players' final scores shown
+    When I press "Enter" on the first page
+    Then the start screen is shown again
 
   @E4 @E5 @integration
   Scenario: The countdown reaching 0:00 ends the match on both clients, with the higher scorer correctly proclaimed the winner on each
@@ -55,6 +57,7 @@ Feature: End of match & winner (MP5)
     When both pages' match clocks are fast-forwarded to just past 0:00
     Then the first page's match result eventually shows "DRAW"
     And the second page's match result eventually shows "DRAW"
+    And the first page's match result is a large, white, translucent watermark in the display font, over the still-visible frozen match view, with both players' final scores shown
 
   @E6
   Scenario: Single-player's own ESC-exit is unaffected - no surrender or winner concept
