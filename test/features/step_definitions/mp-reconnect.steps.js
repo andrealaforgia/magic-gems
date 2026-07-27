@@ -74,6 +74,10 @@ When('the {word} page reloads mid-match and reconnects', async function (which) 
 // misreplayed, not an honest timing approximation. `score > 0` alone missed
 // exactly that - e.g. replaying only the last move of a longer history
 // would still pass it.
+// QA review (commit e7546e6): this bound holds because each replayed step's
+// own elapsed time stays under the scoring formula's 1-second decay window -
+// true for any realistic replay, but a false failure is theoretically
+// possible under severe CI/GC starvation across an unusually long history.
 Then("the {word} page's own local match score is close to what was recorded before, not reset to zero", async function (which) {
   const score = await pageFor(this, which).evaluate(() => window.MagicGems.getMatchScore());
   assert.ok(
