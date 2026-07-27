@@ -403,17 +403,29 @@ body {
   box-sizing: border-box;
 }
 
-/* SPEC 13.5.3/MP5: a top-level view (sibling of #game/.match/.mp-lobby), not
-   an in-match overlay - shown once the match has ended, same
-   centred-column convention as .mp-lobby's own. */
+/* SPEC 13.5.3/MP-RESULT-WATERMARK: a WATERMARK laid over the still-visible
+   frozen match view, not a separate opaque screen replacing it - so this is
+   an absolutely-positioned overlay INSIDE .match (same convention as this
+   view's own autoplay-indicator/audio-toast/exit-confirm siblings above),
+   spanning the whole view so the outcome text renders "across the board".
+   No background of its own: the frozen boards/scores show straight through,
+   and only the text itself carries the translucency. */
 .match-result {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 1.5rem;
-  color: #f2f6ff;
   font-family: 'Press Start 2P', monospace;
   text-align: center;
+  /* Purely a watermark - never intercepts the "Press Enter to continue"
+     keyboard dismissal or anything else. */
+  pointer-events: none;
 }
 
 /* Same override as #game/.start-screen/.mp-lobby/.match above - this class's
@@ -422,10 +434,15 @@ body {
   display: none;
 }
 
+/* LARGE, WHITE, SEMI-TRANSPARENT (13.5.3) - big enough to read across the
+   whole frozen grid at a glance, translucent enough that the grid itself
+   still shows through it rather than being hidden by it. */
 .match-result-message {
-  font-size: 1.5rem;
+  font-size: 3rem;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .match-result-hint {
   font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.6);
 }

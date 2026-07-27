@@ -1046,12 +1046,15 @@
       restoreRealRandom();
     }
 
-    // SPEC 13.5.3/MP5: shown on BOTH clients once the match ends (surrender
-    // or timeout) - dismissed by the player themselves, back to the start
-    // screen, same convention as every other keyboard-driven view here.
+    // SPEC 13.5.3/MP-RESULT-WATERMARK: shown on BOTH clients once the match
+    // ends (surrender or timeout), as a watermark laid OVER the still-visible
+    // frozen match view (matchEl stays visible - teardown() already stopped
+    // the render loop, so the last painted frame just stays on screen) rather
+    // than a separate opaque screen replacing it. Dismissed by the player
+    // themselves, back to the start screen, same convention as every other
+    // keyboard-driven view here.
     function showMatchResult(message) {
       matchResultMessageEl.textContent = message;
-      matchEl.hidden = true;
       matchResultEl.hidden = false;
       function onResultKeydown(event) {
         if (event.key !== 'Enter' && event.key !== ' ') return;

@@ -13,6 +13,7 @@ Feature: End of match & winner (MP5)
     And I press "y" on the second page
     Then the first page's match result eventually shows "YOU WIN!"
     And the second page's match result eventually shows "YOU LOSE"
+    And the first page's match result is a large, white, translucent watermark in the display font, over the still-visible frozen match view, with both players' final scores shown
 
   @E4 @E5 @integration
   Scenario: The countdown reaching 0:00 ends the match on both clients, with the higher scorer correctly proclaimed the winner on each
@@ -27,6 +28,7 @@ Feature: End of match & winner (MP5)
     When both pages' match clocks are fast-forwarded to just past 0:00
     Then the first page's match result eventually shows "YOU WIN!"
     And the second page's match result eventually shows "YOU LOSE"
+    And the first page's match result is a large, white, translucent watermark in the display font, over the still-visible frozen match view, with both players' final scores shown
 
   # QA review (commit e6e6715): the implementation calls endMatch('lose')
   # unconditionally, not gated on the surrender request's own network
