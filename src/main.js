@@ -605,6 +605,25 @@
     let remoteLastCompletionTimeMs = performance.now();
     let remoteReplayedCount = 0;
 
+    // SPEC 13.2.6/MP-RECONNECT (mid-match): a player who reconnects to an
+    // already-started match already has moves stored server-side under
+    // their own name - replay them now (through this same ambient seeded
+    // generator) to reconstruct this player's real board/score instead of
+    // silently resetting to the starting position. Without this, the
+    // opponent's own replica of this player (which never resets) would
+    // permanently desync the moment this player's first post-reconnect move
+    // gets replayed against a board the opponent computed for a state this
+    // player never actually returned to - this player's own future moves
+    // must continue from the exact state the opponent's replica expects.
+    // Empty (a no-op loop) for a genuinely fresh join, which is the common case.
+    const existingLocalMoves = (session.moves && session.moves[session.players[localIndex]]) || [];
+    for (const key of existingLocalMoves) {
+      const next = handleGameKey({ board, interaction, exitConfirmOpen: false }, key);
+      board = next.board;
+      interaction = next.interaction;
+      next.steps.forEach((step, i) => applyCompletionScore(step.runLengths, i + 1));
+    }
+
     // SPEC 13.3.3/13.4.1: a sensible 50/50 state even at 0-0, not a
     // divide-by-zero - tilts toward whoever currently leads, both scores
     // now derived from real play on each side rather than one being

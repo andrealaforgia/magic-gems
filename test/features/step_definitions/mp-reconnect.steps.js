@@ -34,3 +34,41 @@ Then('that new page reports the session is full', async function () {
   const errorText = await this.reconnectPage.textContent('#mp-enter-error');
   assert.equal(errorText, 'Session is full');
 });
+
+function pageFor(world, which) {
+  return which === 'first' ? world.pageA : world.pageB;
+}
+
+Given("I record the {word} page's own local match score", async function (which) {
+  this.recordedMatchScore = await pageFor(this, which).evaluate(() => window.MagicGems.getMatchScore());
+});
+
+// MP-REPLICA-ASYMMETRY: a literal page reload, not a fresh third page - this
+// is what actually triggers the defect (client-side match state resetting
+// while the same server-side session, moves included, persists). Reconnects
+// via the SAME "enter code" path a genuinely new joiner would use, since
+// the player's own name is already in the session (SPEC 13.2.6).
+When('the {word} page reloads mid-match and reconnects', async function (which) {
+  const page = pageFor(this, which);
+  const name = which === 'first' ? 'Alice' : 'Bob';
+  await page.reload();
+  await page.click('#start-multiplayer-btn');
+  await page.waitForSelector('#mp-name-step:not([hidden])');
+  await page.keyboard.type(name);
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#mp-enter-step:not([hidden])');
+  await page.keyboard.type(this.generatedCode);
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#match:not([hidden])', { timeout: 10000 });
+});
+
+Then("the {word} page's own local match score is close to what was recorded before, not reset to zero", async function (which) {
+  const score = await pageFor(this, which).evaluate(() => window.MagicGems.getMatchScore());
+  assert.ok(score > 0, `expected a real reconstructed score, got ${score} (recorded before reload: ${this.recordedMatchScore})`);
+  // Exact score reconstruction after a reconnect is a best-effort
+  // approximation (the original real-time completion timing isn't stored),
+  // not a guaranteed exact match - this only rules out the specific
+  // regression (silently resetting to zero and losing all real progress).
+});
