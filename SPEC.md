@@ -215,19 +215,22 @@ A hands-off demo mode in which the game plays itself.
   the cursor to a gem, selects it (6.2), designates an orthogonally-adjacent gem
   (6.3), and commits a swap (6.4) that completes a match. It only makes valid moves
   that create a run of 3+ (6.5), so runs clear and play keeps progressing — there is
-  always at least one valid move available (8.3). The emulated actions run at a SLOW,
-  clearly-watchable pace, with a visible pause between moves and before each swap
-  commits, and the resulting swap/shatter/fall play at the normal deliberate 9.3 pace
-  (no speed-up) — so a watcher can follow each move and confirm every committed swap
-  really forms a valid run of 3+. (Pace is a tuning choice, adjusted by feel; it is
-  currently set slow deliberately so the moves can be verified.) It stays coherent —
-  real valid moves, not frozen or skipped.
+  always at least one valid move available (8.3). The emulated actions run at a BRISK
+  but still-followable pace — about twice as fast as the earlier deliberately-slow
+  verification pace — with the resulting swap/shatter/fall playing at the normal 9.3
+  pace. (Pace is a tuning choice, adjusted by feel.) It stays coherent — real valid
+  moves, not frozen or skipped.
 - 12.3 While autoplay is ON, the game ignores normal player input — cursor
   movement, selection, swap-target designation, and cancel are not acted on.
   Pressing A again turns autoplay OFF and returns control to the player.
 - 12.4 While autoplay is ON, a blinking "Autoplaying..." indicator is shown centred
   at the top of the grid (above the score), in the game's display font (9.4). It
   disappears when autoplay is turned off.
+- 12.5 Move choice is RANDOMISED: among all the currently-available valid moves,
+  autoplay picks one AT RANDOM each turn, rather than always the same deterministic
+  one — so two clients both autoplaying from the same board do not make identical
+  move sequences. Every chosen move is still a real valid run-of-3+ (12.2); the
+  randomness only selects among legal options, never producing an illegal swap.
 
 ## 13. Multiplayer
 A two-player competitive mode played over the internet. (Built iteratively; later
@@ -281,14 +284,16 @@ clauses are added as each iteration lands.)
     is equal; thereafter each player plays their own board.
   - 13.3.2 The screen splits into two halves: the LOCAL player's grid, name, and score
     on the LEFT; the REMOTE player's grid and name on the RIGHT. Each grid keeps the
-    look of §3/§9 (sprites, chessboard cells).
+    look of §3/§9 (sprites, chessboard cells). The two grids are the SAME SIZE and
+    VERTICALLY ALIGNED — the remote grid's top edge is level with the local grid's top
+    edge (neither shifted up or down relative to the other).
   - 13.3.3 The CENTRE shows a countdown timer starting at 10:00 and counting down, and
     a tug-of-war gauge indicating who is winning by score (even at the start). Text in
     the display font (§9.4). The tug-of-war gauge is VERTICALLY CENTRED on the screen.
   - 13.3.4 The local player plays their own grid with the usual controls (§6). The
-    remote grid shows the opponent's board; live updates of the opponent's moves and
-    score arrive in the next iteration (§13.4) — until then the remote side shows the
-    shared starting board.
+    remote grid shows the opponent's board; live updates of the opponent's board and
+    score arrive as SNAPSHOTS (§13.4) — until the first snapshot arrives the remote
+    side shows the shared starting board.
 
   - 13.3.5 Each player has their OWN independent score and time-multiplier (§10),
     computed and shown on their own side of the split — the multiplier is per-player
@@ -303,23 +308,22 @@ clauses are added as each iteration lands.)
     is surrender per §14.2; the winner proclamation is delivered by the end-game
     iteration, §13.5).
 
-- 13.4 Live opponent sync — by replaying moves. During the match, each client sends
-  its own INPUT ACTIONS as they happen — cursor moves (up/down/left/right), gem
-  selection, and swap commits — to the session. The opponent's client REPLAYS those
-  actions on its mirror of that player's board: the remote (right) grid shows the
-  opponent's cursor moving, selecting, and swapping, AND the full resolution that
-  follows — matched gems SHATTER (§9.2) and gems FALL and refill (§7.2, §7.3) — with
-  the same on-screen animations as normal play but WITHOUT sound. So the remote grid
-  looks just like the opponent's own screen (minus sound): a faithful live REPLICA of
-  their actual play, not just a periodic board snapshot.
-  - 13.4.0 ACCURACY IS REQUIRED. The remote grid and the opponent's score shown on
-    it MUST match the opponent's ACTUAL board and ACTUAL score at all times (brief
-    async lag is acceptable, but they must NOT drift out of sync, show a different
-    board, or freeze). The opponent's own client is the source of truth for their
-    board and score; the replayed moves drive the visual animation on the mirror, but
-    the board and score displayed must be kept faithful to the opponent's real ones
-    (corrected / re-synchronised as needed so they never diverge). No sound plays for
-    the replayed remote moves.
+- 13.4 Live opponent sync — by board snapshot. During the match, WHENEVER a player's
+  own board settles after a change (a swap resolving, cascades, and refills), that
+  client sends its FULL current board and its current score to the session. The
+  opponent's client, on receiving a snapshot, simply DRAWS that board on the remote
+  (right) grid and shows that score. There is NO move-by-move replay and NO local
+  reconstruction of the opponent's play: the remote grid is a direct rendering of the
+  latest board the opponent actually sent (the grid just updates to the new board —
+  no animated shatter/fall of their moves), and no sound plays for it. This snapshot
+  model REPLACES the earlier move-replay approach, which could desync and then render
+  illegal swaps.
+  - 13.4.0 ACCURACY IS REQUIRED. The remote grid and the opponent's score shown MUST
+    be the opponent's ACTUAL board and score as of the latest snapshot received (brief
+    async lag between a change and its snapshot arriving is acceptable; the grid must
+    NOT show a stale-forever, different, or invalid board). Because each snapshot is a
+    board the opponent's own client actually had, the remote grid can never drift into
+    an impossible or illegal state — it only ever shows a real board the opponent sent.
   - 13.4.1 The centre who's-winning gauge (13.3.3) reflects the two players' current
     scores, tilting toward whoever leads.
   - 13.4.2 Talking to the server is ASYNCHRONOUS and low-priority — it must NEVER
