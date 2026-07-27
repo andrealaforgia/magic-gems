@@ -350,5 +350,10 @@ clauses are added as each iteration lands.)
     both see the winner proclaimed.
   - 13.5.2 Timeout: when the countdown reaches 0:00, the match ends; the player with
     the higher score wins, and equal scores are a draw.
-  - 13.5.3 On either ending, both clients show a result screen proclaiming the winner
-    (or a draw), in the display font (§9.4).
+  - 13.5.3 On either ending, both clients stop play and show the result OVER the final
+    grid: the final board(s) stay visible as the background, and the outcome — "YOU WIN"
+    / "YOU LOSE" (or "DRAW") from THAT player's own perspective — is rendered ACROSS the
+    board as LARGE, WHITE, SEMI-TRANSPARENT (translucent) text in the display font (§9.4),
+    like a watermark laid over the frozen final grid rather than a separate opaque screen
+    that replaces it. The final scores of BOTH players are also shown, so the outcome is
+    legible at a glance.
