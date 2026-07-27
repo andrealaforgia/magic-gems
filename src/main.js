@@ -618,10 +618,15 @@
     // Empty (a no-op loop) for a genuinely fresh join, which is the common case.
     const existingLocalMoves = (session.moves && session.moves[session.players[localIndex]]) || [];
     for (const key of existingLocalMoves) {
-      const next = handleGameKey({ board, interaction, exitConfirmOpen: false }, key);
-      board = next.board;
-      interaction = next.interaction;
-      next.steps.forEach((step, i) => applyCompletionScore(step.runLengths, i + 1));
+      try {
+        const next = handleGameKey({ board, interaction, exitConfirmOpen: false }, key);
+        board = next.board;
+        interaction = next.interaction;
+        next.steps.forEach((step, i) => applyCompletionScore(step.runLengths, i + 1));
+      } catch (err) {
+        console.error('failed to replay a stored move on reconnect, stopping early:', err);
+        break;
+      }
     }
 
     // SPEC 13.3.3/13.4.1: a sensible 50/50 state even at 0-0, not a

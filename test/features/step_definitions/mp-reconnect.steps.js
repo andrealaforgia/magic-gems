@@ -64,11 +64,20 @@ When('the {word} page reloads mid-match and reconnects', async function (which) 
   await page.waitForSelector('#match:not([hidden])', { timeout: 10000 });
 });
 
+// QA review (commit 534e374): reconnect replay re-runs the same stored
+// moves through the same production scoring formula, but compressed into a
+// near-instant loop instead of the original real-time gaps between
+// completions - and computeCompletionScore's own time-multiplier only ever
+// grows as the elapsed gap between completions shrinks. So the reconstructed
+// score can never legitimately come in BELOW what was actually recorded
+// live: a lower reconstructed score means moves were skipped or
+// misreplayed, not an honest timing approximation. `score > 0` alone missed
+// exactly that - e.g. replaying only the last move of a longer history
+// would still pass it.
 Then("the {word} page's own local match score is close to what was recorded before, not reset to zero", async function (which) {
   const score = await pageFor(this, which).evaluate(() => window.MagicGems.getMatchScore());
-  assert.ok(score > 0, `expected a real reconstructed score, got ${score} (recorded before reload: ${this.recordedMatchScore})`);
-  // Exact score reconstruction after a reconnect is a best-effort
-  // approximation (the original real-time completion timing isn't stored),
-  // not a guaranteed exact match - this only rules out the specific
-  // regression (silently resetting to zero and losing all real progress).
+  assert.ok(
+    score >= this.recordedMatchScore,
+    `expected a real reconstructed score at least as high as what was recorded before reload (${this.recordedMatchScore}), got ${score}`
+  );
 });
