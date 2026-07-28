@@ -114,9 +114,16 @@ test('recordSnapshot overwrites the player\'s own previous snapshot rather than 
   assert.deepEqual(afterAlice2.snapshots.Bob, { board: [['blue-teardrop']], score: 5 }, 'the other player\'s own snapshot must survive untouched');
 });
 
-// QA review (commit 6cdd179): mirrors the immutability contract the deleted
-// appendPlayerMoves test used to carry.
-test('recordSnapshot never mutates the board object it was given', () => {
+// QA review (commit 6cdd179, narrowed per commit f3cb41d's own follow-up
+// review): mirrors the same contract the deleted appendPlayerMoves test used
+// to carry. Named for exactly what it checks - the caller's own object is
+// left alone - not a claim that the stored copy is isolated from it: this
+// stores the snapshot by direct reference (never cloned), the same
+// carried-forward tradeoff appendPlayerMoves had for its own moves array.
+// Real callers only ever reach this through a JSON request/response, which
+// already produces an entirely fresh object on the way in, so that aliasing
+// never actually reaches this function in practice.
+test('recordSnapshot does not mutate the snapshot object the caller passed in', () => {
   const session = createSession('ABCDEFGHIJ', 'Alice');
   const board = [['red-square']];
   const snapshot = { board, score: 10 };
