@@ -290,6 +290,32 @@ clauses are added as each iteration lands.)
   - 13.3.3 The CENTRE shows a countdown timer starting at 10:00 and counting down, and
     a tug-of-war gauge indicating who is winning by score (even at the start). Text in
     the display font (§9.4). The tug-of-war gauge is VERTICALLY CENTRED on the screen.
+    - 13.3.3.1 The tug-of-war gauge is a SINGLE horizontal bar inside a container of
+      fixed extent. The bar is ALWAYS COMPLETELY FULL: it is divided into exactly TWO
+      adjoining portions that together span the whole bar with no gap and no unfilled
+      remainder. The LOCAL player's portion starts at the LEFT end; the REMOTE player's
+      portion starts at the RIGHT end; they meet at a single MOVING boundary.
+    - 13.3.3.2 Each portion's share of the bar is that player's score as a proportion
+      of the COMBINED score of both players. Worked examples, which are normative:
+      local 10 / remote 20 (combined 30) gives the local portion 33% of the bar and the
+      remote portion 67%; local 25 / remote 5 (combined 30) gives the local portion 83%
+      and the remote portion 17%.
+    - 13.3.3.3 A permanent HALFWAY INDICATOR is drawn at the midpoint of the container.
+      It is a fixed reference mark and does not move: the boundary between the two
+      portions sits left of it when the local player trails and right of it when the
+      local player leads.
+    - 13.3.3.4 Colour shows who leads. The LEADING player's portion is GREEN and the
+      TRAILING player's portion is RED — so when the local player leads their own
+      (left) portion is green and the remote portion is red, and when the local player
+      trails their own portion is red and the remote portion is green.
+    - 13.3.3.5 When the two scores are EXACTLY EQUAL — including 0–0 before either
+      player has scored — the boundary sits exactly on the halfway indicator and BOTH
+      portions are drawn NEUTRAL (neither green nor red). Nobody leads, so no
+      leading/trailing verdict is shown. This also defines the 0–0 case, where the
+      proportion of §13.3.3.2 is otherwise undefined.
+    - 13.3.3.6 The gauge tracks the CURRENT scores of both players and updates as
+      either score changes (the remote player's score being whatever the latest
+      snapshot carried, §13.4).
   - 13.3.4 The local player plays their own grid with the usual controls (§6). The
     remote grid shows the opponent's board; live updates of the opponent's board and
     score arrive as SNAPSHOTS (§13.4) — until the first snapshot arrives the remote
@@ -345,6 +371,17 @@ clauses are added as each iteration lands.)
     horizontally without overflow. In particular, the LOCAL player's grid must be
     FULLY VISIBLE from the moment the match starts — never truncated or clipped on
     the left edge.
+  - 13.3.8 The match layout leaves BREATHING ROOM at the LEFT and RIGHT edges of the
+    browser window. The grids must NOT run flush against the window edges as they
+    currently do: there is a visible gap of clear space between the left window edge
+    and the local grid, and between the remote grid and the right window edge. The two
+    gaps are equal, so the match stays centred. The exact width of the gap is a tuning
+    choice adjusted BY FEEL, not a frozen figure — the requirement is that the space is
+    plainly visible and that neither grid touches a window edge. This must hold without
+    breaking §13.3.7 (no horizontal scrollbar, local grid never clipped) or §13.3.2
+    (both grids the same size, top edges level): if the window is too narrow to honour
+    all of these at the current grid size, the grids scale down together rather than
+    the margin being dropped.
 
 - 13.5 End of match & winner. A multiplayer match ends in either of two ways, and
   when it ends BOTH clients stop play and show a result proclaiming the winner.
