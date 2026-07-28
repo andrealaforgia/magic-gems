@@ -121,14 +121,10 @@ test('recordSnapshot overwrites the player\'s own previous snapshot rather than 
   assert.deepEqual(afterAlice2.snapshots.Bob, { board: [['blue-teardrop']], score: 5 }, 'the other player\'s own snapshot must survive untouched');
 });
 
-// QA review (commit 6cdd179, narrowed per commit f3cb41d's own follow-up
-// review): mirrors _session-logic.mjs's own coverage of the same contract
-// the deleted appendPlayerMoves test used to carry on the server-side copy.
-// Named for exactly what it checks - the caller's own object is left alone,
-// not that the stored copy is isolated from it (this stores by direct
-// reference, never cloned) - real callers only ever reach this through a
-// JSON request/response, which already produces a fresh object on the way
-// in, so that aliasing never actually reaches this function in practice.
+// Mirrors _session-logic.mjs's own coverage of the same contract on the
+// server-side copy - see that test's own comment for the full rationale on
+// what this does and doesn't guarantee (kept in one place so the two can't
+// drift if edited later).
 test('recordSnapshot does not mutate the snapshot object the caller passed in', () => {
   const session = createSession('ABCDEFGHIJ', 'Alice');
   const board = [['red-square']];

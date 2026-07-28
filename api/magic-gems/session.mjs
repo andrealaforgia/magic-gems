@@ -111,6 +111,12 @@ async function handleJoin(env, code, playerName) {
   return result;
 }
 
+// QA review (commit a89ad37): recordSnapshot stores { board, score } by
+// direct reference, never cloning - safe here specifically because board
+// and score are always freshly built from this request's own already-
+// JSON-parsed body, never a live object a caller could go on to mutate. See
+// that test's own rationale (test/unit/session-logic.test.js) before
+// changing what gets passed here.
 async function handleRecordSnapshot(env, code, playerName, board, score) {
   const existing = await getStoredSession(env, code);
   if (!existing) return { ok: false, error: 'not-found' };
