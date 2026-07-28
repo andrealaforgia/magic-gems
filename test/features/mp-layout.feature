@@ -13,9 +13,11 @@ Feature: The split-screen match layout fits the viewport width (MP-LAYOUT)
     And the first page's match does not overflow the viewport horizontally
     And the first page's local grid is on the left, the remote grid is on the right, and the centre shows the countdown and gauge
     And the first page's gauge is vertically centred on the screen
+    And the first page's local and remote grids are the same size, with their top edges aligned
     Given I locate an adjacent swap that would produce a match on the first page's local match board
     When I commit that swap on the first page's local match board
     Then the first page's local match score has increased
+    And the first page's local and remote grids are the same size, with their top edges aligned
 
     Examples:
       | width | height |

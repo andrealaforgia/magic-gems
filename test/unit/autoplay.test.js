@@ -14,7 +14,6 @@ const {
   createInteractionState,
   handleGameKey,
   createSeededRandom,
-  withRandom,
 } = loadMagicGems([
   new URL('../../src/gems.js', import.meta.url),
   new URL('../../src/board.js', import.meta.url),
@@ -121,6 +120,65 @@ test('planAutoplaySteps aims ArrowDown when the found move\'s pair is a vertical
   assert.deepEqual(steps, [' ', 'ArrowDown', ' ']);
 });
 
+// AUTOPLAY-RANDOM-CHOICE (SPEC 12.5): every scenario above plants exactly one
+// valid move, so a deterministic "always pick the first" implementation
+// would pass them all identically to a random one - this plants TWO
+// independent moves in different corners and checks that repeated calls
+// don't always return the same one.
+test('planAutoplaySteps picks among ALL available valid moves at random, not always the same one (SPEC 12.5)', () => {
+  const board = buildMatchFreeBoard();
+  board[0][2] = GEM_TYPES[0];
+  board[1][2] = GEM_TYPES[0];
+  board[2][2] = GEM_TYPES[1];
+  board[2][1] = GEM_TYPES[0];
+  board[5][5] = GEM_TYPES[2];
+  board[5][6] = GEM_TYPES[2];
+  board[5][7] = GEM_TYPES[3];
+  board[4][7] = GEM_TYPES[2];
+
+  const seen = new Set();
+  for (let i = 0; i < 100; i++) {
+    seen.add(JSON.stringify(planAutoplaySteps(board, { row: 0, col: 0 })));
+  }
+  assert.ok(seen.size >= 2, `expected at least two distinct move choices across 100 trials, got ${seen.size}`);
+});
+
+// MP4-FIX class of bug: during a match, the ambient Math.random IS the
+// session-seeded generator driving real refills (SPEC 13.3.1) - if move
+// choice drew from it too, the opponent's own replica (whose mirrored seeded
+// stream only ever advances via actually-replayed moves) would never see
+// those extra draws, permanently desyncing every refill from that point on.
+// Proves the seam that prevents it: an explicit randomFn is used for move
+// choice, and the ambient Math.random is never touched.
+test('planAutoplaySteps draws its move choice from an injected randomFn, never from the ambient Math.random (SPEC 12.5/MP4-FIX)', () => {
+  const board = buildMatchFreeBoard();
+  board[0][2] = GEM_TYPES[0];
+  board[1][2] = GEM_TYPES[0];
+  board[2][2] = GEM_TYPES[1];
+  board[2][1] = GEM_TYPES[0];
+  board[5][5] = GEM_TYPES[2];
+  board[5][6] = GEM_TYPES[2];
+  board[5][7] = GEM_TYPES[3];
+  board[4][7] = GEM_TYPES[2];
+
+  const originalMathRandom = Math.random;
+  Math.random = () => {
+    throw new Error('planAutoplaySteps must not touch the ambient Math.random when given an explicit randomFn');
+  };
+  try {
+    let calls = 0;
+    const injectedRandom = () => {
+      calls++;
+      return 0;
+    };
+    const steps = planAutoplaySteps(board, { row: 0, col: 0 }, injectedRandom);
+    assert.ok(calls > 0, 'expected the injected randomFn to actually be called');
+    assert.ok(steps.length > 0, 'expected a real move to still be planned');
+  } finally {
+    Math.random = originalMathRandom;
+  }
+});
+
 // Owner report/AUTOPLAY-FIX (SPEC 12.2/6.5): every scenario above only checks
 // planAutoplaySteps' own STRUCTURE against a hand-planted board with one
 // known move - it never actually executes the plan and confirms the swap it
@@ -132,6 +190,20 @@ test('planAutoplaySteps aims ArrowDown when the found move\'s pair is a vertical
 // committed swap, not a sample - a fixed seed per trial keeps this fully
 // reproducible in CI while still covering a wide range of real board
 // states (including whatever revive/reshuffle states arise along the way).
+// Local to this test only - swaps Math.random for the duration of fn so a
+// seeded generator drives board generation/refills reproducibly. Not a
+// production seam: nothing in src/ needs this anymore now that remote sync
+// is a direct snapshot draw rather than a seeded replay (MP-SYNC-SNAPSHOT).
+function withSeededRandom(seededRandom, fn) {
+  const previous = Math.random;
+  Math.random = seededRandom;
+  try {
+    return fn();
+  } finally {
+    Math.random = previous;
+  }
+}
+
 test('every move planAutoplaySteps produces, once actually played through handleGameKey, is a real match', () => {
   const TRIALS = 300;
   const MOVES_PER_TRIAL = 60;
@@ -140,7 +212,7 @@ test('every move planAutoplaySteps produces, once actually played through handle
   for (let trial = 0; trial < TRIALS; trial++) {
     const seededRandom = createSeededRandom(trial);
     let board, interaction;
-    withRandom(seededRandom, () => {
+    withSeededRandom(seededRandom, () => {
       board = ensurePlayable(generateBoard()).board;
       interaction = createInteractionState();
     });
@@ -151,7 +223,7 @@ test('every move planAutoplaySteps produces, once actually played through handle
 
       let matched = null;
       for (const key of plan) {
-        const next = withRandom(seededRandom, () => handleGameKey({ board, interaction, exitConfirmOpen: false }, key));
+        const next = withSeededRandom(seededRandom, () => handleGameKey({ board, interaction, exitConfirmOpen: false }, key));
         if (next.swapAnimation) matched = next.swapAnimation.matched;
         board = next.board;
         interaction = next.interaction;

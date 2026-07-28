@@ -45,9 +45,9 @@ Given("I record the {word} page's own local match score", async function (which)
 
 // MP-REPLICA-ASYMMETRY: a literal page reload, not a fresh third page - this
 // is what actually triggers the defect (client-side match state resetting
-// while the same server-side session, moves included, persists). Reconnects
-// via the SAME "enter code" path a genuinely new joiner would use, since
-// the player's own name is already in the session (SPEC 13.2.6).
+// while the same server-side session, snapshots included, persists).
+// Reconnects via the SAME "enter code" path a genuinely new joiner would
+// use, since the player's own name is already in the session (SPEC 13.2.6).
 When('the {word} page reloads mid-match and reconnects', async function (which) {
   const page = pageFor(this, which);
   const name = which === 'first' ? 'Alice' : 'Bob';
@@ -64,24 +64,17 @@ When('the {word} page reloads mid-match and reconnects', async function (which) 
   await page.waitForSelector('#match:not([hidden])', { timeout: 10000 });
 });
 
-// QA review (commit 534e374): reconnect replay re-runs the same stored
-// moves through the same production scoring formula, but compressed into a
-// near-instant loop instead of the original real-time gaps between
-// completions - and computeCompletionScore's own time-multiplier only ever
-// grows as the elapsed gap between completions shrinks. So the reconstructed
-// score can never legitimately come in BELOW what was actually recorded
-// live: a lower reconstructed score means moves were skipped or
-// misreplayed, not an honest timing approximation. `score > 0` alone missed
-// exactly that - e.g. replaying only the last move of a longer history
-// would still pass it.
-// QA review (commit e7546e6): this bound holds because each replayed step's
-// own elapsed time stays under the scoring formula's 1-second decay window -
-// true for any realistic replay, but a false failure is theoretically
-// possible under severe CI/GC starvation across an unusually long history.
+// MP-SYNC-SNAPSHOT/SPEC 13.2.6/13.4: reconnect now restores the player's own
+// LAST SENT SNAPSHOT directly - there is no replay loop, so (unlike the
+// earlier move-replay reconnect) there is no reconstruction-timing question
+// at all. The prior step's own "eventually reflect" wait already confirmed a
+// snapshot carrying this exact score reached the server before the reload,
+// so the restored score must come back EXACTLY as recorded, not merely close.
 Then("the {word} page's own local match score is close to what was recorded before, not reset to zero", async function (which) {
   const score = await pageFor(this, which).evaluate(() => window.MagicGems.getMatchScore());
-  assert.ok(
-    score >= this.recordedMatchScore,
-    `expected a real reconstructed score at least as high as what was recorded before reload (${this.recordedMatchScore}), got ${score}`
+  assert.equal(
+    score,
+    this.recordedMatchScore,
+    `expected the restored score to exactly match what was recorded before reload (${this.recordedMatchScore}), got ${score}`
   );
 });

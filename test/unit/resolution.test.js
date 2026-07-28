@@ -18,6 +18,7 @@ const {
   resolveCascade,
   hasAnyValidMove,
   findValidMove,
+  findAllValidMoves,
   ensurePlayable,
   tryReviveTwoCells,
   reviveByIncrementalChange,
@@ -460,6 +461,35 @@ test('findValidMove returns a real, orthogonally-adjacent pair whose swap actual
   const dr = Math.abs(move.a.row - move.b.row);
   const dc = Math.abs(move.a.col - move.b.col);
   assert.ok((dr === 1 && dc === 0) || (dr === 0 && dc === 1), 'the pair must be orthogonally adjacent');
+});
+
+// SPEC 12.5/AUTOPLAY-RANDOM-CHOICE.
+test('findAllValidMoves returns an empty array when no valid move exists (SPEC 12.5)', () => {
+  assert.deepEqual(findAllValidMoves(buildStuckBoard()), []);
+});
+
+test('findAllValidMoves returns every real, orthogonally-adjacent pair whose swap actually creates a match, not just the first (SPEC 12.5)', () => {
+  const board = buildMatchFreeBoard();
+  // Two independent valid moves, in different, non-overlapping corners of
+  // the board, so both must be found even though findValidMove's own
+  // raster-order search would stop at the first.
+  board[0][2] = GEM_TYPES[0];
+  board[1][2] = GEM_TYPES[0];
+  board[2][2] = GEM_TYPES[1];
+  board[2][1] = GEM_TYPES[0];
+  board[5][5] = GEM_TYPES[2];
+  board[5][6] = GEM_TYPES[2];
+  board[5][7] = GEM_TYPES[3];
+  board[4][7] = GEM_TYPES[2];
+
+  const moves = findAllValidMoves(board);
+  assert.ok(moves.length >= 2, `expected at least the two planted moves, got ${moves.length}`);
+  for (const move of moves) {
+    assert.equal(hasMatch(applySwap(board, move.a, move.b)), true, 'every returned pair must actually produce a match when swapped');
+    const dr = Math.abs(move.a.row - move.b.row);
+    const dc = Math.abs(move.a.col - move.b.col);
+    assert.ok((dr === 1 && dc === 0) || (dr === 0 && dc === 1), 'every returned pair must be orthogonally adjacent');
+  }
 });
 
 // These next two fixtures are fully hand-specified, not diagonal-derived: an earlier

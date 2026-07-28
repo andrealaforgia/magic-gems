@@ -7,8 +7,8 @@
   // stub's native "storage" event - a real request each interval, not a
   // hardcoded readiness flag.
   const POLL_INTERVAL_MS = 1500;
-  // MP4-MOVES/SPEC 13.4 (re-frozen): how often each client sends its own
-  // batch of input actions (moves) during a match - defined alongside
+  // MP-SYNC-SNAPSHOT/SPEC 13.4: how often each client sends its own latest
+  // board+score snapshot during a match - defined alongside
   // POLL_INTERVAL_MS (not in main.js, where the match loop itself lives) so
   // both of this session service's own traffic rates can be checked together
   // against the server's rate limit the same lightweight way, without
@@ -72,16 +72,15 @@
           clearInterval(timer);
         };
       },
-      // MP4-MOVES/SPEC 13.4 (re-frozen): sends a batch of this player's own
-      // input actions (moves) for the opponent to replay - superseding MP4's
-      // own board/score snapshot approach. Resolves to the real {ok, ...}
-      // result on success so the caller can retry a batch that failed to
-      // send (order-preserving - unlike the old snapshot, a dropped batch
-      // here would otherwise permanently gap the opponent's replay), but
-      // never throws - a network failure resolves to undefined instead, so
-      // it can never block or stutter local play either way (E4/E6).
-      sendMoves(code, playerName, moves) {
-        return postAction({ action: 'moves', code, playerName, moves }).catch(() => undefined);
+      // MP-SYNC-SNAPSHOT/SPEC 13.4 (rewritten): sends this player's FULL
+      // current board and score for the opponent to draw directly - no
+      // move-by-move replay. Unlike an ordered move log, only the LATEST
+      // snapshot ever matters, so a dropped send is harmless: the next tick
+      // just carries a newer, still-complete snapshot. Never throws - a
+      // network failure resolves to undefined instead, so it can never
+      // block or stutter local play either way (E4/E6/13.4.2).
+      sendSnapshot(code, playerName, board, score) {
+        return postAction({ action: 'snapshot', code, playerName, board, score }).catch(() => undefined);
       },
       // MP4/SPEC 13.4: continuous poll (unlike subscribeSession's one-shot
       // stop-on-2-players) - runs for the whole match so the remote side

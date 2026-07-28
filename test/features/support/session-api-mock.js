@@ -1,6 +1,6 @@
 import { loadMagicGems } from '../../support/load-src.js';
 
-const { generateSessionCode, createSession, joinSession, appendPlayerMoves, recordSurrender } = loadMagicGems([
+const { generateSessionCode, createSession, joinSession, recordSnapshot, recordSurrender } = loadMagicGems([
   new URL('../../../src/session.js', import.meta.url),
 ]);
 
@@ -37,10 +37,10 @@ export function installSessionApiMock(context) {
         if (result.ok) store.set(body.code, result.session);
         return json(result);
       }
-      if (body.action === 'moves') {
+      if (body.action === 'snapshot') {
         const existing = store.get(body.code) || null;
         if (!existing) return json({ ok: false, error: 'not-found' });
-        const result = appendPlayerMoves(existing, body.playerName, body.moves);
+        const result = recordSnapshot(existing, body.playerName, { board: body.board, score: body.score });
         if (result.ok) store.set(body.code, result.session);
         return json(result);
       }

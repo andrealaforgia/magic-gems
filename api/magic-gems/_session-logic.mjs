@@ -16,12 +16,6 @@ import { randomInt } from 'node:crypto';
 const CODE_LENGTH = 10;
 const CODE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
-// Security review: without a ceiling, a single player's own move log grows
-// (and its storage cost with it) without limit, entirely within the existing
-// rate-limit envelope. 8000 is generous headroom over what a real 10-minute
-// match ever produces, so only genuine abuse ever hits it.
-const MAX_STORED_MOVES_PER_PLAYER = 8000;
-
 // Security review (commit 023dece), L1: the codespace size (26^10, ~47 bits)
 // is what actually makes guessing impractical, not RNG quality - but a real
 // CSPRNG is cheap and removes the category of concern outright. Only this
@@ -56,29 +50,22 @@ function joinSession(session, playerName) {
   return { ok: true, session: { ...session, players: [...session.players, playerName] } };
 }
 
-// SPEC 13.4 (re-frozen)/MP4-MOVES: each client sends its own input actions
-// (moves) as they happen; the opponent replays them to reconstruct that
-// player's board deterministically, rather than receiving periodic
-// board/score snapshots (MP4's own original approach, now superseded).
-// Append-only - never replaces a player's own prior moves, and never
-// touches the other player's own log.
+// MP-SYNC-SNAPSHOT/SPEC 13.4 (rewritten): whenever a client's own board
+// settles, it sends its FULL current board and score; the opponent draws it
+// directly, with no move-by-move replay. This REPLACES the earlier
+// move-replay approach (which could desync and then render illegal swaps) -
+// a snapshot OVERWRITES the player's own prior one, since only the latest is
+// ever meaningful (13.4.0), and never touches the other player's own.
 //
 // Security review (commit be737cd), Finding 1 pattern carried over:
 // playerName must actually be one of this session's own players - otherwise
-// anyone holding the code could inject moves into a slot they were never
-// part of.
-function appendPlayerMoves(session, playerName, newMoves) {
+// anyone holding the code could inject a snapshot into a slot they were
+// never part of.
+function recordSnapshot(session, playerName, snapshot) {
   if (!session.players.includes(playerName)) return { ok: false, error: 'not-a-player' };
-  const existingMoves = (session.moves && session.moves[playerName]) || [];
-  if (existingMoves.length + newMoves.length > MAX_STORED_MOVES_PER_PLAYER) {
-    return { ok: false, error: 'too-many-moves' };
-  }
   return {
     ok: true,
-    session: {
-      ...session,
-      moves: { ...session.moves, [playerName]: [...existingMoves, ...newMoves] },
-    },
+    session: { ...session, snapshots: { ...session.snapshots, [playerName]: snapshot } },
   };
 }
 
@@ -93,12 +80,4 @@ function recordSurrender(session, playerName) {
   return { ok: true, session: { ...session, surrenderedBy: playerName } };
 }
 
-export {
-  CODE_LENGTH,
-  generateSessionCode,
-  createSession,
-  joinSession,
-  appendPlayerMoves,
-  recordSurrender,
-  MAX_STORED_MOVES_PER_PLAYER,
-};
+export { CODE_LENGTH, generateSessionCode, createSession, joinSession, recordSnapshot, recordSurrender };

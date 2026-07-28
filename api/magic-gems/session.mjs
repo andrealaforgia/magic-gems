@@ -6,20 +6,32 @@
 // production once this function and the static game ended up at different
 // relative locations after deployment.
 import { getStoredSession, setStoredSession, updateStoredSession, checkRateLimit } from './_upstash.mjs';
-import { generateSessionCode, createSession, joinSession, appendPlayerMoves, recordSurrender, CODE_LENGTH } from './_session-logic.mjs';
+import { generateSessionCode, createSession, joinSession, recordSnapshot, recordSurrender, CODE_LENGTH } from './_session-logic.mjs';
 
 const CODE_PATTERN = new RegExp(`^[A-Z]{${CODE_LENGTH}}$`);
 const MAX_NAME_LENGTH = 20;
-// MP4-MOVES/SPEC 13.4 (re-frozen): the only keys that affect board/cursor
-// state - matches src/interaction.js's own DIRECTIONS plus the select/swap
-// key. ESC/S/A/Y/N are deliberately excluded: they're local-only UI concerns
-// (exit confirmation, audio, autoplay), never part of the opponent's replay.
-const VALID_MOVE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ']);
-// A real player (or autoplay, at its own ~107ms/step pace) can't plausibly
-// generate anywhere near this many keys between two publishes on the
-// client's own ~500ms timer - generous headroom while still bounding a
-// scripted flood (M1-style).
-const MAX_MOVES_PER_REQUEST = 50;
+// MP-SYNC-SNAPSHOT/SPEC 13.4: the real board is always this exact shape -
+// matches src/main.js's own BOARD_SIZE. Duplicated here (not imported)
+// rather than reaching outside api/magic-gems/ for it - the same
+// self-containment this directory's other copies already follow, for the
+// same reason (see _session-logic.mjs's own comment: a cross-boundary import
+// risks the exact deploy-topology failure MP2-API-FIX fixed).
+const BOARD_SIZE = 8;
+// Mirrors src/gems.js's own GEM_TYPES, duplicated here for the same reason
+// as BOARD_SIZE above.
+const GEM_TYPES = new Set([
+  'blue-teardrop',
+  'green-octagon',
+  'orange-hexagon',
+  'purple-triangle',
+  'red-square',
+  'silver-octagon',
+  'yellow-diamond',
+]);
+// Security: comfortably above anything a real 10-minute match (SPEC 13.5.2)
+// could ever legitimately produce, while still rejecting NaN/Infinity/
+// negative/garbage values outright.
+const MAX_SNAPSHOT_SCORE = 10_000_000;
 // Security review (commit 023dece), M2: no per-caller throttle previously -
 // tight enough to blunt a scripted flood against a zero-auth endpoint. must
 // stay comfortably above legitimate traffic - security review (commit
@@ -65,14 +77,21 @@ function validCodeOrError(code) {
   return null;
 }
 
-function validMovesOrError(moves) {
-  if (!Array.isArray(moves) || moves.length < 1 || moves.length > MAX_MOVES_PER_REQUEST) {
-    return `moves must be an array of 1 to ${MAX_MOVES_PER_REQUEST} moves`;
-  }
-  for (const move of moves) {
-    if (!VALID_MOVE_KEYS.has(move)) {
-      return 'each move must be one of the known cursor/select keys';
+function validBoardOrError(board) {
+  const shapeError = `board must be a ${BOARD_SIZE}x${BOARD_SIZE} grid of known gem types`;
+  if (!Array.isArray(board) || board.length !== BOARD_SIZE) return shapeError;
+  for (const row of board) {
+    if (!Array.isArray(row) || row.length !== BOARD_SIZE) return shapeError;
+    for (const cell of row) {
+      if (!GEM_TYPES.has(cell)) return shapeError;
     }
+  }
+  return null;
+}
+
+function validScoreOrError(score) {
+  if (typeof score !== 'number' || !Number.isFinite(score) || score < 0 || score > MAX_SNAPSHOT_SCORE) {
+    return `score must be a number between 0 and ${MAX_SNAPSHOT_SCORE}`;
   }
   return null;
 }
@@ -92,10 +111,10 @@ async function handleJoin(env, code, playerName) {
   return result;
 }
 
-async function handleAppendMoves(env, code, playerName, moves) {
+async function handleRecordSnapshot(env, code, playerName, board, score) {
   const existing = await getStoredSession(env, code);
   if (!existing) return { ok: false, error: 'not-found' };
-  const result = appendPlayerMoves(existing, playerName, moves);
+  const result = recordSnapshot(existing, playerName, { board, score });
   if (!result.ok) return result;
   await updateStoredSession(env, result.session);
   return result;
@@ -145,14 +164,16 @@ export default {
           const result = await handleJoin(process.env, body.code, body.playerName);
           return jsonResponse(result);
         }
-        if (body.action === 'moves') {
+        if (body.action === 'snapshot') {
           const codeError = validCodeOrError(body.code);
           if (codeError) return jsonResponse({ error: codeError }, 400);
           const nameError = validNameOrError(body.playerName, 'playerName');
           if (nameError) return jsonResponse({ error: nameError }, 400);
-          const movesError = validMovesOrError(body.moves);
-          if (movesError) return jsonResponse({ error: movesError }, 400);
-          const result = await handleAppendMoves(process.env, body.code, body.playerName, body.moves);
+          const boardError = validBoardOrError(body.board);
+          if (boardError) return jsonResponse({ error: boardError }, 400);
+          const scoreError = validScoreOrError(body.score);
+          if (scoreError) return jsonResponse({ error: scoreError }, 400);
+          const result = await handleRecordSnapshot(process.env, body.code, body.playerName, body.board, body.score);
           return jsonResponse(result);
         }
         if (body.action === 'surrender') {

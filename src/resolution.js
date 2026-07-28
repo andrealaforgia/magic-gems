@@ -179,6 +179,28 @@
     return null;
   }
 
+  // SPEC 12.5: same exhaustive search as findValidMove, but collects EVERY
+  // valid pair instead of stopping at the first - AUTOPLAY-RANDOM-CHOICE
+  // picks uniformly among these rather than always the raster-order-first one.
+  function findAllValidMoves(board) {
+    const size = board.length;
+    const moves = [];
+    for (let row = 0; row < size; row++) {
+      for (let col = 0; col < size; col++) {
+        const a = { row, col };
+        if (col + 1 < size) {
+          const b = { row, col: col + 1 };
+          if (hasMatch(applySwap(board, a, b))) moves.push({ a, b });
+        }
+        if (row + 1 < size) {
+          const b = { row: row + 1, col };
+          if (hasMatch(applySwap(board, a, b))) moves.push({ a, b });
+        }
+      }
+    }
+    return moves;
+  }
+
   // SPEC 8.3: exhaustively tries every (cell, gem type) substitution, in raster
   // order, and returns the first one that creates a valid move without itself
   // being an immediate match - never a whole-board reshuffle, and provably the
@@ -277,6 +299,7 @@
   global.MagicGems.resolveCascade = resolveCascade;
   global.MagicGems.hasAnyValidMove = hasAnyValidMove;
   global.MagicGems.findValidMove = findValidMove;
+  global.MagicGems.findAllValidMoves = findAllValidMoves;
   global.MagicGems.ensurePlayable = ensurePlayable;
   global.MagicGems.tryReviveTwoCells = tryReviveTwoCells;
   global.MagicGems.reviveByIncrementalChange = reviveByIncrementalChange;

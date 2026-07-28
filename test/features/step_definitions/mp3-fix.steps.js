@@ -117,11 +117,12 @@ Then('autoplay is off on the second page', async function () {
   assert.equal(await this.pageB.evaluate(() => window.MagicGems.isMatchAutoplayOn()), false);
 });
 
-// AUTOPLAY-SLOW (SPEC 12.2 re-frozen) E5: same slow-pace/always-valid
-// properties as single-player's own coverage (test/features/autoplay.feature),
-// demonstrated live in a real match instead of inferred from shared code.
+// AUTOPLAY-PACE2X (SPEC 12.2 re-frozen again) E5: same brisk-but-watchable/
+// always-valid properties as single-player's own coverage
+// (test/features/autoplay.feature), demonstrated live in a real match
+// instead of inferred from shared code.
 Then(
-  "the {word} page's own match autoplay is clearly slow and watchable, and every committed swap actually matches, over several real moves",
+  "the {word} page's own match autoplay is clearly brisk but still watchable, and every committed swap actually matches, over several real moves",
   { timeout: 240000 },
   async function (which) {
     const page = pageFor(this, which);
@@ -147,9 +148,10 @@ Then(
     const gaps = [];
     for (let i = 1; i < log.length; i++) gaps.push(log[i].ts - log[i - 1].ts);
     assert.ok(gaps.every((gap) => gap >= 0), 'expected every gap to be a real, non-negative elapsed time');
+    const minGapFloorMs = stepMs * 0.6;
     assert.ok(
-      Math.min(...gaps) >= 700,
-      `expected even the fastest observed gap to reflect a slow, clearly-watchable pace, got ${JSON.stringify(gaps)}`
+      Math.min(...gaps) >= minGapFloorMs,
+      `expected even the fastest observed gap to reflect a brisk but still-watchable pace (>= ${minGapFloorMs}ms), got ${JSON.stringify(gaps)}`
     );
     const soundLog = await page.evaluate(() => window.MagicGems.getMatchSoundLog());
     const invalidCount = soundLog.filter((s) => s === 'invalid').length;
@@ -191,3 +193,54 @@ Then("the second page's match gauge is evenly split at the start", async functio
   const width = await this.pageB.evaluate(() => document.getElementById('match-gauge-fill').style.width);
   assert.equal(width, '50%');
 });
+
+// AUTOPLAY-RANDOM-CHOICE (SPEC 12.5) E4/E6: both pages autoplay independently
+// from the identical shared starting board (13.3.1) - move CHOICE is drawn
+// from each page's own independent cosmeticRandom (13.4.0), but refills
+// still draw from the same session-seeded stream (13.3.1). Right after a
+// fresh board, the number of valid moves can be small (occasionally just
+// one, forced), so an early coincidental identical pick is real and expected
+// sometimes - it just keeps both boards in lockstep a little longer, since a
+// shared pick against shared refill randomness reproduces the same next
+// state exactly. Waiting for a generous number of real logged keys (many
+// full moves' worth) makes a persisting coincidence vanishingly unlikely,
+// while a genuinely deterministic implementation would never diverge no
+// matter how long this waits.
+const AUTOPLAY_DIVERGENCE_MIN_KEYS = 60;
+
+Then(
+  "both pages' own autoplay move choices diverge from each other, over several real moves",
+  { timeout: 90000 },
+  async function () {
+    const stepMs = await this.pageA.evaluate(() => window.MagicGems.AUTOPLAY_STEP_MS);
+    const deadline = Date.now() + stepMs * AUTOPLAY_DIVERGENCE_MIN_KEYS * 2;
+    let keyCountA = 0;
+    let keyCountB = 0;
+    do {
+      [keyCountA, keyCountB] = await Promise.all([
+        this.pageA.evaluate(() => window.MagicGems.getMatchAutoplayKeyLog().length),
+        this.pageB.evaluate(() => window.MagicGems.getMatchAutoplayKeyLog().length),
+      ]);
+      if (keyCountA >= AUTOPLAY_DIVERGENCE_MIN_KEYS && keyCountB >= AUTOPLAY_DIVERGENCE_MIN_KEYS) break;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    } while (Date.now() < deadline);
+
+    assert.ok(
+      keyCountA >= AUTOPLAY_DIVERGENCE_MIN_KEYS,
+      `expected at least ${AUTOPLAY_DIVERGENCE_MIN_KEYS} logged autoplay keys on the first page, got ${keyCountA}`
+    );
+    assert.ok(
+      keyCountB >= AUTOPLAY_DIVERGENCE_MIN_KEYS,
+      `expected at least ${AUTOPLAY_DIVERGENCE_MIN_KEYS} logged autoplay keys on the second page, got ${keyCountB}`
+    );
+    const [boardA, boardB] = await Promise.all([
+      this.pageA.evaluate(() => window.MagicGems.getMatchBoard()),
+      this.pageB.evaluate(() => window.MagicGems.getMatchBoard()),
+    ]);
+    assert.notDeepEqual(
+      boardA,
+      boardB,
+      'expected the two independently-autoplaying boards to have diverged by now, but they are still identical'
+    );
+  }
+);

@@ -2,10 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import { loadMagicGems } from '../support/load-src.js';
 
-const { hashStringToSeed, createSeededRandom, withRandom, readMathRandom, getMathRandomRef } = loadMagicGems([
-  new URL('../../src/seeded-random.js', import.meta.url),
-  new URL('../support/math-random-probe.js', import.meta.url),
-]);
+const { hashStringToSeed, createSeededRandom } = loadMagicGems([new URL('../../src/seeded-random.js', import.meta.url)]);
 
 test('hashStringToSeed is deterministic - the same string always hashes to the same seed', () => {
   assert.equal(hashStringToSeed('ABCDEFGHIJ'), hashStringToSeed('ABCDEFGHIJ'));
@@ -60,49 +57,9 @@ test('createSeededRandom does not just repeat the same value forever (a real var
   assert.ok(values.size > 1, 'expected the sequence to actually vary');
 });
 
-// MP4-MOVES/SPEC 13.4: withRandom is the seam that routes ALL of a
-// remote-replica replay's Math.random consumption (board generation, cascade
-// refills, shatter-fragment velocities) through its own seeded generator
-// instead of the ambient one - this is the mechanism the whole architecture's
-// "two independently-seeded replicas end up byte-identical" claim rests on,
-// so it needs its own direct unit coverage rather than only being exercised
-// indirectly through acceptance tests (QA review, #538).
-test('withRandom runs fn with Math.random actually swapped to the given function, observed from another consumer', () => {
-  const value = withRandom(() => 0.5, readMathRandom);
-  assert.equal(value, 0.5);
-});
-
-test('withRandom returns fn\'s own return value', () => {
-  const result = withRandom(() => 0.5, () => 'the fn result');
-  assert.equal(result, 'the fn result');
-});
-
-test('withRandom restores the exact previous Math.random afterward', () => {
-  const before = getMathRandomRef();
-  withRandom(() => 0.5, () => {});
-  assert.equal(getMathRandomRef(), before);
-});
-
-test('withRandom restores the previous Math.random even when fn throws', () => {
-  const before = getMathRandomRef();
-  assert.throws(() =>
-    withRandom(() => 0.5, () => {
-      throw new Error('boom');
-    })
-  );
-  assert.equal(getMathRandomRef(), before);
-});
-
-test('withRandom lets two independently-seeded instances drive identical Math.random consumers to a byte-identical result', () => {
-  const replicaA = createSeededRandom(42);
-  const replicaB = createSeededRandom(42);
-
-  function consumeThree() {
-    return [readMathRandom(), readMathRandom(), readMathRandom()];
-  }
-
-  const resultA = withRandom(replicaA, consumeThree);
-  const resultB = withRandom(replicaB, consumeThree);
-
-  assert.deepEqual(resultA, resultB);
+test('createSeededRandom lets two independently-seeded instances draw identical sequences (SPEC 13.3.1: two clients sharing a seed build the identical starting board)', () => {
+  const a = createSeededRandom(42);
+  const b = createSeededRandom(42);
+  const drawThree = (random) => [random(), random(), random()];
+  assert.deepEqual(drawThree(a), drawThree(b));
 });

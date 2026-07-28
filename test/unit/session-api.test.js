@@ -240,9 +240,14 @@ test('POST join with a name already in an already-full session reconnects instea
   assert.deepEqual(body.session.players, ['Alice', 'Bob']);
 });
 
-// MP4-MOVES: each client sends its own input actions (moves) for the other
-// to replay, superseding MP4's own board/score snapshot approach.
-test('moves records the caller\'s moves in order under their own name in the session', async (t) => {
+// MP-SYNC-SNAPSHOT/SPEC 13.4 (rewritten): each client sends its FULL current
+// board and score whenever its own board settles - the opponent draws it
+// directly, superseding the earlier move-replay approach.
+function makeBoard(fill = 'red-square') {
+  return Array.from({ length: 8 }, () => Array(8).fill(fill));
+}
+
+test('snapshot records the caller\'s board and score under their own name in the session', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   const fetchImpl = fakeUpstash();
   withFetch(t, fetchImpl);
@@ -251,17 +256,17 @@ test('moves records the caller\'s moves in order under their own name in the ses
   const res = await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'moves', code: created.session.code, playerName: 'Alice', moves: ['ArrowUp', ' '] }),
+      body: JSON.stringify({ action: 'snapshot', code: created.session.code, playerName: 'Alice', board: makeBoard(), score: 120 }),
     })
   );
   const body = await res.json();
 
   assert.equal(res.status, 200);
   assert.equal(body.ok, true);
-  assert.deepEqual(body.session.moves.Alice, ['ArrowUp', ' ']);
+  assert.deepEqual(body.session.snapshots.Alice, { board: makeBoard(), score: 120 });
 });
 
-test('a successful moves append is actually persisted, not just echoed back in its own response', async (t) => {
+test('a successful snapshot is actually persisted, not just echoed back in its own response, and overwrites rather than accumulates', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   const fetchImpl = fakeUpstash();
   withFetch(t, fetchImpl);
@@ -270,22 +275,26 @@ test('a successful moves append is actually persisted, not just echoed back in i
   await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'moves', code: created.session.code, playerName: 'Alice', moves: ['ArrowUp'] }),
+      body: JSON.stringify({ action: 'snapshot', code: created.session.code, playerName: 'Alice', board: makeBoard('red-square'), score: 10 }),
     })
   );
   await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'moves', code: created.session.code, playerName: 'Alice', moves: [' '] }),
+      body: JSON.stringify({ action: 'snapshot', code: created.session.code, playerName: 'Alice', board: makeBoard('blue-teardrop'), score: 70 }),
     })
   );
 
   const getRes = await handler.fetch(new Request(`https://x/api/magic-gems/session?code=${created.session.code}`));
   const getBody = await getRes.json();
-  assert.deepEqual(getBody.session.moves.Alice, ['ArrowUp', ' '], 'expected the second append to add to the first, not replace it');
+  assert.deepEqual(
+    getBody.session.snapshots.Alice,
+    { board: makeBoard('blue-teardrop'), score: 70 },
+    'expected the second snapshot to replace the first, not accumulate'
+  );
 });
 
-test('moves refuses a name that is not actually one of the session\'s own players, as a normal 200 result, not a 500', async (t) => {
+test('snapshot refuses a name that is not actually one of the session\'s own players, as a normal 200 result, not a 500', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   const fetchImpl = fakeUpstash();
   withFetch(t, fetchImpl);
@@ -294,7 +303,7 @@ test('moves refuses a name that is not actually one of the session\'s own player
   const res = await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'moves', code: created.session.code, playerName: 'Mallory', moves: ['ArrowUp'] }),
+      body: JSON.stringify({ action: 'snapshot', code: created.session.code, playerName: 'Mallory', board: makeBoard(), score: 0 }),
     })
   );
   const body = await res.json();
@@ -304,14 +313,14 @@ test('moves refuses a name that is not actually one of the session\'s own player
   assert.equal(body.error, 'not-a-player');
 });
 
-test('moves against an unknown code reports not-found as a normal 200 result, not a 500', async (t) => {
+test('snapshot against an unknown code reports not-found as a normal 200 result, not a 500', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   withFetch(t, fakeUpstash());
 
   const res = await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'moves', code: 'NOSUCHCODE', playerName: 'Alice', moves: ['ArrowUp'] }),
+      body: JSON.stringify({ action: 'snapshot', code: 'NOSUCHCODE', playerName: 'Alice', board: makeBoard(), score: 0 }),
     })
   );
   const body = await res.json();
@@ -321,14 +330,14 @@ test('moves against an unknown code reports not-found as a normal 200 result, no
   assert.equal(body.error, 'not-found');
 });
 
-test('moves rejects a malformed code with 400, never reaching the store', async (t) => {
+test('snapshot rejects a malformed code with 400, never reaching the store', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   withFetch(t, fakeUpstash());
 
   const res = await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'moves', code: 'not-a-code', playerName: 'Alice', moves: ['ArrowUp'] }),
+      body: JSON.stringify({ action: 'snapshot', code: 'not-a-code', playerName: 'Alice', board: makeBoard(), score: 0 }),
     })
   );
   const body = await res.json();
@@ -336,7 +345,7 @@ test('moves rejects a malformed code with 400, never reaching the store', async 
   assert.equal(body.error, 'code must be exactly 10 uppercase letters');
 });
 
-test('moves rejects an oversized playerName with 400', async (t) => {
+test('snapshot rejects an oversized playerName with 400', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   withFetch(t, fakeUpstash());
   const created = await createViaHandler('Alice');
@@ -344,7 +353,7 @@ test('moves rejects an oversized playerName with 400', async (t) => {
   const res = await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'moves', code: created.session.code, playerName: 'B'.repeat(21), moves: ['ArrowUp'] }),
+      body: JSON.stringify({ action: 'snapshot', code: created.session.code, playerName: 'B'.repeat(21), board: makeBoard(), score: 0 }),
     })
   );
   const body = await res.json();
@@ -352,91 +361,81 @@ test('moves rejects an oversized playerName with 400', async (t) => {
   assert.equal(body.error, 'playerName must be a string between 1 and 20 characters');
 });
 
-test('moves rejects a payload that is not a real array of known move keys with 400', async (t) => {
+// Security review pattern carried over from MP4's own move-key finding:
+// shape alone isn't enough - every cell must be a real gem type, not any
+// arbitrary string, and the grid must be the real 8x8 shape.
+test('snapshot rejects a malformed board with 400', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   withFetch(t, fakeUpstash());
   const created = await createViaHandler('Alice');
 
-  async function postMoves(moves) {
+  async function postSnapshot(board) {
     const res = await handler.fetch(
       new Request('https://x/api/magic-gems/session', {
         method: 'POST',
-        body: JSON.stringify({ action: 'moves', code: created.session.code, playerName: 'Alice', moves }),
+        body: JSON.stringify({ action: 'snapshot', code: created.session.code, playerName: 'Alice', board, score: 0 }),
       })
     );
     return { status: res.status, body: await res.json() };
   }
 
-  const notAnArray = await postMoves('ArrowUp');
+  const notAnArray = await postSnapshot('not-a-board');
   assert.equal(notAnArray.status, 400);
-  assert.equal(notAnArray.body.error, 'moves must be an array of 1 to 50 moves');
+  assert.match(notAnArray.body.error, /board/i);
 
-  const empty = await postMoves([]);
-  assert.equal(empty.status, 400);
+  const wrongRowCount = await postSnapshot(Array(7).fill(Array(8).fill('red-square')));
+  assert.equal(wrongRowCount.status, 400);
 
-  const tooMany = await postMoves(Array(51).fill('ArrowUp'));
-  assert.equal(tooMany.status, 400);
+  const wrongColCount = await postSnapshot(Array(8).fill(Array(7).fill('red-square')));
+  assert.equal(wrongColCount.status, 400);
 
-  // Security review pattern carried over from MP4's own board-cell finding:
-  // shape alone isn't enough - each element must be a real move key, not any
-  // arbitrary string.
-  const unknownKey = await postMoves(['ArrowUp', 'Tab']);
-  assert.equal(unknownKey.status, 400);
-  assert.equal(unknownKey.body.error, 'each move must be one of the known cursor/select keys');
+  const unknownGem = await postSnapshot(Array(8).fill(Array(8).fill('not-a-real-gem')));
+  assert.equal(unknownGem.status, 400);
 });
 
-test('moves accepts every known cursor/select key, and a batch exactly at the size cap', async (t) => {
+test('snapshot rejects a malformed score with 400', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   withFetch(t, fakeUpstash());
   const created = await createViaHandler('Alice');
 
-  const allKeys = await handler.fetch(
-    new Request('https://x/api/magic-gems/session', {
-      method: 'POST',
-      body: JSON.stringify({
-        action: 'moves',
-        code: created.session.code,
-        playerName: 'Alice',
-        moves: ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '],
-      }),
-    })
-  );
-  assert.equal(allKeys.status, 200);
-  assert.equal((await allKeys.json()).ok, true);
+  async function postScore(score) {
+    const res = await handler.fetch(
+      new Request('https://x/api/magic-gems/session', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'snapshot', code: created.session.code, playerName: 'Alice', board: makeBoard(), score }),
+      })
+    );
+    return { status: res.status, body: await res.json() };
+  }
 
-  const atCap = await handler.fetch(
-    new Request('https://x/api/magic-gems/session', {
-      method: 'POST',
-      body: JSON.stringify({ action: 'moves', code: created.session.code, playerName: 'Alice', moves: Array(50).fill('ArrowUp') }),
-    })
-  );
-  assert.equal(atCap.status, 200);
-  assert.equal((await atCap.json()).ok, true);
+  const negative = await postScore(-1);
+  assert.equal(negative.status, 400);
+  assert.match(negative.body.error, /score/i);
+
+  const notANumber = await postScore('9001');
+  assert.equal(notANumber.status, 400);
+
+  const notFinite = await postScore(Infinity);
+  assert.equal(notFinite.status, 400);
+
+  const absurdlyHuge = await postScore(1e20);
+  assert.equal(absurdlyHuge.status, 400);
 });
 
-// Security review: an unbounded move log lets a single player's own storage
-// cost grow without limit, entirely within the existing rate-limit envelope.
-test('moves refuses once a player\'s stored moves would exceed the per-player cap, as a normal 200 result, not a 500', async (t) => {
+test('snapshot accepts a score of exactly zero, not just positive scores', async (t) => {
   withEnv(t, CONFIGURED_ENV);
-  const fetchImpl = fakeUpstash();
-  withFetch(t, fetchImpl);
+  withFetch(t, fakeUpstash());
   const created = await createViaHandler('Alice');
-  fetchImpl.store.set(
-    sessionKey(created.session.code),
-    JSON.stringify({ ...created.session, moves: { Alice: Array(8000).fill('ArrowUp') } })
-  );
 
   const res = await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'moves', code: created.session.code, playerName: 'Alice', moves: ['ArrowUp'] }),
+      body: JSON.stringify({ action: 'snapshot', code: created.session.code, playerName: 'Alice', board: makeBoard(), score: 0 }),
     })
   );
-  const body = await res.json();
 
   assert.equal(res.status, 200);
-  assert.equal(body.ok, false);
-  assert.equal(body.error, 'too-many-moves');
+  assert.equal((await res.json()).ok, true);
 });
 
 // MP5/SPEC 13.5.1: a surrendering player's exit is communicated through the

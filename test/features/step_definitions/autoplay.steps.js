@@ -131,23 +131,27 @@ Then(
   }
 );
 
-// SPEC 12.2 (re-frozen, AUTOPLAY-SLOW): supersedes the prior AUTOPLAY-SPEED
-// claim entirely - the Owner wants to watch and verify each swap by eye, so
-// autoplay's own emitted key presses (cursor move, select, aim, commit) must
-// now have a clearly-watchable pause between EVERY one of them, including
-// between two steps within the very same move - the smallest observed gap
-// is the robust signal, since some gaps legitimately also include a
-// cascade/fall/revive animation settling on top of the base pace (longer
-// still, and variable with chain depth).
-Then('autoplay\'s own key presses are clearly slow and watchable, with a real pause between every one', async function () {
+// SPEC 12.2 (re-frozen again, AUTOPLAY-PACE2X): the Owner still wants to
+// watch and verify each swap by eye, but roughly HALF the AUTOPLAY-SLOW
+// pause - so autoplay's own emitted key presses (cursor move, select, aim,
+// commit) must still have a real, non-instant pause between EVERY one of
+// them, including between two steps within the very same move - the
+// smallest observed gap is the robust signal, since some gaps legitimately
+// also include a cascade/fall/revive animation settling on top of the base
+// pace (longer still, and variable with chain depth). The floor is derived
+// from the live AUTOPLAY_STEP_MS (not a re-typed literal) at a ratio
+// (0.6) with headroom below it for real scheduling jitter.
+Then('autoplay\'s own key presses are clearly brisk but still watchable, with a real pause between every one', async function () {
+  const stepMs = await this.page.evaluate(() => window.MagicGems.AUTOPLAY_STEP_MS);
   const log = await this.page.evaluate(() => window.MagicGems.getAutoplayKeyLog());
   assert.ok(log.length >= 2, `expected at least two logged autoplay key presses, got ${log.length}`);
   const gaps = [];
   for (let i = 1; i < log.length; i++) gaps.push(log[i].ts - log[i - 1].ts);
   assert.ok(gaps.every((gap) => gap >= 0), 'expected every gap to be a real, non-negative elapsed time');
+  const minGapFloorMs = stepMs * 0.6;
   assert.ok(
-    Math.min(...gaps) >= 700,
-    `expected even the fastest observed gap to reflect a slow, clearly-watchable pace, got ${JSON.stringify(gaps)}`
+    Math.min(...gaps) >= minGapFloorMs,
+    `expected even the fastest observed gap to reflect a brisk but still-watchable pace (>= ${minGapFloorMs}ms), got ${JSON.stringify(gaps)}`
   );
 });
 

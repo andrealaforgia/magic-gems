@@ -28,13 +28,14 @@ Feature: A player can rejoin their own session (MP-RECONNECT)
     And the second page enters the name "Erin" and enters that same code
     Then both pages reach the ready state showing "Dave & Erin"
 
-  # MP-REPLICA-ASYMMETRY (RE-OPEN): a player whose page reloads MID-MATCH
-  # (not just in the lobby) reconnects fine at the session level (E1 above),
-  # but the match view itself used to silently reset to the starting board
-  # and zero score - losing the reconnecting player's own real progress, and
-  # permanently desyncing the OPPONENT's own replica of them, since the
-  # opponent's replica never resets and the reconnecting player's own future
-  # moves were computed against a board the opponent no longer shared.
+  # MP-REPLICA-ASYMMETRY (RE-OPEN)/MP-SYNC-SNAPSHOT: a player whose page
+  # reloads MID-MATCH (not just in the lobby) reconnects fine at the session
+  # level (E1 above), but the match view itself used to silently reset to the
+  # starting board and zero score - losing the reconnecting player's own real
+  # progress. Now restored from that player's own last snapshot on record
+  # (SPEC 13.2.6/13.4), rather than replayed - the opponent's own view of
+  # them was never at risk either way, since it only ever shows whatever
+  # snapshot this player last actually sent.
   @E5 @integration
   Scenario: A player who reloads mid-match keeps their own real progress, and the opponent's own faithful view of them survives it
     Given two independent pages are both at the multiplayer lobby's name entry step

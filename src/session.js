@@ -6,11 +6,6 @@
   const CODE_LENGTH = 10;
   const CODE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
-  // Security review: mirrors api/magic-gems/_session-logic.mjs's own cap -
-  // without it a single player's move log grows without limit, entirely
-  // within the existing rate-limit envelope.
-  const MAX_STORED_MOVES_PER_PLAYER = 8000;
-
   function generateSessionCode() {
     let code = '';
     for (let i = 0; i < CODE_LENGTH; i++) {
@@ -43,28 +38,20 @@
     return !!session && session.players.length === 2;
   }
 
-  // SPEC 13.4 (re-frozen)/MP4-MOVES: each client sends its own input actions
-  // (moves) as they happen; the opponent replays them to reconstruct that
-  // player's board deterministically, superseding MP4's own original
-  // board/score snapshot approach. Mirrors api/magic-gems/_session-logic.mjs's
-  // own copy (kept in sync by hand, not shared - see that file's own
-  // comment). Append-only - never replaces a player's own prior moves, and
-  // never touches the other player's own log.
+  // MP-SYNC-SNAPSHOT/SPEC 13.4 (rewritten): whenever a client's own board
+  // settles, it sends its FULL current board and score; the opponent draws
+  // it directly, with no move-by-move replay. Mirrors
+  // api/magic-gems/_session-logic.mjs's own copy (kept in sync by hand, not
+  // shared - see that file's own comment). A snapshot OVERWRITES the
+  // player's own prior one - only the latest is ever meaningful (13.4.0).
   //
   // Security review (commit be737cd), Finding 1 pattern carried over:
   // playerName must actually be one of this session's own players.
-  function appendPlayerMoves(session, playerName, newMoves) {
+  function recordSnapshot(session, playerName, snapshot) {
     if (!session.players.includes(playerName)) return { ok: false, error: 'not-a-player' };
-    const existingMoves = (session.moves && session.moves[playerName]) || [];
-    if (existingMoves.length + newMoves.length > MAX_STORED_MOVES_PER_PLAYER) {
-      return { ok: false, error: 'too-many-moves' };
-    }
     return {
       ok: true,
-      session: {
-        ...session,
-        moves: { ...session.moves, [playerName]: [...existingMoves, ...newMoves] },
-      },
+      session: { ...session, snapshots: { ...session.snapshots, [playerName]: snapshot } },
     };
   }
 
@@ -85,7 +72,6 @@
   global.MagicGems.createSession = createSession;
   global.MagicGems.joinSession = joinSession;
   global.MagicGems.isSessionReady = isSessionReady;
-  global.MagicGems.appendPlayerMoves = appendPlayerMoves;
+  global.MagicGems.recordSnapshot = recordSnapshot;
   global.MagicGems.recordSurrender = recordSurrender;
-  global.MagicGems.MAX_STORED_MOVES_PER_PLAYER = MAX_STORED_MOVES_PER_PLAYER;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -49,15 +49,6 @@ Then(
   }
 );
 
-// QA review (#538): a completion score's own time-multiplier is stamped
-// from EACH side's own real-time clock (elapsed since ITS OWN last
-// completion) - the source's at the moment of the real move, the remote
-// replica's at whatever later instant its replay actually lands - so even a
-// correct replay can land a whole-second boundary apart and score a point
-// or two differently. Real bugs (a missed chain step, double-counting) miss
-// by far more than this, so a tight tolerance still catches them.
-const SCORE_TOLERANCE_FRACTION = 0.1;
-
 Then(
   "the {word} page's remote match board and score eventually reflect the {word} page's own local board and score",
   { timeout: 25000 },
@@ -65,23 +56,14 @@ Then(
     const remotePage = pageFor(this, remoteWhich);
     const sourcePage = pageFor(this, sourceWhich);
 
-    // Polls both pages' CURRENT state each round until the boards
-    // themselves actually match, rather than a fixed settle-then-sleep -
-    // the remote replica replays through the same real per-phase animation
-    // timing as normal play, so a merely-positive score only confirms the
-    // FIRST completion in a chain landed, not that every subsequent chained
-    // step has too; only a real board match confirms the whole chain has
-    // finished. Generous margin: this same step also covers the scenario
-    // where one page's own channel is deliberately slowed (an extra ~1.2s
-    // per request, on both its publishes and its polls).
-    // The remote replica's own board/interaction update SYNCHRONOUSLY as
-    // soon as a move is replayed, but its score only updates as its
-    // animation queue actually ticks through each chained completion over
-    // real time (see remoteAdvanceQueue) - so the board can reach its final
-    // state before the score has caught up. Both conditions must hold
-    // together before this loop is done waiting.
+    // MP-SYNC-SNAPSHOT/SPEC 13.4: polls both pages' CURRENT state each round
+    // until they actually match, rather than a fixed settle-then-sleep - a
+    // snapshot only updates the remote grid once it has actually arrived
+    // over the network (13.4.2's own async, best-effort delivery), which can
+    // briefly lag behind a degraded channel or a sustained burst of moves
+    // (mp4-fix.feature).
     const deadline = Date.now() + 20000;
-    let finalSourceScore, finalRemoteScore, finalSourceBoard, finalRemoteBoard, scoreTolerance;
+    let finalSourceScore, finalRemoteScore, finalSourceBoard, finalRemoteBoard;
     do {
       [finalSourceScore, finalRemoteScore, finalSourceBoard, finalRemoteBoard] = await Promise.all([
         sourcePage.evaluate(() => window.MagicGems.getMatchScore()),
@@ -89,21 +71,44 @@ Then(
         sourcePage.evaluate(() => window.MagicGems.getMatchBoard()),
         remotePage.evaluate(() => window.MagicGems.getMatchRemoteBoard()),
       ]);
-      scoreTolerance = Math.max(1, Math.ceil(finalSourceScore * SCORE_TOLERANCE_FRACTION));
       const boardsMatch = JSON.stringify(finalSourceBoard) === JSON.stringify(finalRemoteBoard);
-      const scoresMatch = finalSourceScore > 0 && Math.abs(finalRemoteScore - finalSourceScore) <= scoreTolerance;
+      const scoresMatch = finalSourceScore > 0 && finalRemoteScore === finalSourceScore;
       if (boardsMatch && scoresMatch) break;
       await new Promise((resolve) => setTimeout(resolve, 200));
     } while (Date.now() < deadline);
 
     assert.ok(finalSourceScore > 0, `expected a positive source score, got ${finalSourceScore}`);
-    assert.ok(
-      Math.abs(finalRemoteScore - finalSourceScore) <= scoreTolerance,
-      `expected the remote score (${finalRemoteScore}) to be within ${scoreTolerance} of the source score (${finalSourceScore})`
+    // MP-SYNC-SNAPSHOT/SPEC 13.4.0: the remote score is the opponent's own
+    // exact reported value, drawn directly rather than independently
+    // derived - so once a snapshot has arrived, it must match exactly.
+    assert.equal(
+      finalRemoteScore,
+      finalSourceScore,
+      `expected the remote score (${finalRemoteScore}) to exactly match the source score (${finalSourceScore})`
     );
     assert.deepEqual(finalRemoteBoard, finalSourceBoard);
   }
 );
+
+// MP-SYNC-SNAPSHOT/SPEC 13.4/E7: a remote update is a direct board draw -
+// no sound plays for it, unlike the earlier move-replay approach's own
+// (silent, but animated) replay. Records this page's own sound log length
+// per its own World instance, keyed by which page, so both pages' own
+// recordings can coexist within the same scenario.
+Given("I record the {word} page's own match sound log", async function (which) {
+  this.recordedSoundLogLengths = this.recordedSoundLogLengths || {};
+  this.recordedSoundLogLengths[which] = await pageFor(this, which).evaluate(() => window.MagicGems.getMatchSoundLog().length);
+});
+
+Then("the {word} page's own match sound log is unchanged from what was recorded before", async function (which) {
+  const recordedLength = this.recordedSoundLogLengths[which];
+  const currentLog = await pageFor(this, which).evaluate(() => window.MagicGems.getMatchSoundLog());
+  assert.equal(
+    currentLog.length,
+    recordedLength,
+    `expected no new sounds on the ${which} page, got ${JSON.stringify(currentLog.slice(recordedLength))}`
+  );
+});
 
 Then(
   "the {word} page's own match gauge eventually shows the {word} page's own player leading",

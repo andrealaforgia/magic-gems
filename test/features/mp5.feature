@@ -31,6 +31,8 @@ Feature: End of match & winner (MP5)
     Then the first page's match result eventually shows "YOU WIN!"
     And the second page's match result eventually shows "YOU LOSE"
     And the first page's match result is a large, white, translucent watermark in the display font, over the still-visible frozen match view, with both players' final scores shown
+    When I press "Enter" on the first page
+    Then the start screen is shown again
 
   # QA review (commit e6e6715): the implementation calls endMatch('lose')
   # unconditionally, not gated on the surrender request's own network
@@ -58,6 +60,8 @@ Feature: End of match & winner (MP5)
     Then the first page's match result eventually shows "DRAW"
     And the second page's match result eventually shows "DRAW"
     And the first page's match result is a large, white, translucent watermark in the display font, over the still-visible frozen match view, with both players' final scores shown
+    When I press "Enter" on the first page
+    Then the start screen is shown again
 
   @E6
   Scenario: Single-player's own ESC-exit is unaffected - no surrender or winner concept

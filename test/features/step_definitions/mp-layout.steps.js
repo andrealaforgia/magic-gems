@@ -38,6 +38,24 @@ Then(
   }
 );
 
+// MP-GRID-ALIGN/SPEC 13.3.2: the remote column previously lacked the local
+// column's own multiplier bar, so its canvas started one bar-height higher -
+// checked both at match start and again after real play (a swap/cascade on
+// the local side), since either grid resizing or a layout-affecting DOM
+// change during play could reintroduce the drift.
+Then("the first page's local and remote grids are the same size, with their top edges aligned", async function () {
+  const layout = await this.pageA.evaluate(() => ({
+    local: document.getElementById('match-local-board').getBoundingClientRect(),
+    remote: document.getElementById('match-remote-board').getBoundingClientRect(),
+  }));
+  assert.equal(layout.local.width, layout.remote.width, `expected equal widths, got local=${layout.local.width} remote=${layout.remote.width}`);
+  assert.equal(layout.local.height, layout.remote.height, `expected equal heights, got local=${layout.local.height} remote=${layout.remote.height}`);
+  assert.ok(
+    Math.abs(layout.local.top - layout.remote.top) < 1,
+    `expected aligned top edges, got local.top=${layout.local.top} remote.top=${layout.remote.top}`
+  );
+});
+
 Then("the first page's gauge is vertically centred on the screen", async function () {
   const { gaugeCenterY, viewportHeight } = await this.pageA.evaluate(() => {
     const rect = document.getElementById('match-gauge').getBoundingClientRect();

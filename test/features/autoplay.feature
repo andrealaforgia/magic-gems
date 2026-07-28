@@ -17,19 +17,19 @@ Feature: A hands-off demo mode that plays the game itself (AUTOPLAY)
     Given I open "index.html" directly as a file:// URL with no server or build step
     Then the autoplay instruction line reads "A — TOGGLE AUTOPLAY" in the pixel font, below the grid
 
-  # AUTOPLAY-SLOW (SPEC 12.2 re-frozen, supersedes AUTOPLAY-SPEED entirely):
-  # the Owner wants to watch autoplay and visually confirm every swap is a
-  # legal 3+ match, so the emulated actions now run at a SLOW, clearly-
-  # watchable pace instead of a brisk one.
+  # AUTOPLAY-PACE2X (SPEC 12.2 re-frozen again): the Owner still wants every
+  # swap visually confirmable, but AUTOPLAY-SLOW's fully-slow pace was more
+  # deliberate than needed - roughly HALF the pause between moves keeps every
+  # swap followable while feeling brisk rather than sluggish.
   @E3 @E4 @e2e
-  Scenario: Autoplay genuinely plays a full move, at a slow and watchable pace
+  Scenario: Autoplay genuinely plays a full move, at a brisk but still-watchable pace
     Given I open "index.html" directly as a file:// URL with no server or build step
     And I record the classified gem grid
     When I press "a"
     Then autoplay is on
     And the board settles into a new, match-free arrangement within a generous real timeout
     And the classified gem grid has changed from the one recorded before, within a generous real timeout
-    And autoplay's own key presses are clearly slow and watchable, with a real pause between every one
+    And autoplay's own key presses are clearly brisk but still watchable, with a real pause between every one
 
   @E10 @e2e
   Scenario: The resulting swap, shatter, and fall are not sped up during autoplay
@@ -39,7 +39,7 @@ Feature: A hands-off demo mode that plays the game itself (AUTOPLAY)
     And the resulting swap, shatter, and fall play at the normal deliberate pace, not sped up
 
   @E3 @e2e
-  Scenario: Autoplay stays coherent across multiple cycles at the slow pace
+  Scenario: Autoplay stays coherent across multiple cycles at the brisk pace
     Given I open "index.html" directly as a file:// URL with no server or build step
     When I press "a"
     Then autoplay is on

@@ -50,17 +50,17 @@ Feature: Each player fully controls their own side of the match (MP3-FIX)
     Then autoplay is on on the first page
     And autoplay is off on the second page
 
-  # AUTOPLAY-SLOW (SPEC 12.2 re-frozen) E5: the slow-pace fix must hold in a
-  # real match too, not just single-player - both share the same tuning
-  # constants, but this proves it live rather than by inference.
+  # AUTOPLAY-PACE2X (SPEC 12.2 re-frozen again) E5: the brisk-pace fix must
+  # hold in a real match too, not just single-player - both share the same
+  # tuning constants, but this proves it live rather than by inference.
   @E4 @integration
-  Scenario: Autoplay in a real match also runs at the new slow, watchable pace and only ever commits valid matches
+  Scenario: Autoplay in a real match also runs at the new brisk, watchable pace and only ever commits valid matches
     Given two independent pages are both at the multiplayer lobby's name entry step
     When the first page enters the name "Alice" and generates a code
     And the second page enters the name "Bob" and enters that same code
     Then the match begins on both pages
     When I press "a" on the first page
-    Then the first page's own match autoplay is clearly slow and watchable, and every committed swap actually matches, over several real moves
+    Then the first page's own match autoplay is clearly brisk but still watchable, and every committed swap actually matches, over several real moves
 
   @E5 @integration
   Scenario: ESC opens the exit overlay for one player only, and N resumes just that player's own match
@@ -78,6 +78,22 @@ Feature: Each player fully controls their own side of the match (MP3-FIX)
   # BOTH clients, with the opponent correctly proclaimed the winner, not just
   # a plain per-player exit. That more precise claim, including the correct
   # winner/loser on each side, is mp5.feature's own dedicated coverage.
+
+  # AUTOPLAY-RANDOM-CHOICE (SPEC 12.5) E4/E6: both clients build the
+  # IDENTICAL starting board from the shared session code (13.3.1) - if
+  # autoplay's own move choice were deterministic, two clients autoplaying
+  # from that same board would make the exact same moves in the exact same
+  # order. Proves the opposite: each side's own randomly-chosen moves
+  # diverge from the other's.
+  @E4 @integration
+  Scenario: Two clients autoplaying from the identical starting board make different move choices
+    Given two independent pages are both at the multiplayer lobby's name entry step
+    When the first page enters the name "Alice" and generates a code
+    And the second page enters the name "Bob" and enters that same code
+    Then the match begins on both pages
+    When I press "a" on the first page
+    And I press "a" on the second page
+    Then both pages' own autoplay move choices diverge from each other, over several real moves
 
   @E6 @E7 @integration
   Scenario: The countdown and gauge remain visible throughout, on both real clients

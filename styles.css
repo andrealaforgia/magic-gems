@@ -391,6 +391,16 @@ body {
 /* MP3-FIX (SPEC 13.3.5, 10): a per-player multiplier bar on the match's own
    local side - same look as single-player's, just narrower to fit the
    split-screen column instead of the full-width HUD row. */
+/* MP-GRID-ALIGN/SPEC 13.3.2: the remote column has no multiplier bar of its
+   own (SPEC 13.3.5's combo mechanic is local-only) - without this, the
+   remote canvas sat one bar-height higher than the local one. This invisible
+   spacer occupies the exact same height as .match-multiplier-bar so both
+   columns' canvases start at the same vertical position. */
+.match-remote-spacer {
+  height: 32px;
+  visibility: hidden;
+}
+
 .match-multiplier-bar {
   width: 12rem;
   max-width: 100%;

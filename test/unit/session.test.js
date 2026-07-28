@@ -8,9 +8,8 @@ const {
   createSession,
   joinSession,
   isSessionReady,
-  appendPlayerMoves,
+  recordSnapshot,
   recordSurrender,
-  MAX_STORED_MOVES_PER_PLAYER,
 } = loadMagicGems([new URL('../../src/session.js', import.meta.url)]);
 
 test('generateSessionCode returns a 10-letter uppercase code (SPEC 13.2.2)', () => {
@@ -96,90 +95,43 @@ test('isSessionReady is false for a missing session, never throws', () => {
   assert.equal(isSessionReady(null), false);
 });
 
-// MP4-MOVES: mirrors _session-logic.mjs's own coverage of the server-side copy.
-test('appendPlayerMoves records a player\'s moves in order under their own name, without touching the other player\'s', () => {
+// MP-SYNC-SNAPSHOT/SPEC 13.4 (rewritten): mirrors _session-logic.mjs's own
+// coverage of the server-side copy.
+test('recordSnapshot stores a player\'s board and score under their own name, without touching the other player\'s', () => {
   const session = createSession('ABCDEFGHIJ', 'Alice');
   const { session: joined } = joinSession(session, 'Bob');
 
-  const result = appendPlayerMoves(joined, 'Alice', ['ArrowUp', ' ']);
+  const result = recordSnapshot(joined, 'Alice', { board: [['red-square']], score: 40 });
 
   assert.equal(result.ok, true);
-  assert.deepEqual(result.session.moves.Alice, ['ArrowUp', ' ']);
-  assert.equal(result.session.moves.Bob, undefined, 'must not fabricate a move log for the other player');
+  assert.deepEqual(result.session.snapshots.Alice, { board: [['red-square']], score: 40 });
+  assert.equal(result.session.snapshots.Bob, undefined, 'must not fabricate a snapshot for the other player');
   assert.deepEqual(joined.players, ['Alice', 'Bob'], 'must never mutate the session it was given');
 });
 
-test('appendPlayerMoves appends to a previously-recorded move log rather than replacing it, and never touches the other player\'s', () => {
+test('recordSnapshot overwrites the player\'s own previous snapshot rather than accumulating it, and never touches the other player\'s', () => {
   const session = createSession('ABCDEFGHIJ', 'Alice');
   const { session: joined } = joinSession(session, 'Bob');
-  const afterBob = appendPlayerMoves(joined, 'Bob', ['ArrowLeft']).session;
+  const afterBob = recordSnapshot(joined, 'Bob', { board: [['blue-teardrop']], score: 5 }).session;
 
-  const afterAlice1 = appendPlayerMoves(afterBob, 'Alice', ['ArrowUp']).session;
-  const afterAlice2 = appendPlayerMoves(afterAlice1, 'Alice', [' ', 'ArrowRight']).session;
+  const afterAlice1 = recordSnapshot(afterBob, 'Alice', { board: [['red-square']], score: 10 }).session;
+  const afterAlice2 = recordSnapshot(afterAlice1, 'Alice', { board: [['green-octagon']], score: 60 }).session;
 
-  assert.deepEqual(afterAlice2.moves.Alice, ['ArrowUp', ' ', 'ArrowRight']);
-  assert.deepEqual(afterAlice2.moves.Bob, ['ArrowLeft'], 'the other player\'s own move log must survive untouched');
-});
-
-test('appendPlayerMoves never mutates the moves array it was given', () => {
-  const session = createSession('ABCDEFGHIJ', 'Alice');
-  const newMoves = ['ArrowUp'];
-
-  appendPlayerMoves(session, 'Alice', newMoves);
-
-  assert.deepEqual(newMoves, ['ArrowUp']);
+  assert.deepEqual(afterAlice2.snapshots.Alice, { board: [['green-octagon']], score: 60 }, 'the newer snapshot must replace the older one, not accumulate');
+  assert.deepEqual(afterAlice2.snapshots.Bob, { board: [['blue-teardrop']], score: 5 }, 'the other player\'s own snapshot must survive untouched');
 });
 
 // Security review (commit be737cd), Finding 1 pattern: mirrors
 // _session-logic.mjs's own coverage of the same fix on the server-side copy.
-test('appendPlayerMoves refuses to record moves for a name that isn\'t actually one of the session\'s players', () => {
+test('recordSnapshot refuses to record a snapshot for a name that isn\'t actually one of the session\'s players', () => {
   const session = createSession('ABCDEFGHIJ', 'Alice');
   const { session: joined } = joinSession(session, 'Bob');
 
-  const result = appendPlayerMoves(joined, 'Mallory', ['ArrowUp']);
+  const result = recordSnapshot(joined, 'Mallory', { board: [['red-square']], score: 0 });
 
   assert.equal(result.ok, false);
   assert.equal(result.error, 'not-a-player');
-  assert.equal(joined.moves, undefined, 'a refused append must never touch the existing session');
-});
-
-// Security review: mirrors _session-logic.mjs's own coverage of the
-// server-side copy's move-log cap.
-test('appendPlayerMoves accepts moves right up to the per-player cap', () => {
-  const session = createSession('ABCDEFGHIJ', 'Alice');
-  const { session: joined } = joinSession(session, 'Bob');
-  const atCap = { ...joined, moves: { Alice: Array(MAX_STORED_MOVES_PER_PLAYER - 1).fill('ArrowUp') } };
-
-  const result = appendPlayerMoves(atCap, 'Alice', ['ArrowUp']);
-
-  assert.equal(result.ok, true);
-  assert.equal(result.session.moves.Alice.length, MAX_STORED_MOVES_PER_PLAYER);
-});
-
-test('appendPlayerMoves refuses once a player\'s stored moves would exceed the per-player cap', () => {
-  const session = createSession('ABCDEFGHIJ', 'Alice');
-  const { session: joined } = joinSession(session, 'Bob');
-  const atCap = { ...joined, moves: { Alice: Array(MAX_STORED_MOVES_PER_PLAYER).fill('ArrowUp') } };
-
-  const result = appendPlayerMoves(atCap, 'Alice', ['ArrowUp']);
-
-  assert.equal(result.ok, false);
-  assert.equal(result.error, 'too-many-moves');
-  assert.equal(atCap.moves.Alice.length, MAX_STORED_MOVES_PER_PLAYER, 'a refused append must never touch the existing session');
-});
-
-test('appendPlayerMoves refusing one player\'s move cap must never touch the other player\'s own move log', () => {
-  const session = createSession('ABCDEFGHIJ', 'Alice');
-  const { session: joined } = joinSession(session, 'Bob');
-  const atCap = {
-    ...joined,
-    moves: { Alice: Array(MAX_STORED_MOVES_PER_PLAYER).fill('ArrowUp'), Bob: ['ArrowLeft'] },
-  };
-
-  const result = appendPlayerMoves(atCap, 'Alice', ['ArrowUp']);
-
-  assert.equal(result.ok, false);
-  assert.deepEqual(atCap.moves.Bob, ['ArrowLeft']);
+  assert.equal(joined.snapshots, undefined, 'a refused snapshot must never touch the existing session');
 });
 
 // MP5/SPEC 13.5.1: mirrors _session-logic.mjs's own coverage of the
