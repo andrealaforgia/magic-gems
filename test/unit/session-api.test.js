@@ -364,62 +364,120 @@ test('snapshot rejects an oversized playerName with 400', async (t) => {
 // Security review pattern carried over from MP4's own move-key finding:
 // shape alone isn't enough - every cell must be a real gem type, not any
 // arbitrary string, and the grid must be the real 8x8 shape.
-test('snapshot rejects a malformed board with 400', async (t) => {
+//
+// QA review (commit 6cdd179): split into one test per malformed-shape case
+// (was a single test looping over all four), each asserting the specific
+// error message, not just the status code - so a failure names which
+// validation rule broke.
+async function postSnapshotBoard(code, board) {
+  const res = await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'snapshot', code, playerName: 'Alice', board, score: 0 }),
+    })
+  );
+  return { status: res.status, body: await res.json() };
+}
+
+test('snapshot rejects a non-array board with 400', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   withFetch(t, fakeUpstash());
   const created = await createViaHandler('Alice');
 
-  async function postSnapshot(board) {
-    const res = await handler.fetch(
-      new Request('https://x/api/magic-gems/session', {
-        method: 'POST',
-        body: JSON.stringify({ action: 'snapshot', code: created.session.code, playerName: 'Alice', board, score: 0 }),
-      })
-    );
-    return { status: res.status, body: await res.json() };
-  }
+  const result = await postSnapshotBoard(created.session.code, 'not-a-board');
 
-  const notAnArray = await postSnapshot('not-a-board');
-  assert.equal(notAnArray.status, 400);
-  assert.match(notAnArray.body.error, /board/i);
-
-  const wrongRowCount = await postSnapshot(Array(7).fill(Array(8).fill('red-square')));
-  assert.equal(wrongRowCount.status, 400);
-
-  const wrongColCount = await postSnapshot(Array(8).fill(Array(7).fill('red-square')));
-  assert.equal(wrongColCount.status, 400);
-
-  const unknownGem = await postSnapshot(Array(8).fill(Array(8).fill('not-a-real-gem')));
-  assert.equal(unknownGem.status, 400);
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /board/i);
 });
 
-test('snapshot rejects a malformed score with 400', async (t) => {
+test('snapshot rejects a board with the wrong row count with 400', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   withFetch(t, fakeUpstash());
   const created = await createViaHandler('Alice');
 
-  async function postScore(score) {
-    const res = await handler.fetch(
-      new Request('https://x/api/magic-gems/session', {
-        method: 'POST',
-        body: JSON.stringify({ action: 'snapshot', code: created.session.code, playerName: 'Alice', board: makeBoard(), score }),
-      })
-    );
-    return { status: res.status, body: await res.json() };
-  }
+  const result = await postSnapshotBoard(created.session.code, Array(7).fill(Array(8).fill('red-square')));
 
-  const negative = await postScore(-1);
-  assert.equal(negative.status, 400);
-  assert.match(negative.body.error, /score/i);
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /board/i);
+});
 
-  const notANumber = await postScore('9001');
-  assert.equal(notANumber.status, 400);
+test('snapshot rejects a board with the wrong column count with 400', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  withFetch(t, fakeUpstash());
+  const created = await createViaHandler('Alice');
 
-  const notFinite = await postScore(Infinity);
-  assert.equal(notFinite.status, 400);
+  const result = await postSnapshotBoard(created.session.code, Array(8).fill(Array(7).fill('red-square')));
 
-  const absurdlyHuge = await postScore(1e20);
-  assert.equal(absurdlyHuge.status, 400);
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /board/i);
+});
+
+test('snapshot rejects a board containing an unknown gem type with 400', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  withFetch(t, fakeUpstash());
+  const created = await createViaHandler('Alice');
+
+  const result = await postSnapshotBoard(created.session.code, Array(8).fill(Array(8).fill('not-a-real-gem')));
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /board/i);
+});
+
+// QA review (commit 6cdd179): split into one test per malformed-score case
+// (was a single test looping over all four), each asserting the specific
+// error message, not just the status code.
+async function postSnapshotScore(code, score) {
+  const res = await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'snapshot', code, playerName: 'Alice', board: makeBoard(), score }),
+    })
+  );
+  return { status: res.status, body: await res.json() };
+}
+
+test('snapshot rejects a negative score with 400', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  withFetch(t, fakeUpstash());
+  const created = await createViaHandler('Alice');
+
+  const result = await postSnapshotScore(created.session.code, -1);
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /score/i);
+});
+
+test('snapshot rejects a non-number score with 400', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  withFetch(t, fakeUpstash());
+  const created = await createViaHandler('Alice');
+
+  const result = await postSnapshotScore(created.session.code, '9001');
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /score/i);
+});
+
+test('snapshot rejects a non-finite score with 400', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  withFetch(t, fakeUpstash());
+  const created = await createViaHandler('Alice');
+
+  const result = await postSnapshotScore(created.session.code, Infinity);
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /score/i);
+});
+
+test('snapshot rejects a score past the ceiling with 400', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  withFetch(t, fakeUpstash());
+  const created = await createViaHandler('Alice');
+
+  const result = await postSnapshotScore(created.session.code, 1e20);
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /score/i);
 });
 
 test('snapshot accepts a score of exactly zero, not just positive scores', async (t) => {

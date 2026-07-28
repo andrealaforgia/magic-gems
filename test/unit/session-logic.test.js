@@ -114,6 +114,19 @@ test('recordSnapshot overwrites the player\'s own previous snapshot rather than 
   assert.deepEqual(afterAlice2.snapshots.Bob, { board: [['blue-teardrop']], score: 5 }, 'the other player\'s own snapshot must survive untouched');
 });
 
+// QA review (commit 6cdd179): mirrors the immutability contract the deleted
+// appendPlayerMoves test used to carry.
+test('recordSnapshot never mutates the board object it was given', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const board = [['red-square']];
+  const snapshot = { board, score: 10 };
+
+  recordSnapshot(session, 'Alice', snapshot);
+
+  assert.deepEqual(board, [['red-square']]);
+  assert.deepEqual(snapshot, { board: [['red-square']], score: 10 });
+});
+
 // Security review (commit be737cd), Finding 1 pattern: a name that isn't
 // actually one of the session's own players must be refused, not silently
 // accepted as a new broadcaster.
