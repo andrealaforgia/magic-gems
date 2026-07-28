@@ -2,6 +2,13 @@
   'use strict';
 
   const BOARD_SIZE = 8;
+  // MP-WINDOW-MARGIN/SPEC 13.3.8: plainly visible clear space reserved at
+  // the left and right window edges, on top of the centre column/gap
+  // reservation below - a tuning choice adjusted by feel, not a frozen
+  // figure. Reserved directly in the width budget (not added as separate
+  // CSS padding) so a narrow window shrinks the grids to make room for it
+  // rather than the margin being squeezed out.
+  const WINDOW_MARGIN_PX = 24;
   const SWAP_DURATION_MS = 400;
   const FALL_DURATION_MS = 400;
   const REVIVE_SPIN_DURATION_MS = 700;
@@ -533,7 +540,11 @@
     // reading can never be skewed by their own (still default) dimensions.
     const matchCenterWidth = matchEl.querySelector('.match-center').offsetWidth;
     const matchGapPx = parseFloat(getComputedStyle(matchEl).columnGap) || 0;
-    const availableForGrids = Math.max(0, window.innerWidth - matchCenterWidth - matchGapPx * 2);
+    // MP-WINDOW-MARGIN/SPEC 13.3.8: reserving the margin here (rather than as
+    // separate CSS padding) means a narrow window shrinks both grids to make
+    // room for it, exactly like the centre column/gap reservation above -
+    // the margin is never dropped, only the grids get smaller alongside it.
+    const availableForGrids = Math.max(0, window.innerWidth - matchCenterWidth - matchGapPx * 2 - WINDOW_MARGIN_PX * 2);
     const cellSize = computeCellSize(availableForGrids / 2, window.innerHeight, BOARD_SIZE);
     localCanvas.width = remoteCanvas.width = BOARD_SIZE * cellSize;
     localCanvas.height = remoteCanvas.height = BOARD_SIZE * cellSize;

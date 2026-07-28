@@ -56,6 +56,33 @@ Then("the first page's local and remote grids are the same size, with their top 
   );
 });
 
+// MP-WINDOW-MARGIN/SPEC 13.3.8: the grids must not run flush against the
+// window edges - a real, plainly visible, equal gap on both sides. "Plainly
+// visible" is operationalised as a minimum pixel floor (comfortably above
+// rounding/measurement noise), not merely "greater than zero".
+const WINDOW_MARGIN_MIN_VISIBLE_PX = 8;
+const WINDOW_MARGIN_EQUAL_TOLERANCE_PX = 2;
+
+Then("the first page's match leaves a plainly visible, equal margin at both window edges", async function () {
+  const { leftMargin, rightMargin } = await this.pageA.evaluate(() => {
+    const local = document.getElementById('match-local-board').getBoundingClientRect();
+    const remote = document.getElementById('match-remote-board').getBoundingClientRect();
+    return { leftMargin: local.left, rightMargin: window.innerWidth - remote.right };
+  });
+  assert.ok(
+    leftMargin >= WINDOW_MARGIN_MIN_VISIBLE_PX,
+    `expected a plainly visible left margin (>= ${WINDOW_MARGIN_MIN_VISIBLE_PX}px), got ${leftMargin}px`
+  );
+  assert.ok(
+    rightMargin >= WINDOW_MARGIN_MIN_VISIBLE_PX,
+    `expected a plainly visible right margin (>= ${WINDOW_MARGIN_MIN_VISIBLE_PX}px), got ${rightMargin}px`
+  );
+  assert.ok(
+    Math.abs(leftMargin - rightMargin) <= WINDOW_MARGIN_EQUAL_TOLERANCE_PX,
+    `expected equal left/right margins, got left=${leftMargin}px right=${rightMargin}px`
+  );
+});
+
 Then("the first page's gauge is vertically centred on the screen", async function () {
   const { gaugeCenterY, viewportHeight } = await this.pageA.evaluate(() => {
     const rect = document.getElementById('match-gauge').getBoundingClientRect();

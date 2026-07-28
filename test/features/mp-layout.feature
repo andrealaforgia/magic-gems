@@ -24,3 +24,24 @@ Feature: The split-screen match layout fits the viewport width (MP-LAYOUT)
       | 375   | 700    |
       | 560   | 750    |
       | 1280  | 800    |
+
+  # MP-WINDOW-MARGIN (SPEC 13.3.8): reuses the same narrow/mid/wide widths as
+  # the fit scenario above, so E9's "both a comfortable and a narrow width"
+  # claim covers real, already-established viewport sizes rather than a new
+  # hand-picked pair - E5/E6 (no scrollbar, local never clipped; same-size
+  # top-aligned grids) are proven not to have regressed by that scenario's
+  # own already-passing assertions running at these same widths.
+  @E1 @E2 @E3 @E4 @E7 @E9 @integration
+  Scenario Outline: The match leaves a plainly visible, equal margin at both window edges, at a narrow, a mid-range, and a wide screen size
+    Given two independent pages are both at the multiplayer lobby's name entry step
+    And the first page's viewport is <width> by <height>
+    When the first page enters the name "Alice" and generates a code
+    And the second page enters the name "Bob" and enters that same code
+    Then the match begins on both pages
+    And the first page's match leaves a plainly visible, equal margin at both window edges
+
+    Examples:
+      | width | height |
+      | 375   | 700    |
+      | 560   | 750    |
+      | 1280  | 800    |
