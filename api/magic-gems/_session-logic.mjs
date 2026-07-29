@@ -84,6 +84,30 @@ const HELD_UPDATE_TIMEOUT_MS = 5000;
 // to guard independently of one another.
 const MAX_SEQUENCE_GAP = 100;
 
+// Security warning (commit de091f3), reopened: MAX_SEQUENCE_GAP alone is a
+// RATCHET, not a bound - it's checked against nextExpectedSequence, a value
+// the attacker's OWN accepted jumps advance. Repeating a modest, individually
+// plausible forged jump lets the expected sequence walk forward without
+// limit over enough rounds, unauthenticated, with the current expected value
+// handed to the attacker by the unauthenticated GET. A ceiling anchored to
+// REAL ELAPSED TIME since this player's own play began can't be moved by
+// anything the attacker gets accepted - it only grows as fast as genuine
+// play possibly could, so the cumulative reachable sequence across any
+// number of rounds can never outrun real time itself. Matches
+// session-api-client.js's own PUBLISH_INTERVAL_MS - no genuine client can
+// produce two distinct sequence numbers closer together than this.
+const MIN_REALISTIC_INTERVAL_MS = 500;
+// A one-time head start, not a per-round allowance - covers a legitimate
+// first update arriving fractionally before its own anchor is read back, and
+// ordinary clock/processing jitter, without meaningfully widening the
+// ceiling's own growth rate over any real span of match time.
+const SEQUENCE_TIME_CEILING_SAFETY_MARGIN = 50;
+
+function maxPlausibleSequence(firstSeenAtMs, nowMs) {
+  const elapsedMs = Math.max(0, nowMs - firstSeenAtMs);
+  return Math.ceil(elapsedMs / MIN_REALISTIC_INTERVAL_MS) + SEQUENCE_TIME_CEILING_SAFETY_MARGIN;
+}
+
 function drainConsecutiveHeld(applied, held) {
   let current = applied;
   const remainingHeld = { ...held };
@@ -116,7 +140,10 @@ function reclaimStaleHeldUpdates(session, nowMs) {
     if (nowMs - pending.lastAdvanceMs < HELD_UPDATE_TIMEOUT_MS) continue;
     const newestSequence = Math.max(...heldSequences.map(Number));
     snapshots[playerName] = pending.held[newestSequence];
-    pendingUpdates[playerName] = { held: {}, lastAdvanceMs: nowMs };
+    // firstSeenAtMs must never move, even here - this player's own reachable
+    // ceiling would otherwise reset with every skip-ahead, letting the exact
+    // ratchet this anchor exists to close repeat through this path instead.
+    pendingUpdates[playerName] = { held: {}, lastAdvanceMs: nowMs, firstSeenAtMs: pending.firstSeenAtMs };
     changed = true;
   }
   return changed ? { ...session, snapshots, pendingUpdates } : session;
@@ -129,6 +156,10 @@ function recordSnapshot(session, playerName, snapshot, nowMs = Date.now()) {
   const appliedBefore = reclaimed.snapshots && reclaimed.snapshots[playerName];
   const pendingBefore = (reclaimed.pendingUpdates && reclaimed.pendingUpdates[playerName]) || { held: {} };
   const nextExpectedSequence = appliedBefore ? appliedBefore.sequence + 1 : 0;
+  // Set once, on this player's very first call this match, and never moved
+  // again afterward (including through reclaimStaleHeldUpdates's own reset)
+  // - the anchor the elapsed-time ceiling below is measured against.
+  const firstSeenAtMs = pendingBefore.firstSeenAtMs ?? nowMs;
 
   // Security warning (commit de091f3), E2: a discarded update must never be
   // indistinguishable from an actually-applied one - `applied` names which
@@ -147,9 +178,16 @@ function recordSnapshot(session, playerName, snapshot, nowMs = Date.now()) {
       session: {
         ...reclaimed,
         snapshots: { ...reclaimed.snapshots, [playerName]: applied },
-        pendingUpdates: { ...reclaimed.pendingUpdates, [playerName]: { held, lastAdvanceMs: nowMs } },
+        pendingUpdates: { ...reclaimed.pendingUpdates, [playerName]: { held, lastAdvanceMs: nowMs, firstSeenAtMs } },
       },
     };
+  }
+
+  // Security warning (commit de091f3), reopened: closes the ratchet - a
+  // ceiling the attacker's own accepted jumps can never move, unlike the
+  // plain gap check below.
+  if (snapshot.sequence > maxPlausibleSequence(firstSeenAtMs, nowMs)) {
+    return { ok: false, error: 'sequence-implausible-for-elapsed-time' };
   }
 
   if (snapshot.sequence - nextExpectedSequence >= MAX_SEQUENCE_GAP) {
@@ -170,6 +208,7 @@ function recordSnapshot(session, playerName, snapshot, nowMs = Date.now()) {
         [playerName]: {
           held: { ...pendingBefore.held, [snapshot.sequence]: snapshot },
           lastAdvanceMs: pendingBefore.lastAdvanceMs ?? nowMs,
+          firstSeenAtMs,
         },
       },
     },
@@ -198,4 +237,6 @@ export {
   MAX_HELD_UPDATES_PER_PLAYER,
   MAX_SEQUENCE_GAP,
   HELD_UPDATE_TIMEOUT_MS,
+  MIN_REALISTIC_INTERVAL_MS,
+  SEQUENCE_TIME_CEILING_SAFETY_MARGIN,
 };

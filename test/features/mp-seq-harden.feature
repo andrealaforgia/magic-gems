@@ -40,3 +40,20 @@ Feature: Hardening against forged-sequence poisoning (MP-SEQ-HARDEN)
     Then the second page's remote match board and score eventually show board fill "silver-octagon" and score 700
     And no error or failure state is shown on either page
     Then the first page can still make a fresh move that increases its own local score
+
+  # MP-SEQ-HARDEN (reopened): the plain gap check alone is a RATCHET, not a
+  # bound - it's checked against the current expected sequence, a value the
+  # attacker's own accepted jumps advance, so a single individually-plausible
+  # forged jump can be repeated to walk the expected sequence forward without
+  # limit. The first round below is accepted on its own (nothing wrong with
+  # one modest, real-time-plausible jump in isolation) - the SECOND repeat of
+  # the same-sized jump, no longer plausible for how little additional real
+  # time has actually passed, is what must fail.
+  @E1 @E6 @integration
+  Scenario: Repeating a modest forged jump cannot walk the expected sequence forward without limit
+    Given a real 5 second delay passes
+    When the first page injects a crafted snapshot with sequence 46, board fill "yellow-diamond", and score 400
+    Then the injected snapshot is accepted, not refused
+    Given a real 5 second delay passes
+    When the first page injects a crafted snapshot with sequence 92, board fill "silver-octagon", and score 800
+    Then the injected snapshot is refused, not accepted

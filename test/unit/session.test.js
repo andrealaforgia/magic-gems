@@ -12,6 +12,7 @@ const {
   recordSurrender,
   MAX_HELD_UPDATES_PER_PLAYER,
   MAX_SEQUENCE_GAP,
+  MIN_REALISTIC_INTERVAL_MS,
 } = loadMagicGems([new URL('../../src/session.js', import.meta.url)]);
 
 test('generateSessionCode returns a 10-letter uppercase code (SPEC 13.2.2)', () => {
@@ -196,22 +197,76 @@ test('recordSnapshot refuses to hold beyond the bounded per-player cap, rather t
 // coverage of this hardening (why the gap exists, the E1 forged-then-genuine
 // proof, and every `applied` case) lives in _session-logic.mjs's own test
 // file, kept in one place so the two copies can't drift if edited later.
-test('recordSnapshot refuses a sequence implausibly far ahead of what is expected, rather than holding it', () => {
+test('recordSnapshot refuses a sequence far outside the plain gap, rather than holding it', () => {
   const session = createSession('ABCDEFGHIJ', 'Alice');
-  const afterFirst = recordSnapshot(joinSession(session, 'Bob').session, 'Alice', {
-    board: [['red-square']],
-    score: 0,
-    sequence: 0,
-  }).session;
+  const afterFirst = recordSnapshot(
+    joinSession(session, 'Bob').session,
+    'Alice',
+    { board: [['red-square']], score: 0, sequence: 0 },
+    1000
+  ).session;
+  // A generous simulated elapsed time isolates this from the separate
+  // elapsed-time ceiling below, which would otherwise refuse for a
+  // different reason first.
+  const nowMs = 1000 + 60 * 60 * 1000;
 
-  const result = recordSnapshot(afterFirst, 'Alice', {
-    board: [['forged']],
-    score: 999,
-    sequence: 1 + MAX_SEQUENCE_GAP,
-  });
+  const result = recordSnapshot(
+    afterFirst,
+    'Alice',
+    { board: [['forged']], score: 999, sequence: 1 + MAX_SEQUENCE_GAP * 10 },
+    nowMs
+  );
 
   assert.equal(result.ok, false);
   assert.equal(result.error, 'sequence-too-far-ahead');
+});
+
+// Security warning (commit de091f3), reopened: the plain gap check above is
+// a RATCHET, not a bound, relative to a value the attacker's own accepted
+// jumps advance - closes it with a ceiling anchored to real elapsed time
+// instead, which nothing accepted can move.
+test('recordSnapshot refuses a sequence implausible for how little real time has elapsed, even within the plain gap', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const anchorMs = 1_000_000;
+  const afterFirst = recordSnapshot(
+    joinSession(session, 'Bob').session,
+    'Alice',
+    { board: [['red-square']], score: 0, sequence: 0 },
+    anchorMs
+  ).session;
+
+  const result = recordSnapshot(
+    afterFirst,
+    'Alice',
+    { board: [['forged']], score: 999, sequence: 60 },
+    anchorMs + 10
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'sequence-implausible-for-elapsed-time');
+});
+
+test('recordSnapshot accepts a sequence that is plausible for the real time actually elapsed', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const anchorMs = 1_000_000;
+  const afterFirst = recordSnapshot(
+    joinSession(session, 'Bob').session,
+    'Alice',
+    { board: [['red-square']], score: 0, sequence: 0 },
+    anchorMs
+  ).session;
+  const elapsedMs = 10 * MIN_REALISTIC_INTERVAL_MS;
+  const plausibleSequence = Math.floor(elapsedMs / MIN_REALISTIC_INTERVAL_MS);
+
+  const result = recordSnapshot(
+    afterFirst,
+    'Alice',
+    { board: [['plausible']], score: 5, sequence: plausibleSequence },
+    anchorMs + elapsedMs
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.applied, false, 'held, pending its own missing predecessors');
 });
 
 test('recordSnapshot marks a discarded stale update as applied:false, distinguishable from a real apply', () => {

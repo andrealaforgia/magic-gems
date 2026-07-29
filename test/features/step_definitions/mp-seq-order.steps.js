@@ -59,6 +59,23 @@ Then('the injected snapshot is refused, not accepted', function () {
   );
 });
 
+Then('the injected snapshot is accepted, not refused', function () {
+  assert.ok(this.lastInjectedSnapshotResult, 'expected a previously injected snapshot response to check');
+  assert.equal(
+    this.lastInjectedSnapshotResult.ok,
+    true,
+    `expected the snapshot to be accepted, got ${JSON.stringify(this.lastInjectedSnapshotResult)}`
+  );
+});
+
+// MP-SEQ-HARDEN (reopened): a real, controlled elapsed-time gap between
+// rounds of the repeated-attack proof - not incidental test overhead, so the
+// margin against the production ceiling (anchored to real elapsed time) is
+// deliberate and legible rather than accidental.
+Given('a real {int} second delay passes', async function (seconds) {
+  await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+});
+
 Given("I record the second page's own remote board and score", async function () {
   this.recordedRemote = await this.pageB.evaluate(() => ({
     board: window.MagicGems.getMatchRemoteBoard(),

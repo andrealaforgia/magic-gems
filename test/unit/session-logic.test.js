@@ -11,6 +11,8 @@ import {
   MAX_HELD_UPDATES_PER_PLAYER,
   MAX_SEQUENCE_GAP,
   HELD_UPDATE_TIMEOUT_MS,
+  MIN_REALISTIC_INTERVAL_MS,
+  SEQUENCE_TIME_CEILING_SAFETY_MARGIN,
 } from '../../api/magic-gems/_session-logic.mjs';
 
 // QA review (commit 87bd778): this server-side copy had no dedicated test
@@ -259,10 +261,21 @@ test('recordSnapshot refuses to hold beyond the bounded per-player cap, rather t
 // silently and permanently discarding every one of their genuine subsequent
 // updates. Rejecting anything past a small, plausible gap closes this
 // without weakening genuine gap recovery for a real, nearby drop.
-test('recordSnapshot refuses a sequence implausibly far ahead of what is expected, rather than holding it', () => {
-  const afterFirst = recordSnapshot(joinedSession(), 'Alice', snap(0)).session;
+// A generous simulated elapsed time isolates the plain gap check from the
+// separate elapsed-time ceiling below (which would otherwise refuse an
+// implausible value for its own, different reason first) - these two tests
+// are specifically about the gap mechanism on its own.
+const AMPLE_ELAPSED_MS_FOR_GAP_TESTS = 60 * 60 * 1000;
 
-  const result = recordSnapshot(afterFirst, 'Alice', snap(Number.MAX_SAFE_INTEGER, [['forged']], 999));
+test('recordSnapshot refuses a sequence far outside the plain gap, rather than holding it', () => {
+  const afterFirst = recordSnapshot(joinedSession(), 'Alice', snap(0), 1000).session;
+
+  const result = recordSnapshot(
+    afterFirst,
+    'Alice',
+    snap(1 + MAX_SEQUENCE_GAP * 10, [['forged']], 999),
+    1000 + AMPLE_ELAPSED_MS_FOR_GAP_TESTS
+  );
 
   assert.equal(result.ok, false);
   assert.equal(result.error, 'sequence-too-far-ahead');
@@ -270,11 +283,12 @@ test('recordSnapshot refuses a sequence implausibly far ahead of what is expecte
 });
 
 test('recordSnapshot draws the line for "too far ahead" at MAX_SEQUENCE_GAP past what is currently expected', () => {
-  const afterFirst = recordSnapshot(joinedSession(), 'Alice', snap(0)).session;
+  const afterFirst = recordSnapshot(joinedSession(), 'Alice', snap(0), 1000).session;
   const nextExpectedSequence = 1; // sequence 0 just applied
+  const nowMs = 1000 + AMPLE_ELAPSED_MS_FOR_GAP_TESTS;
 
-  const justInsideGap = recordSnapshot(afterFirst, 'Alice', snap(nextExpectedSequence + MAX_SEQUENCE_GAP - 1));
-  const justOutsideGap = recordSnapshot(afterFirst, 'Alice', snap(nextExpectedSequence + MAX_SEQUENCE_GAP));
+  const justInsideGap = recordSnapshot(afterFirst, 'Alice', snap(nextExpectedSequence + MAX_SEQUENCE_GAP - 1), nowMs);
+  const justOutsideGap = recordSnapshot(afterFirst, 'Alice', snap(nextExpectedSequence + MAX_SEQUENCE_GAP), nowMs);
 
   assert.equal(justInsideGap.ok, true, 'expected a sequence just inside the gap to still be legitimately held');
   assert.equal(justOutsideGap.ok, false, 'expected a sequence at the gap boundary to be refused');
@@ -302,6 +316,68 @@ test('a forged implausible sequence cannot poison the real player\'s own subsequ
     snap(2),
     'the real player\'s own genuine updates must keep applying normally, unaffected by the forgery attempt'
   );
+});
+
+// MP-SEQ-HARDEN (reopened): the plain gap check above is relative to
+// nextExpectedSequence - a value the attacker's OWN accepted jumps advance,
+// making it a ratchet rather than a bound. Repeating a modest, individually
+// plausible forged jump lets the attacker walk the expected sequence
+// forward without limit, over enough rounds, entirely unauthenticated and
+// with the current expected value handed to them by the unauthenticated GET.
+// A ceiling anchored to real elapsed time since this player's own play began
+// can't be moved by anything the attacker gets accepted - it only grows as
+// fast as genuine play possibly could.
+test('recordSnapshot refuses a sequence implausible for how little real time has elapsed, even within the plain gap', () => {
+  const anchorMs = 1_000_000;
+  const afterFirst = recordSnapshot(joinedSession(), 'Alice', snap(0), anchorMs).session;
+
+  // Comfortably within MAX_SEQUENCE_GAP of nextExpectedSequence(1), but no
+  // real time has passed since play began - implausible regardless.
+  const result = recordSnapshot(afterFirst, 'Alice', snap(60), anchorMs + 10);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'sequence-implausible-for-elapsed-time');
+});
+
+test('recordSnapshot accepts a sequence that is plausible for the real time actually elapsed', () => {
+  const anchorMs = 1_000_000;
+  const afterFirst = recordSnapshot(joinedSession(), 'Alice', snap(0), anchorMs).session;
+  const elapsedMs = 10 * MIN_REALISTIC_INTERVAL_MS;
+  const plausibleSequence = Math.floor(elapsedMs / MIN_REALISTIC_INTERVAL_MS); // well within the margin too
+
+  const result = recordSnapshot(afterFirst, 'Alice', snap(plausibleSequence), anchorMs + elapsedMs);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.applied, false, 'held, pending its own missing predecessors');
+});
+
+// The core proof: repeating the single-shot attack, each round individually
+// plausible for its own moment, must not accumulate an unbounded advance -
+// unlike the plain gap check alone, which lets this repeat forever.
+test('repeating a modest forged jump cannot walk the expected sequence forward without limit', () => {
+  const t0 = 1_000_000;
+  let session = recordSnapshot(joinedSession(), 'Alice', snap(0), t0).session;
+  const roundJump = MAX_SEQUENCE_GAP - 1; // passes the plain gap check every round
+  let now = t0;
+  let nextExpected = 1;
+  let lastRoundOk = true;
+
+  for (let round = 0; round < 6; round++) {
+    now += HELD_UPDATE_TIMEOUT_MS + 500; // real time actually passing between rounds
+    const forged = recordSnapshot(session, 'Alice', snap(nextExpected + roundJump, [['forged']], 999), now);
+    lastRoundOk = forged.ok;
+    if (!forged.ok) break;
+    session = reclaimStaleHeldUpdates(forged.session, now + HELD_UPDATE_TIMEOUT_MS);
+    now += HELD_UPDATE_TIMEOUT_MS;
+    nextExpected = session.snapshots.Alice.sequence + 1;
+  }
+
+  assert.equal(lastRoundOk, false, 'expected the repeated attack to eventually be refused, not repeat without limit');
+});
+
+test('SEQUENCE_TIME_CEILING_SAFETY_MARGIN and MIN_REALISTIC_INTERVAL_MS are both real, positive constants', () => {
+  assert.ok(Number.isInteger(MIN_REALISTIC_INTERVAL_MS) && MIN_REALISTIC_INTERVAL_MS > 0);
+  assert.ok(Number.isInteger(SEQUENCE_TIME_CEILING_SAFETY_MARGIN) && SEQUENCE_TIME_CEILING_SAFETY_MARGIN > 0);
 });
 
 // MP-SEQ-HARDEN/E2: a discarded update must never be indistinguishable from

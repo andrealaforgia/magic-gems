@@ -54,6 +54,19 @@
   // held-count cap above, not equal to it, so the two can guard
   // independently of one another.
   const MAX_SEQUENCE_GAP = 100;
+  // Security warning (commit de091f3), reopened: mirrors
+  // api/magic-gems/_session-logic.mjs's own copy - see that file's own
+  // comment for the full rationale. MAX_SEQUENCE_GAP alone is a ratchet
+  // (checked against a value the attacker's own accepted jumps advance);
+  // this ceiling is anchored to real elapsed time instead, which nothing
+  // accepted can move.
+  const MIN_REALISTIC_INTERVAL_MS = 500;
+  const SEQUENCE_TIME_CEILING_SAFETY_MARGIN = 50;
+
+  function maxPlausibleSequence(firstSeenAtMs, nowMs) {
+    const elapsedMs = Math.max(0, nowMs - firstSeenAtMs);
+    return Math.ceil(elapsedMs / MIN_REALISTIC_INTERVAL_MS) + SEQUENCE_TIME_CEILING_SAFETY_MARGIN;
+  }
 
   function drainConsecutiveHeld(applied, held) {
     let current = applied;
@@ -84,7 +97,7 @@
       if (nowMs - pending.lastAdvanceMs < HELD_UPDATE_TIMEOUT_MS) continue;
       const newestSequence = Math.max(...heldSequences.map(Number));
       snapshots[playerName] = pending.held[newestSequence];
-      pendingUpdates[playerName] = { held: {}, lastAdvanceMs: nowMs };
+      pendingUpdates[playerName] = { held: {}, lastAdvanceMs: nowMs, firstSeenAtMs: pending.firstSeenAtMs };
       changed = true;
     }
     return changed ? { ...session, snapshots, pendingUpdates } : session;
@@ -109,6 +122,7 @@
     const appliedBefore = reclaimed.snapshots && reclaimed.snapshots[playerName];
     const pendingBefore = (reclaimed.pendingUpdates && reclaimed.pendingUpdates[playerName]) || { held: {} };
     const nextExpectedSequence = appliedBefore ? appliedBefore.sequence + 1 : 0;
+    const firstSeenAtMs = pendingBefore.firstSeenAtMs ?? nowMs;
 
     if (snapshot.sequence < nextExpectedSequence) {
       return { ok: true, applied: false, session: reclaimed };
@@ -122,9 +136,13 @@
         session: {
           ...reclaimed,
           snapshots: { ...reclaimed.snapshots, [playerName]: applied },
-          pendingUpdates: { ...reclaimed.pendingUpdates, [playerName]: { held, lastAdvanceMs: nowMs } },
+          pendingUpdates: { ...reclaimed.pendingUpdates, [playerName]: { held, lastAdvanceMs: nowMs, firstSeenAtMs } },
         },
       };
+    }
+
+    if (snapshot.sequence > maxPlausibleSequence(firstSeenAtMs, nowMs)) {
+      return { ok: false, error: 'sequence-implausible-for-elapsed-time' };
     }
 
     if (snapshot.sequence - nextExpectedSequence >= MAX_SEQUENCE_GAP) {
@@ -145,6 +163,7 @@
           [playerName]: {
             held: { ...pendingBefore.held, [snapshot.sequence]: snapshot },
             lastAdvanceMs: pendingBefore.lastAdvanceMs ?? nowMs,
+            firstSeenAtMs,
           },
         },
       },
@@ -173,5 +192,7 @@
   global.MagicGems.reclaimStaleHeldUpdates = reclaimStaleHeldUpdates;
   global.MagicGems.MAX_HELD_UPDATES_PER_PLAYER = MAX_HELD_UPDATES_PER_PLAYER;
   global.MagicGems.MAX_SEQUENCE_GAP = MAX_SEQUENCE_GAP;
+  global.MagicGems.MIN_REALISTIC_INTERVAL_MS = MIN_REALISTIC_INTERVAL_MS;
+  global.MagicGems.SEQUENCE_TIME_CEILING_SAFETY_MARGIN = SEQUENCE_TIME_CEILING_SAFETY_MARGIN;
   global.MagicGems.HELD_UPDATE_TIMEOUT_MS = HELD_UPDATE_TIMEOUT_MS;
 })(typeof window !== 'undefined' ? window : globalThis);
