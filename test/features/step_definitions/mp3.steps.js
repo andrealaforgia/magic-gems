@@ -1,6 +1,7 @@
 import { Given, When, Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
 import { loadMagicGems } from '../../support/load-src.js';
+import { waitForMatchReady } from '../support/match-readiness.js';
 
 const { hasMatch, applySwap } = loadMagicGems([
   new URL('../../../src/gems.js', import.meta.url),
@@ -43,18 +44,18 @@ async function moveCursorTo(page, from, to) {
 }
 
 // MP-SYNC-SEQUENCED root-cause: #match becomes visible as soon as the lobby
-// hands off to the match view, but that client's own match accessors
-// (getMatchScore, getMatchBoard, isMatchAutoplayOn, ...) aren't registered
-// until AFTER that client's own async sprite load resolves - a real gap, not
-// a flake, that only got wide enough to observe reliably under load. Waiting
-// on visibility alone let a caller reach for those accessors before they
-// existed; waiting on one of them directly (any registered together) is the
-// actual readiness signal every other step in this suite depends on.
+// hands off to the match view, but that client's own match accessors aren't
+// registered until AFTER that client's own async sprite load resolves - a
+// real gap, not a flake, that only got wide enough to observe reliably under
+// load. waitForMatchReady is the actual readiness signal every other step in
+// this suite depends on; both pages' own waits run in parallel (QA review,
+// commit 6ae5a4b) since neither depends on the other.
 Then('the match begins on both pages', async function () {
-  await this.pageA.waitForSelector('#match:not([hidden])', { timeout: 3000 });
-  await this.pageB.waitForSelector('#match:not([hidden])', { timeout: 3000 });
-  await this.pageA.waitForFunction(() => typeof window.MagicGems.getMatchScore === 'function', null, { timeout: 5000 });
-  await this.pageB.waitForFunction(() => typeof window.MagicGems.getMatchScore === 'function', null, { timeout: 5000 });
+  await Promise.all([
+    this.pageA.waitForSelector('#match:not([hidden])', { timeout: 3000 }),
+    this.pageB.waitForSelector('#match:not([hidden])', { timeout: 3000 }),
+  ]);
+  await Promise.all([waitForMatchReady(this.pageA), waitForMatchReady(this.pageB)]);
 });
 
 Then('both pages show byte-for-byte identical starting boards', async function () {

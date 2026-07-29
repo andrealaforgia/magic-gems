@@ -348,6 +348,11 @@ Given("the {word} page's own gem sprites load slowly", async function (which) {
   });
 });
 
+// This assertion only holds because "the match begins on both pages" (used
+// above) waits for genuine readiness, not merely DOM visibility - it's a
+// fast-failing regression guard for that fix, not a redundant restatement of
+// it: if that wait ever reverts to visibility alone, this scenario's own
+// artificially-widened race window makes this line the one that catches it.
 Then("the {word} page's own match score can be read without error", async function (which) {
   const score = await pageFor(this, which).evaluate(() => window.MagicGems.getMatchScore());
   assert.equal(typeof score, 'number', `expected a real numeric score, got ${JSON.stringify(score)}`);

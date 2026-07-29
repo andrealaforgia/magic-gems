@@ -1,6 +1,7 @@
 import { Given, When, Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
 import { getStaticBaseUrl } from '../support/static-server.js';
+import { waitForMatchReady } from '../support/match-readiness.js';
 
 // MP-RECONNECT/SPEC 13.2.6: a genuinely new browser tab/page - the same
 // simulation of "closed and came back" already established by this file's
@@ -62,10 +63,10 @@ When('the {word} page reloads mid-match and reconnects', async function (which) 
   await page.keyboard.type(this.generatedCode);
   await page.keyboard.press('Enter');
   await page.waitForSelector('#match:not([hidden])', { timeout: 10000 });
-  // MP-SYNC-SEQUENCED root-cause: see mp3.steps.js's own "the match begins on
-  // both pages" comment - visibility alone can precede this client's own
-  // match accessors actually being registered.
-  await page.waitForFunction(() => typeof window.MagicGems.getMatchScore === 'function', null, { timeout: 5000 });
+  // MP-SYNC-SEQUENCED root-cause: see match-readiness.js's own comment -
+  // visibility alone can precede this client's own match accessors actually
+  // being registered.
+  await waitForMatchReady(page);
 });
 
 // MP-SYNC-SNAPSHOT/SPEC 13.2.6/13.4: reconnect now restores the player's own
