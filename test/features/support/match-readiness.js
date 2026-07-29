@@ -5,8 +5,9 @@
 // accessors directly is the real readiness signal; DOM visibility alone is
 // not. Shared here so the three call sites that need it stay in sync.
 //
-// Longer than the plain visibility wait (3000ms elsewhere) because it also
-// covers the sprite load itself, not just the DOM flip.
+// Longer than the plain visibility wait used in this suite (3000-10000ms
+// depending on call site) because it also covers the sprite load itself,
+// not just the DOM flip.
 export const MATCH_READY_TIMEOUT_MS = 5000;
 
 export async function waitForMatchReady(page) {

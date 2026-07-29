@@ -49,7 +49,7 @@ async function moveCursorTo(page, from, to) {
 // real gap, not a flake, that only got wide enough to observe reliably under
 // load. waitForMatchReady is the actual readiness signal every other step in
 // this suite depends on; both pages' own waits run in parallel (QA review,
-// commit 6ae5a4b) since neither depends on the other.
+// commit a8f1895) since neither depends on the other.
 Then('the match begins on both pages', async function () {
   await Promise.all([
     this.pageA.waitForSelector('#match:not([hidden])', { timeout: 3000 }),
