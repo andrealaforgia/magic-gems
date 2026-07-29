@@ -79,8 +79,15 @@
       // just carries a newer, still-complete snapshot. Never throws - a
       // network failure resolves to undefined instead, so it can never
       // block or stutter local play either way (E4/E6/13.4.2).
-      sendSnapshot(code, playerName, board, score) {
-        return postAction({ action: 'snapshot', code, playerName, board, score }).catch(() => undefined);
+      //
+      // MP-SEQ-WIRE/SPEC 13.4.0 (slice 1 of 4): sequence/cursor/selection
+      // ride alongside the same board/score payload - this slice only puts
+      // them on the wire, nothing reads or acts on them on the receiving
+      // side yet.
+      sendSnapshot(code, playerName, board, score, sequence, cursor, selection) {
+        return postAction({ action: 'snapshot', code, playerName, board, score, sequence, cursor, selection }).catch(
+          () => undefined
+        );
       },
       // MP4/SPEC 13.4: continuous poll (unlike subscribeSession's one-shot
       // stop-on-2-players) - runs for the whole match so the remote side

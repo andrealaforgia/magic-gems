@@ -96,6 +96,38 @@ function validScoreOrError(score) {
   return null;
 }
 
+// MP-SEQ-WIRE/SPEC 13.4.0 (slice 1 of 4): counts this player's own sent
+// updates from the start of their match - a non-negative integer, no upper
+// bound needed (unlike score, it's never player-influenced or displayed).
+function validSequenceOrError(sequence) {
+  if (typeof sequence !== 'number' || !Number.isInteger(sequence) || sequence < 0) {
+    return 'sequence must be a non-negative integer';
+  }
+  return null;
+}
+
+// A real board cell reference - row/col integers within the grid.
+function validCellOrError(cell, fieldName) {
+  if (
+    typeof cell !== 'object' ||
+    cell === null ||
+    !Number.isInteger(cell.row) ||
+    !Number.isInteger(cell.col) ||
+    cell.row < 0 ||
+    cell.row >= BOARD_SIZE ||
+    cell.col < 0 ||
+    cell.col >= BOARD_SIZE
+  ) {
+    return `${fieldName} must be a { row, col } within the ${BOARD_SIZE}x${BOARD_SIZE} grid`;
+  }
+  return null;
+}
+
+function validSelectionOrError(selection) {
+  if (selection === null) return null;
+  return validCellOrError(selection, 'selection');
+}
+
 async function handleCreate(env, hostName) {
   let code = generateSessionCode();
   while (await getStoredSession(env, code)) code = generateSessionCode();
@@ -111,16 +143,16 @@ async function handleJoin(env, code, playerName) {
   return result;
 }
 
-// QA review (commit a89ad37): recordSnapshot stores { board, score } by
-// direct reference, never cloning - safe here specifically because board
-// and score are always freshly built from this request's own already-
-// JSON-parsed body, never a live object a caller could go on to mutate. See
-// that test's own rationale (test/unit/session-logic.test.js) before
-// changing what gets passed here.
-async function handleRecordSnapshot(env, code, playerName, board, score) {
+// QA review (commit a89ad37): recordSnapshot stores its snapshot object by
+// direct reference, never cloning - safe here specifically because every
+// field is always freshly built from this request's own already-JSON-parsed
+// body, never a live object a caller could go on to mutate. See that test's
+// own rationale (test/unit/session-logic.test.js) before changing what gets
+// passed here.
+async function handleRecordSnapshot(env, code, playerName, board, score, sequence, cursor, selection) {
   const existing = await getStoredSession(env, code);
   if (!existing) return { ok: false, error: 'not-found' };
-  const result = recordSnapshot(existing, playerName, { board, score });
+  const result = recordSnapshot(existing, playerName, { board, score, sequence, cursor, selection });
   if (!result.ok) return result;
   await updateStoredSession(env, result.session);
   return result;
@@ -179,7 +211,22 @@ export default {
           if (boardError) return jsonResponse({ error: boardError }, 400);
           const scoreError = validScoreOrError(body.score);
           if (scoreError) return jsonResponse({ error: scoreError }, 400);
-          const result = await handleRecordSnapshot(process.env, body.code, body.playerName, body.board, body.score);
+          const sequenceError = validSequenceOrError(body.sequence);
+          if (sequenceError) return jsonResponse({ error: sequenceError }, 400);
+          const cursorError = validCellOrError(body.cursor, 'cursor');
+          if (cursorError) return jsonResponse({ error: cursorError }, 400);
+          const selectionError = validSelectionOrError(body.selection);
+          if (selectionError) return jsonResponse({ error: selectionError }, 400);
+          const result = await handleRecordSnapshot(
+            process.env,
+            body.code,
+            body.playerName,
+            body.board,
+            body.score,
+            body.sequence,
+            body.cursor,
+            body.selection
+          );
           return jsonResponse(result);
         }
         if (body.action === 'surrender') {

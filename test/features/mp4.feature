@@ -113,3 +113,17 @@ Feature: Live opponent sync during the match, by board snapshot (MP-SYNC-SNAPSHO
     And I press "a" on the second page
     Then the second page's remote match board and score eventually reflect the first page's own local board and score
     And the first page's remote match board and score eventually reflect the second page's own local board and score
+
+  # MP-SEQ-WIRE (SPEC 13.4.0, slice 1 of 4 of MP-SYNC-SEQUENCED): this slice
+  # only changes what travels over the wire alongside the existing board and
+  # score - nothing new is drawn yet (that's a later slice), so this checks
+  # the real sent payloads directly, not anything rendered.
+  @E1 @E2 @E3 @E4 @E7 @integration
+  Scenario: Every update this client sends carries a rising sequence number alongside its own cursor and selection
+    Given two independent pages are both at the multiplayer lobby's name entry step
+    When the first page enters the name "Alice" and generates a code
+    And the second page enters the name "Bob" and enters that same code
+    Then the match begins on both pages
+    Given I record the first page's own sent snapshot payloads
+    When I press "a" on the first page
+    Then the first page's own sent snapshot payloads eventually show a rising sequence number alongside a real cursor and selection, over several real updates

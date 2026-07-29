@@ -845,13 +845,32 @@
     // actually made it through.
     let lastSentBoard = null;
     let sendingSnapshot = false;
+    // MP-SEQ-WIRE/SPEC 13.4.0 (slice 1 of 4): counts this player's own sent
+    // updates from the start of THIS match, rising by exactly one per update
+    // that actually reaches the server - a failed send's own number is
+    // simply retried unconsumed next tick, never skipped ahead, so what the
+    // server observes is gap-free. Ordering/recovery on the RECEIVING side
+    // is a later slice - this one only puts the number on the wire.
+    let nextSequence = 0;
     async function flushSnapshot() {
       if (sendingSnapshot || !localPlaySettled() || board === lastSentBoard) return;
       sendingSnapshot = true;
       const boardToSend = board;
-      const result = await sessionSync.sendSnapshot(session.code, localPlayerName, boardToSend, score);
+      const sequenceToSend = nextSequence;
+      const cursorToSend = interaction.cursor;
+      const selectionToSend = interaction.selection;
+      const result = await sessionSync.sendSnapshot(
+        session.code,
+        localPlayerName,
+        boardToSend,
+        score,
+        sequenceToSend,
+        cursorToSend,
+        selectionToSend
+      );
       if (result && result.ok) {
         lastSentBoard = boardToSend;
+        nextSequence++;
       }
       sendingSnapshot = false;
     }

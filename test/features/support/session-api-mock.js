@@ -40,7 +40,17 @@ export function installSessionApiMock(context) {
       if (body.action === 'snapshot') {
         const existing = store.get(body.code) || null;
         if (!existing) return json({ ok: false, error: 'not-found' });
-        const result = recordSnapshot(existing, body.playerName, { board: body.board, score: body.score });
+        // MP-SEQ-WIRE/SPEC 13.4.0 (slice 1 of 4): passes sequence/cursor/
+        // selection through unmodified, same as the real handler - this mock
+        // does no validation of its own (that's covered at the unit level
+        // against the real handler), only realistic storage/round-trip.
+        const result = recordSnapshot(existing, body.playerName, {
+          board: body.board,
+          score: body.score,
+          sequence: body.sequence,
+          cursor: body.cursor,
+          selection: body.selection,
+        });
         if (result.ok) store.set(body.code, result.session);
         return json(result);
       }

@@ -164,3 +164,47 @@ Then(
     );
   }
 );
+
+// MP-SEQ-WIRE/SPEC 13.4.0 (slice 1 of 4): observes the REAL sent request
+// bodies, not the stored/echoed session state - a page-level route added on
+// top of the context-level mock (hooks.js) intercepts first and always
+// falls back to it, the same layering already used elsewhere in this suite
+// to simulate a degraded channel without replacing the mock's own handling.
+Given("I record the first page's own sent snapshot payloads", async function () {
+  this.sentSnapshotPayloads = [];
+  await this.pageA.route('**/api/magic-gems/session**', async (route) => {
+    const request = route.request();
+    if (request.method() === 'POST') {
+      const body = JSON.parse(request.postData() || '{}');
+      if (body.action === 'snapshot') this.sentSnapshotPayloads.push(body);
+    }
+    await route.fallback();
+  });
+});
+
+Then(
+  "the first page's own sent snapshot payloads eventually show a rising sequence number alongside a real cursor and selection, over several real updates",
+  { timeout: 60000 },
+  async function () {
+    const MIN_UPDATES = 5;
+    const deadline = Date.now() + 60000;
+    while (this.sentSnapshotPayloads.length < MIN_UPDATES && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    assert.ok(
+      this.sentSnapshotPayloads.length >= MIN_UPDATES,
+      `expected at least ${MIN_UPDATES} real sent updates, got ${this.sentSnapshotPayloads.length}`
+    );
+    this.sentSnapshotPayloads.forEach((payload, i) => {
+      assert.equal(payload.sequence, i, `expected update ${i} to carry sequence ${i}, got ${JSON.stringify(payload.sequence)}`);
+      assert.ok(
+        payload.cursor && Number.isInteger(payload.cursor.row) && Number.isInteger(payload.cursor.col),
+        `expected update ${i} to carry a real cursor, got ${JSON.stringify(payload.cursor)}`
+      );
+      assert.ok(
+        payload.selection === null || (Number.isInteger(payload.selection.row) && Number.isInteger(payload.selection.col)),
+        `expected update ${i}'s selection to be null or a real cell, got ${JSON.stringify(payload.selection)}`
+      );
+    });
+  }
+);

@@ -247,7 +247,22 @@ function makeBoard(fill = 'red-square') {
   return Array.from({ length: 8 }, () => Array(8).fill(fill));
 }
 
-test('snapshot records the caller\'s board and score under their own name in the session', async (t) => {
+// MP-SEQ-WIRE/SPEC 13.4.0 (slice 1 of 4): sequence/cursor/selection joined
+// board/score as required fields on every snapshot - bundled here so the
+// many existing snapshot tests that aren't specifically about these three
+// fields don't each need to restate a valid value for all of them.
+function makeSnapshotBody(overrides = {}) {
+  return {
+    board: makeBoard(),
+    score: 0,
+    sequence: 0,
+    cursor: { row: 0, col: 0 },
+    selection: null,
+    ...overrides,
+  };
+}
+
+test('snapshot records the caller\'s board, score, sequence, cursor, and selection under their own name in the session', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   const fetchImpl = fakeUpstash();
   withFetch(t, fetchImpl);
@@ -256,14 +271,25 @@ test('snapshot records the caller\'s board and score under their own name in the
   const res = await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'snapshot', code: created.session.code, playerName: 'Alice', board: makeBoard(), score: 120 }),
+      body: JSON.stringify({
+        action: 'snapshot',
+        code: created.session.code,
+        playerName: 'Alice',
+        ...makeSnapshotBody({ score: 120, sequence: 3, cursor: { row: 2, col: 5 }, selection: { row: 1, col: 5 } }),
+      }),
     })
   );
   const body = await res.json();
 
   assert.equal(res.status, 200);
   assert.equal(body.ok, true);
-  assert.deepEqual(body.session.snapshots.Alice, { board: makeBoard(), score: 120 });
+  assert.deepEqual(body.session.snapshots.Alice, {
+    board: makeBoard(),
+    score: 120,
+    sequence: 3,
+    cursor: { row: 2, col: 5 },
+    selection: { row: 1, col: 5 },
+  });
 });
 
 test('a successful snapshot is actually persisted, not just echoed back in its own response, and overwrites rather than accumulates', async (t) => {
@@ -275,13 +301,23 @@ test('a successful snapshot is actually persisted, not just echoed back in its o
   await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'snapshot', code: created.session.code, playerName: 'Alice', board: makeBoard('red-square'), score: 10 }),
+      body: JSON.stringify({
+        action: 'snapshot',
+        code: created.session.code,
+        playerName: 'Alice',
+        ...makeSnapshotBody({ board: makeBoard('red-square'), score: 10, sequence: 0 }),
+      }),
     })
   );
   await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'snapshot', code: created.session.code, playerName: 'Alice', board: makeBoard('blue-teardrop'), score: 70 }),
+      body: JSON.stringify({
+        action: 'snapshot',
+        code: created.session.code,
+        playerName: 'Alice',
+        ...makeSnapshotBody({ board: makeBoard('blue-teardrop'), score: 70, sequence: 1 }),
+      }),
     })
   );
 
@@ -289,7 +325,7 @@ test('a successful snapshot is actually persisted, not just echoed back in its o
   const getBody = await getRes.json();
   assert.deepEqual(
     getBody.session.snapshots.Alice,
-    { board: makeBoard('blue-teardrop'), score: 70 },
+    makeSnapshotBody({ board: makeBoard('blue-teardrop'), score: 70, sequence: 1 }),
     'expected the second snapshot to replace the first, not accumulate'
   );
 });
@@ -303,7 +339,7 @@ test('snapshot refuses a name that is not actually one of the session\'s own pla
   const res = await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'snapshot', code: created.session.code, playerName: 'Mallory', board: makeBoard(), score: 0 }),
+      body: JSON.stringify({ action: 'snapshot', code: created.session.code, playerName: 'Mallory', ...makeSnapshotBody() }),
     })
   );
   const body = await res.json();
@@ -320,7 +356,7 @@ test('snapshot against an unknown code reports not-found as a normal 200 result,
   const res = await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'snapshot', code: 'NOSUCHCODE', playerName: 'Alice', board: makeBoard(), score: 0 }),
+      body: JSON.stringify({ action: 'snapshot', code: 'NOSUCHCODE', playerName: 'Alice', ...makeSnapshotBody() }),
     })
   );
   const body = await res.json();
@@ -483,12 +519,115 @@ test('snapshot accepts a score of exactly zero, not just positive scores', async
   const res = await handler.fetch(
     new Request('https://x/api/magic-gems/session', {
       method: 'POST',
-      body: JSON.stringify({ action: 'snapshot', code: created.session.code, playerName: 'Alice', board: makeBoard(), score: 0 }),
+      body: JSON.stringify({ action: 'snapshot', code: created.session.code, playerName: 'Alice', ...makeSnapshotBody({ score: 0 }) }),
     })
   );
 
   assert.equal(res.status, 200);
   assert.equal((await res.json()).ok, true);
+});
+
+// MP-SEQ-WIRE/SPEC 13.4.0 (slice 1 of 4): sequence/cursor/selection are now
+// required fields alongside board/score - one test per malformed sub-case
+// (QA review, commit 6cdd179), each asserting the specific error message.
+async function postSnapshotBody(code, overrides) {
+  const res = await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'snapshot', code, playerName: 'Alice', ...makeSnapshotBody(overrides) }),
+    })
+  );
+  return { status: res.status, body: await res.json() };
+}
+
+test('snapshot rejects a negative sequence with 400', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { sequence: -1 });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /sequence/i);
+});
+
+test('snapshot rejects a non-integer sequence with 400', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { sequence: 1.5 });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /sequence/i);
+});
+
+test('snapshot accepts a sequence of exactly zero, not just positive sequences', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { sequence: 0 });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.ok, true);
+});
+
+test('snapshot rejects a missing cursor with 400', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { cursor: undefined });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /cursor/i);
+});
+
+test('snapshot rejects a cursor outside the grid with 400', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { cursor: { row: 8, col: 0 } });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /cursor/i);
+});
+
+test('snapshot rejects a cursor with a non-integer coordinate with 400', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { cursor: { row: 0.5, col: 0 } });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /cursor/i);
+});
+
+test('snapshot accepts a null selection - no gem currently selected', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { selection: null });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.ok, true);
+});
+
+test('snapshot accepts a real selection within the grid', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { selection: { row: 3, col: 4 } });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.ok, true);
+});
+
+test('snapshot rejects a selection outside the grid with 400', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { selection: { row: 0, col: -1 } });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /selection/i);
+});
+
+test('snapshot rejects a selection missing a coordinate with 400', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { selection: { row: 0 } });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /selection/i);
 });
 
 // MP5/SPEC 13.5.1: a surrendering player's exit is communicated through the
