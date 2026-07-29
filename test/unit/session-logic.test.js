@@ -520,6 +520,52 @@ test('exhausting the lifetime skip-advance budget never blocks the real player\'
   assert.equal(result.applied, true);
 });
 
+// Examiner ruling (commit d568262): the projection fix needs proof of the
+// MAGNITUDE at exhaustion, not just that exhaustion eventually refuses
+// something - that magnitude is exactly what the pre-round-only gate got
+// wrong (a single round could overshoot the nominal cap by ~3x, e.g. 99
+// against a nominal 30). A gap this large is refused OUTRIGHT, never
+// partially accepted with an inflated accumulated total - the accumulated
+// total that would otherwise overshoot simply never comes to exist. Also
+// proves the examiner's own ruling on the separate "permanent freeze"
+// finding directly: after a legitimate round lands exactly at the cap, a
+// FURTHER gap is refused outright (the attacker is disarmed), but the real
+// player's own next genuine, exact, in-order send still applies normally
+// (the victim is not frozen).
+test('the accumulated skip-advance total never overshoots the intended cap, even from a single large round - and a further gap after exhaustion is refused while genuine in-order sends still apply', () => {
+  const afterFirst = recordSnapshot(joinedSession(), 'Alice', snap(0), 1000).session;
+  const now = 1000 + 100000; // ample elapsed time so the ceiling never interferes
+
+  // A single round attempting roughly 3x the intended cap in one shot - the
+  // exact shape of overshoot the pre-round-only gate let through.
+  const overshootAttempt = recordSnapshot(afterFirst, 'Alice', snap(1 + MAX_CUMULATIVE_SKIP_ADVANCE * 3, [['forged']], 999), now);
+  assert.equal(
+    overshootAttempt.ok,
+    false,
+    'a gap this far beyond the cap must be refused outright, never partially accepted with an inflated accumulated total'
+  );
+
+  // A legitimate round landing exactly at the cap boundary is still
+  // accepted, and lands at exactly that magnitude - never beyond it.
+  const accepted = recordSnapshot(afterFirst, 'Alice', snap(1 + MAX_CUMULATIVE_SKIP_ADVANCE), now);
+  assert.equal(accepted.ok, true, 'expected a round claiming exactly the cap to be accepted');
+  const session = reclaimStaleHeldUpdates(accepted.session, now + HELD_UPDATE_TIMEOUT_MS);
+
+  assert.equal(
+    session.pendingUpdates.Alice.totalSkipAdvance,
+    MAX_CUMULATIVE_SKIP_ADVANCE,
+    'expected the accumulated total to land exactly at the cap, never beyond it - the magnitude the projection fix exists to guarantee'
+  );
+
+  const nextExpected = session.snapshots.Alice.sequence + 1;
+  const furtherGap = recordSnapshot(session, 'Alice', snap(nextExpected + 1, [['further-forged']], 999), now + 1000);
+  assert.equal(furtherGap.ok, false, 'expected any further gap after exhaustion to be refused outright - the attacker is disarmed');
+
+  const genuine = recordSnapshot(session, 'Alice', snap(nextExpected, [['genuine']], 1), now + 2000);
+  assert.equal(genuine.ok, true, "expected the real player's own in-order update to keep applying normally even after exhaustion - the victim is not frozen");
+  assert.equal(genuine.applied, true);
+});
+
 test('MAX_CUMULATIVE_SKIP_ADVANCE is a real, positive, finite constant', () => {
   assert.ok(Number.isInteger(MAX_CUMULATIVE_SKIP_ADVANCE) && MAX_CUMULATIVE_SKIP_ADVANCE > 0);
 });

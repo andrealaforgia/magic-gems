@@ -394,6 +394,50 @@ test('recordSnapshot refuses a single round whose own gap alone would already ex
   assert.equal(result.error, 'skip-advance-budget-exhausted');
 });
 
+// Examiner ruling (commit d568262): a light smoke test only - see
+// _session-logic.mjs's own test of the same name for the full rationale on
+// proving the magnitude at exhaustion, plus a further gap refused while
+// genuine in-order sends still apply.
+test('the accumulated skip-advance total never overshoots the intended cap, even from a single large round', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const afterFirst = recordSnapshot(joinSession(session, 'Bob').session, 'Alice', {
+    board: [['red-square']],
+    score: 0,
+    sequence: 0,
+  }, 1000).session;
+  const now = 1000 + 100000;
+
+  const overshootAttempt = recordSnapshot(
+    afterFirst,
+    'Alice',
+    { board: [['forged']], score: 999, sequence: 1 + MAX_CUMULATIVE_SKIP_ADVANCE * 3 },
+    now
+  );
+  assert.equal(
+    overshootAttempt.ok,
+    false,
+    'a gap this far beyond the cap must be refused outright, never partially accepted with an inflated accumulated total'
+  );
+
+  const accepted = recordSnapshot(afterFirst, 'Alice', { board: [['forged']], score: 1, sequence: 1 + MAX_CUMULATIVE_SKIP_ADVANCE }, now);
+  assert.equal(accepted.ok, true, 'expected a round claiming exactly the cap to be accepted');
+  const current = reclaimStaleHeldUpdates(accepted.session, now + HELD_UPDATE_TIMEOUT_MS);
+
+  assert.equal(
+    current.pendingUpdates.Alice.totalSkipAdvance,
+    MAX_CUMULATIVE_SKIP_ADVANCE,
+    'expected the accumulated total to land exactly at the cap, never beyond it'
+  );
+
+  const nextExpected = current.snapshots.Alice.sequence + 1;
+  const furtherGap = recordSnapshot(current, 'Alice', { board: [['further-forged']], score: 999, sequence: nextExpected + 1 }, now + 1000);
+  assert.equal(furtherGap.ok, false, 'expected any further gap after exhaustion to be refused outright');
+
+  const genuine = recordSnapshot(current, 'Alice', { board: [['genuine']], score: 1, sequence: nextExpected }, now + 2000);
+  assert.equal(genuine.ok, true, "expected the real player's own in-order update to keep applying normally even after exhaustion");
+  assert.equal(genuine.applied, true);
+});
+
 test('recordSnapshot marks a discarded stale update as applied:false, distinguishable from a real apply', () => {
   const session = createSession('ABCDEFGHIJ', 'Alice');
   let current = recordSnapshot(joinSession(session, 'Bob').session, 'Alice', {
