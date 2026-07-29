@@ -82,9 +82,35 @@ Then("the first page's match timer reads 10:00 or just under, in the pixel font"
   assert.ok(result.pixelFontLoaded, 'expected the "Press Start 2P" font to have actually loaded');
 });
 
+// QA review (commit 0a86908): the width-only check left 13.3.3.1 (remote
+// portion also completing the bar), 13.3.3.3 (a permanent, centred halfway
+// mark), and 13.3.3.5 (neither leading class at an exact 0-0 tie) entirely
+// uncovered.
 Then("the first page's match gauge is evenly split at the start", async function () {
-  const width = await this.pageA.evaluate(() => document.getElementById('match-gauge-local').style.width);
-  assert.equal(width, '50%');
+  const state = await this.pageA.evaluate(() => {
+    const gauge = document.getElementById('match-gauge');
+    const gaugeRect = gauge.getBoundingClientRect();
+    const midpoint = document.querySelector('.match-gauge-midpoint');
+    const midpointRect = midpoint ? midpoint.getBoundingClientRect() : null;
+    return {
+      localWidth: document.getElementById('match-gauge-local').style.width,
+      remoteWidth: document.getElementById('match-gauge-remote').style.width,
+      isLocalLeading: gauge.classList.contains('is-local-leading'),
+      isRemoteLeading: gauge.classList.contains('is-remote-leading'),
+      midpointExists: !!midpoint,
+      midpointCenterX: midpointRect ? midpointRect.left + midpointRect.width / 2 : null,
+      gaugeCenterX: gaugeRect.left + gaugeRect.width / 2,
+    };
+  });
+  assert.equal(state.localWidth, '50%');
+  assert.equal(state.remoteWidth, '50%', 'expected the remote portion to also be 50%, summing to a full bar');
+  assert.equal(state.isLocalLeading, false, 'expected no leading class on either side at a 0-0 tie');
+  assert.equal(state.isRemoteLeading, false, 'expected no leading class on either side at a 0-0 tie');
+  assert.ok(state.midpointExists, 'expected a permanent halfway-mark element');
+  assert.ok(
+    Math.abs(state.midpointCenterX - state.gaugeCenterX) < 1,
+    `expected the halfway mark centred in the gauge, got midpoint=${state.midpointCenterX} gaugeCenter=${state.gaugeCenterX}`
+  );
 });
 
 Then('the match timer on the first page visibly counts down over real time', async function () {

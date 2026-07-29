@@ -125,5 +125,42 @@ Then(
       leaderIsLocalOnGaugePage,
       { timeout: 8000 }
     );
+
+    // QA review (commit 0a86908): the width threshold above only proves the
+    // boundary moved - this proves 13.3.3.1 (the two portions still sum to a
+    // full bar), 13.3.3.3 (the halfway mark stays centred once the boundary
+    // has actually moved off it), and 13.3.3.4 (the leading indicator and
+    // colour actually swapped to the correct side, not just the width).
+    const state = await gaugePage.evaluate(() => {
+      const gauge = document.getElementById('match-gauge');
+      const gaugeRect = gauge.getBoundingClientRect();
+      const midpoint = document.querySelector('.match-gauge-midpoint');
+      const midpointRect = midpoint.getBoundingClientRect();
+      return {
+        localWidth: document.getElementById('match-gauge-local').style.width,
+        remoteWidth: document.getElementById('match-gauge-remote').style.width,
+        isLocalLeading: gauge.classList.contains('is-local-leading'),
+        isRemoteLeading: gauge.classList.contains('is-remote-leading'),
+        localColor: getComputedStyle(document.getElementById('match-gauge-local')).backgroundColor,
+        remoteColor: getComputedStyle(document.getElementById('match-gauge-remote')).backgroundColor,
+        midpointCenterX: midpointRect.left + midpointRect.width / 2,
+        gaugeCenterX: gaugeRect.left + gaugeRect.width / 2,
+      };
+    });
+    assert.equal(
+      parseFloat(state.localWidth) + parseFloat(state.remoteWidth),
+      100,
+      `expected local+remote widths to sum to a full bar, got ${state.localWidth} + ${state.remoteWidth}`
+    );
+    assert.equal(state.isLocalLeading, leaderIsLocalOnGaugePage, 'expected the leading class on the correct side');
+    assert.equal(state.isRemoteLeading, !leaderIsLocalOnGaugePage, 'expected the leading class not on the trailing side');
+    const leaderColor = leaderIsLocalOnGaugePage ? state.localColor : state.remoteColor;
+    const trailerColor = leaderIsLocalOnGaugePage ? state.remoteColor : state.localColor;
+    assert.equal(leaderColor, 'rgb(0, 229, 168)', `expected the leader's portion in the leader-green colour, got ${leaderColor}`);
+    assert.equal(trailerColor, 'rgb(255, 107, 107)', `expected the trailer's portion in the trailer-red colour, got ${trailerColor}`);
+    assert.ok(
+      Math.abs(state.midpointCenterX - state.gaugeCenterX) < 1,
+      `expected the halfway mark to remain centred after the boundary moved, got midpoint=${state.midpointCenterX} gaugeCenter=${state.gaugeCenterX}`
+    );
   }
 );

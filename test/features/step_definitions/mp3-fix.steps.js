@@ -189,9 +189,33 @@ Then("the second page's match timer reads 10:00 or just under, in the pixel font
   assert.ok(result.fontFamily.includes('Press Start 2P'), `expected the pixel font, got "${result.fontFamily}"`);
 });
 
+// QA review (commit 0a86908): mirrors mp3.steps.js's own first-page
+// coverage of 13.3.3.1/13.3.3.3/13.3.3.5, on the second page instead.
 Then("the second page's match gauge is evenly split at the start", async function () {
-  const width = await this.pageB.evaluate(() => document.getElementById('match-gauge-local').style.width);
-  assert.equal(width, '50%');
+  const state = await this.pageB.evaluate(() => {
+    const gauge = document.getElementById('match-gauge');
+    const gaugeRect = gauge.getBoundingClientRect();
+    const midpoint = document.querySelector('.match-gauge-midpoint');
+    const midpointRect = midpoint ? midpoint.getBoundingClientRect() : null;
+    return {
+      localWidth: document.getElementById('match-gauge-local').style.width,
+      remoteWidth: document.getElementById('match-gauge-remote').style.width,
+      isLocalLeading: gauge.classList.contains('is-local-leading'),
+      isRemoteLeading: gauge.classList.contains('is-remote-leading'),
+      midpointExists: !!midpoint,
+      midpointCenterX: midpointRect ? midpointRect.left + midpointRect.width / 2 : null,
+      gaugeCenterX: gaugeRect.left + gaugeRect.width / 2,
+    };
+  });
+  assert.equal(state.localWidth, '50%');
+  assert.equal(state.remoteWidth, '50%', 'expected the remote portion to also be 50%, summing to a full bar');
+  assert.equal(state.isLocalLeading, false, 'expected no leading class on either side at a 0-0 tie');
+  assert.equal(state.isRemoteLeading, false, 'expected no leading class on either side at a 0-0 tie');
+  assert.ok(state.midpointExists, 'expected a permanent halfway-mark element');
+  assert.ok(
+    Math.abs(state.midpointCenterX - state.gaugeCenterX) < 1,
+    `expected the halfway mark centred in the gauge, got midpoint=${state.midpointCenterX} gaugeCenter=${state.gaugeCenterX}`
+  );
 });
 
 // AUTOPLAY-RANDOM-CHOICE (SPEC 12.5) E4/E6: both pages autoplay independently
