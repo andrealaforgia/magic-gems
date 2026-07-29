@@ -68,6 +68,15 @@
     return Math.ceil(elapsedMs / MIN_REALISTIC_INTERVAL_MS) + SEQUENCE_TIME_CEILING_SAFETY_MARGIN;
   }
 
+  // Security warning (commit cca26c8), reopened again: mirrors
+  // api/magic-gems/_session-logic.mjs's own copy - see that file's own
+  // comment for the full rationale. The ceiling above is anchored to the
+  // client's own theoretical max send rate, not real play's true (much
+  // slower) pace - a sustained attack can still open a deficit larger than
+  // the remaining match can recover from. This caps the total lifetime
+  // advance ever skipped via recovery, independent of elapsed time.
+  const MAX_CUMULATIVE_SKIP_ADVANCE = 30;
+
   function drainConsecutiveHeld(applied, held) {
     let current = applied;
     const remainingHeld = { ...held };
@@ -96,8 +105,15 @@
       if (heldSequences.length === 0) continue;
       if (nowMs - pending.lastAdvanceMs < HELD_UPDATE_TIMEOUT_MS) continue;
       const newestSequence = Math.max(...heldSequences.map(Number));
+      const previousApplied = snapshots[playerName];
+      const skippedNow = newestSequence - (previousApplied ? previousApplied.sequence + 1 : 0);
       snapshots[playerName] = pending.held[newestSequence];
-      pendingUpdates[playerName] = { held: {}, lastAdvanceMs: nowMs, firstSeenAtMs: pending.firstSeenAtMs };
+      pendingUpdates[playerName] = {
+        held: {},
+        lastAdvanceMs: nowMs,
+        firstSeenAtMs: pending.firstSeenAtMs,
+        totalSkipAdvance: (pending.totalSkipAdvance || 0) + skippedNow,
+      };
       changed = true;
     }
     return changed ? { ...session, snapshots, pendingUpdates } : session;
@@ -123,6 +139,7 @@
     const pendingBefore = (reclaimed.pendingUpdates && reclaimed.pendingUpdates[playerName]) || { held: {} };
     const nextExpectedSequence = appliedBefore ? appliedBefore.sequence + 1 : 0;
     const firstSeenAtMs = pendingBefore.firstSeenAtMs ?? nowMs;
+    const totalSkipAdvance = pendingBefore.totalSkipAdvance || 0;
 
     if (snapshot.sequence < nextExpectedSequence) {
       return { ok: true, applied: false, session: reclaimed };
@@ -136,13 +153,20 @@
         session: {
           ...reclaimed,
           snapshots: { ...reclaimed.snapshots, [playerName]: applied },
-          pendingUpdates: { ...reclaimed.pendingUpdates, [playerName]: { held, lastAdvanceMs: nowMs, firstSeenAtMs } },
+          pendingUpdates: {
+            ...reclaimed.pendingUpdates,
+            [playerName]: { held, lastAdvanceMs: nowMs, firstSeenAtMs, totalSkipAdvance },
+          },
         },
       };
     }
 
     if (snapshot.sequence > maxPlausibleSequence(firstSeenAtMs, nowMs)) {
       return { ok: false, error: 'sequence-implausible-for-elapsed-time' };
+    }
+
+    if (totalSkipAdvance >= MAX_CUMULATIVE_SKIP_ADVANCE) {
+      return { ok: false, error: 'skip-advance-budget-exhausted' };
     }
 
     if (snapshot.sequence - nextExpectedSequence >= MAX_SEQUENCE_GAP) {
@@ -164,6 +188,7 @@
             held: { ...pendingBefore.held, [snapshot.sequence]: snapshot },
             lastAdvanceMs: pendingBefore.lastAdvanceMs ?? nowMs,
             firstSeenAtMs,
+            totalSkipAdvance,
           },
         },
       },
@@ -194,5 +219,6 @@
   global.MagicGems.MAX_SEQUENCE_GAP = MAX_SEQUENCE_GAP;
   global.MagicGems.MIN_REALISTIC_INTERVAL_MS = MIN_REALISTIC_INTERVAL_MS;
   global.MagicGems.SEQUENCE_TIME_CEILING_SAFETY_MARGIN = SEQUENCE_TIME_CEILING_SAFETY_MARGIN;
+  global.MagicGems.MAX_CUMULATIVE_SKIP_ADVANCE = MAX_CUMULATIVE_SKIP_ADVANCE;
   global.MagicGems.HELD_UPDATE_TIMEOUT_MS = HELD_UPDATE_TIMEOUT_MS;
 })(typeof window !== 'undefined' ? window : globalThis);

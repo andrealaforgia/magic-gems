@@ -10,9 +10,12 @@ const {
   isSessionReady,
   recordSnapshot,
   recordSurrender,
+  reclaimStaleHeldUpdates,
   MAX_HELD_UPDATES_PER_PLAYER,
   MAX_SEQUENCE_GAP,
   MIN_REALISTIC_INTERVAL_MS,
+  HELD_UPDATE_TIMEOUT_MS,
+  MAX_CUMULATIVE_SKIP_ADVANCE,
 } = loadMagicGems([new URL('../../src/session.js', import.meta.url)]);
 
 test('generateSessionCode returns a 10-letter uppercase code (SPEC 13.2.2)', () => {
@@ -267,6 +270,97 @@ test('recordSnapshot accepts a sequence that is plausible for the real time actu
 
   assert.equal(result.ok, true);
   assert.equal(result.applied, false, 'held, pending its own missing predecessors');
+});
+
+// QA review (commit cca26c8): reaper flagged the plain gap check's own
+// subtraction (- vs +) as untested on this file specifically - the server
+// copy's identical check already has this covered, this closes the same gap
+// on the mirror. Needs nextExpectedSequence large enough that a sum (rather
+// than the correct difference) would wrongly exceed MAX_SEQUENCE_GAP even
+// for a genuinely small, legitimately-held gap. Reached via sequential
+// exact-match applies (never via skip-ahead recovery), which never touch
+// the lifetime skip-advance budget - a skip-ahead big enough to reach 46 in
+// one jump would exhaust that budget outright and mask this check entirely.
+test('recordSnapshot holds a genuinely small gap correctly once nextExpectedSequence is large - the plain gap is a difference, not a sum', () => {
+  const t0 = 1_000_000;
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  let current = recordSnapshot(joinSession(session, 'Bob').session, 'Alice', {
+    board: [['red-square']],
+    score: 0,
+    sequence: 0,
+  }, t0).session;
+  for (let sequence = 1; sequence <= 45; sequence++) {
+    current = recordSnapshot(current, 'Alice', { board: [['blue-teardrop']], score: sequence, sequence }, t0 + sequence).session;
+  }
+
+  const nowMs = t0 + 5000; // comfortably past the elapsed-time ceiling for sequence 56 too
+  const result = recordSnapshot(current, 'Alice', { board: [['ahead']], score: 56, sequence: 56 }, nowMs); // gap of 10
+
+  assert.equal(
+    result.ok,
+    true,
+    'a genuinely small gap (10) must be held, not refused - only a sum (56+46=102) would wrongly exceed MAX_SEQUENCE_GAP here, not the correct difference (10)'
+  );
+  assert.equal(result.applied, false);
+});
+
+// QA review (commit cca26c8), highest priority: nothing on this mirror
+// exercised firstSeenAtMs surviving a bounded-wait reclaim - see
+// _session-logic.mjs's own test of the same name for the full rationale on
+// why a reset anchor causes wrongful refusal of later legitimate play,
+// not a reopened ratchet.
+test('a bounded-wait reclaim does not reset the elapsed-time anchor, so a later legitimate held update is not wrongly refused', () => {
+  const t0 = 1_000_000;
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  let current = recordSnapshot(joinSession(session, 'Bob').session, 'Alice', {
+    board: [['red-square']],
+    score: 0,
+    sequence: 0,
+  }, t0).session;
+  current = recordSnapshot(current, 'Alice', { board: [['blue-teardrop']], score: 5, sequence: 5 }, t0 + 1000).session;
+  current = reclaimStaleHeldUpdates(current, t0 + 1000 + HELD_UPDATE_TIMEOUT_MS);
+
+  const muchLater = t0 + 1000 + HELD_UPDATE_TIMEOUT_MS + 1000;
+  const result = recordSnapshot(current, 'Alice', { board: [['legitimate']], score: 30, sequence: 60 }, muchLater);
+
+  assert.equal(
+    result.ok,
+    true,
+    'a reset anchor would wrongly refuse this as implausible, even though it is entirely plausible since the match actually began'
+  );
+  assert.equal(result.applied, false);
+});
+
+// Security warning (commit cca26c8), reopened again: a light smoke test
+// only - the full rationale (why the elapsed-time ceiling alone still lets
+// a sustained attack open an unrecoverable-in-time deficit, and the proof
+// that in-order applies always keep working regardless) lives in
+// _session-logic.mjs's own test file.
+test('recordSnapshot refuses to hold once the lifetime skip-advance budget is exhausted, even for an otherwise-plausible small gap', () => {
+  const t0 = 1_000_000;
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  let current = recordSnapshot(joinSession(session, 'Bob').session, 'Alice', {
+    board: [['red-square']],
+    score: 0,
+    sequence: 0,
+  }, t0).session;
+  let now = t0;
+
+  const totalSkipAdvance = () => (current.pendingUpdates?.Alice?.totalSkipAdvance) || 0;
+  while (totalSkipAdvance() < MAX_CUMULATIVE_SKIP_ADVANCE) {
+    const nextExpected = current.snapshots.Alice.sequence + 1;
+    now += HELD_UPDATE_TIMEOUT_MS + 500;
+    const held = recordSnapshot(current, 'Alice', { board: [['forged']], score: 1, sequence: nextExpected + 5 }, now);
+    current = reclaimStaleHeldUpdates(held.session, now + HELD_UPDATE_TIMEOUT_MS);
+    now += HELD_UPDATE_TIMEOUT_MS;
+  }
+
+  const nextExpected = current.snapshots.Alice.sequence + 1;
+  now += 1000;
+  const result = recordSnapshot(current, 'Alice', { board: [['forged']], score: 999, sequence: nextExpected + 5 }, now);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'skip-advance-budget-exhausted');
 });
 
 test('recordSnapshot marks a discarded stale update as applied:false, distinguishable from a real apply', () => {

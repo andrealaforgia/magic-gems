@@ -13,6 +13,7 @@ import {
   HELD_UPDATE_TIMEOUT_MS,
   MIN_REALISTIC_INTERVAL_MS,
   SEQUENCE_TIME_CEILING_SAFETY_MARGIN,
+  MAX_CUMULATIVE_SKIP_ADVANCE,
 } from '../../api/magic-gems/_session-logic.mjs';
 
 // QA review (commit 87bd778): this server-side copy had no dedicated test
@@ -353,31 +354,156 @@ test('recordSnapshot accepts a sequence that is plausible for the real time actu
 
 // The core proof: repeating the single-shot attack, each round individually
 // plausible for its own moment, must not accumulate an unbounded advance -
-// unlike the plain gap check alone, which lets this repeat forever.
+// unlike the plain gap check alone, which lets this repeat forever. Two
+// independent mechanisms guard this now (the elapsed-time ceiling and the
+// cumulative skip-advance budget); this test only asserts the combined,
+// observable outcome - genuine repetition, then eventual refusal - not which
+// one fires, since either is a valid, real closure of the same gap.
+//
+// QA review (commit cca26c8): the original version of this test used a jump
+// (MAX_SEQUENCE_GAP - 1 = 99) too large to pass even the FIRST round's own
+// ceiling check, so the loop broke on round 0 every time - proving only a
+// single-round refusal already covered elsewhere, never genuinely reaching
+// a second round. roundJump is now small enough that several rounds
+// genuinely succeed before the eventual refusal, rather than failing
+// immediately.
 test('repeating a modest forged jump cannot walk the expected sequence forward without limit', () => {
   const t0 = 1_000_000;
   let session = recordSnapshot(joinedSession(), 'Alice', snap(0), t0).session;
-  const roundJump = MAX_SEQUENCE_GAP - 1; // passes the plain gap check every round
+  const roundJump = 10;
   let now = t0;
   let nextExpected = 1;
   let lastRoundOk = true;
+  let roundsAccepted = 0;
 
   for (let round = 0; round < 6; round++) {
     now += HELD_UPDATE_TIMEOUT_MS + 500; // real time actually passing between rounds
     const forged = recordSnapshot(session, 'Alice', snap(nextExpected + roundJump, [['forged']], 999), now);
     lastRoundOk = forged.ok;
     if (!forged.ok) break;
+    roundsAccepted++;
     session = reclaimStaleHeldUpdates(forged.session, now + HELD_UPDATE_TIMEOUT_MS);
     now += HELD_UPDATE_TIMEOUT_MS;
     nextExpected = session.snapshots.Alice.sequence + 1;
   }
 
+  assert.ok(
+    roundsAccepted >= 2,
+    `expected at least two rounds to genuinely succeed before refusal (proving this is about repetition, not an immediate single-round refusal) - only ${roundsAccepted} did`
+  );
   assert.equal(lastRoundOk, false, 'expected the repeated attack to eventually be refused, not repeat without limit');
+});
+
+// QA review (commit cca26c8), highest priority: nothing exercised the exact
+// regression this fix's own rationale calls out - firstSeenAtMs surviving a
+// bounded-wait skip-ahead reclaim. Contrary to what might be assumed, the
+// risk if it DIDN'T survive isn't the ratchet reopening (a reset anchor only
+// ever makes the ceiling MORE restrictive, never less) - it's the opposite
+// failure: a legitimate player, well into a real match, has a later genuine
+// held update wrongly refused as implausible, because the anchor got pulled
+// forward to the reclaim's own recent moment instead of staying at when
+// their match actually began.
+test('a bounded-wait reclaim does not reset the elapsed-time anchor, so a later legitimate held update is not wrongly refused', () => {
+  const t0 = 1_000_000;
+  let session = recordSnapshot(joinedSession(), 'Alice', snap(0), t0).session;
+  session = recordSnapshot(session, 'Alice', snap(5), t0 + 1000).session; // held, genuinely ahead
+  session = reclaimStaleHeldUpdates(session, t0 + 1000 + HELD_UPDATE_TIMEOUT_MS); // forces the skip-ahead
+
+  // Long after the reclaim, but not implausible for the WHOLE match's real
+  // elapsed time since t0 - only implausible if the anchor had been pulled
+  // forward to the reclaim's own recent moment instead.
+  const muchLater = t0 + 1000 + HELD_UPDATE_TIMEOUT_MS + 1000;
+  const result = recordSnapshot(session, 'Alice', snap(60, [['legitimate']], 30), muchLater);
+
+  assert.equal(
+    result.ok,
+    true,
+    'a reset anchor would wrongly refuse this as implausible, even though it is entirely plausible since the match actually began'
+  );
+  assert.equal(result.applied, false, 'held, genuinely ahead of its own missing predecessor');
 });
 
 test('SEQUENCE_TIME_CEILING_SAFETY_MARGIN and MIN_REALISTIC_INTERVAL_MS are both real, positive constants', () => {
   assert.ok(Number.isInteger(MIN_REALISTIC_INTERVAL_MS) && MIN_REALISTIC_INTERVAL_MS > 0);
   assert.ok(Number.isInteger(SEQUENCE_TIME_CEILING_SAFETY_MARGIN) && SEQUENCE_TIME_CEILING_SAFETY_MARGIN > 0);
+});
+
+// MP-SEQ-HARDEN (reopened again): the elapsed-time ceiling above is anchored
+// to the client's own THEORETICAL max send rate (13.4.0's own publish gate),
+// not to how fast real play actually settles a board - a real player's own
+// sequence climbs far slower (a send only fires on an actual settled
+// change). A sustained attack can still open a growing DEFICIT against the
+// real player's own true pace, one bounded-wait round at a time, for as
+// long as it continues - and past a few minutes into a match, the time the
+// real player would need to out-climb that deficit at their own true pace
+// can exceed what's left of the match. A cumulative, never-resetting
+// lifetime cap on how much total advance may ever be consumed via
+// skip-ahead recovery - independent of elapsed time or round count - bounds
+// the worst-case deficit directly, so recovery always finishes with time to
+// spare regardless of how long a sustained attack runs.
+function totalSkipAdvance(session, playerName) {
+  return (session.pendingUpdates && session.pendingUpdates[playerName] && session.pendingUpdates[playerName].totalSkipAdvance) || 0;
+}
+
+test('reclaimStaleHeldUpdates accumulates the size of the gap it skips into a never-resetting lifetime total', () => {
+  let session = joinedSession();
+  session = recordSnapshot(session, 'Alice', snap(0), 1000).session;
+  session = recordSnapshot(session, 'Alice', snap(6), 1000).session; // held, skipping 1-5 (5 missing)
+
+  const reclaimed = reclaimStaleHeldUpdates(session, 1000 + HELD_UPDATE_TIMEOUT_MS);
+
+  assert.equal(totalSkipAdvance(reclaimed, 'Alice'), 5, 'expected the 5 missing sequences (1-5) to count against the lifetime budget');
+});
+
+test('recordSnapshot refuses to hold once the lifetime skip-advance budget is exhausted, even for an otherwise-plausible small gap', () => {
+  let session = joinedSession();
+  session = recordSnapshot(session, 'Alice', snap(0), 1000).session;
+  let now = 1000;
+
+  // Exhaust the budget across several genuine-looking rounds, each within
+  // the plain gap and the elapsed-time ceiling on its own.
+  while (totalSkipAdvance(session, 'Alice') < MAX_CUMULATIVE_SKIP_ADVANCE) {
+    const applied = session.snapshots.Alice;
+    const nextExpected = applied ? applied.sequence + 1 : 0;
+    now += HELD_UPDATE_TIMEOUT_MS + 500;
+    const held = recordSnapshot(session, 'Alice', snap(nextExpected + 5), now);
+    assert.equal(held.ok, true, 'expected each round to be legitimately held on its own, before the budget check matters');
+    session = reclaimStaleHeldUpdates(held.session, now + HELD_UPDATE_TIMEOUT_MS);
+    now += HELD_UPDATE_TIMEOUT_MS;
+  }
+
+  const nextExpected = session.snapshots.Alice.sequence + 1;
+  now += 1000;
+  const result = recordSnapshot(session, 'Alice', snap(nextExpected + 5, [['forged']], 999), now);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'skip-advance-budget-exhausted');
+});
+
+test('exhausting the lifetime skip-advance budget never blocks the real player\'s own exact, in-order applies', () => {
+  let session = joinedSession();
+  session = recordSnapshot(session, 'Alice', snap(0), 1000).session;
+  let now = 1000;
+
+  while (totalSkipAdvance(session, 'Alice') < MAX_CUMULATIVE_SKIP_ADVANCE) {
+    const applied = session.snapshots.Alice;
+    const nextExpected = applied ? applied.sequence + 1 : 0;
+    now += HELD_UPDATE_TIMEOUT_MS + 500;
+    const held = recordSnapshot(session, 'Alice', snap(nextExpected + 5), now);
+    session = reclaimStaleHeldUpdates(held.session, now + HELD_UPDATE_TIMEOUT_MS);
+    now += HELD_UPDATE_TIMEOUT_MS;
+  }
+
+  const nextExpected = session.snapshots.Alice.sequence + 1;
+  now += 1000;
+  const result = recordSnapshot(session, 'Alice', snap(nextExpected, [['genuine']], 1), now);
+
+  assert.equal(result.ok, true, 'an exact, in-order update must keep applying normally even after the budget is exhausted');
+  assert.equal(result.applied, true);
+});
+
+test('MAX_CUMULATIVE_SKIP_ADVANCE is a real, positive, finite constant', () => {
+  assert.ok(Number.isInteger(MAX_CUMULATIVE_SKIP_ADVANCE) && MAX_CUMULATIVE_SKIP_ADVANCE > 0);
 });
 
 // MP-SEQ-HARDEN/E2: a discarded update must never be indistinguishable from

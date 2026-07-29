@@ -57,3 +57,32 @@ Feature: Hardening against forged-sequence poisoning (MP-SEQ-HARDEN)
     Given a real 5 second delay passes
     When the first page injects a crafted snapshot with sequence 92, board fill "silver-octagon", and score 800
     Then the injected snapshot is refused, not accepted
+
+  # MP-SEQ-HARDEN (reopened again): the elapsed-time ceiling above closes the
+  # single-request exploit and the walk-forward-without-limit repetition,
+  # but its own growth rate matches the client's send GATE (the fastest a
+  # send could ever fire), not how fast a real board actually settles (far
+  # slower) - a sustained attack can still open a deficit against the real
+  # player's own true pace large enough that catching up would take longer
+  # than the match has left. This caps the total lifetime advance ever
+  # skipped via recovery, independent of elapsed time or round count, so the
+  # worst-case deficit stays small and recovery stays fast regardless of how
+  # long a sustained attempt runs. Two rounds below stay within that budget
+  # (nothing wrong with them individually) - the third, once the budget is
+  # spent, is refused even though it would have passed every other check.
+  # Local play is confirmed unaffected throughout - the true guarantee this
+  # closes is that a sustained attack's damage stays small and recoverable,
+  # never that the attack itself is impossible to attempt.
+  @E1 @E4 @E6 @integration
+  Scenario: A sustained attack cannot open a deficit larger than the match can recover from, and local play is unaffected throughout
+    Given a real 5 second delay passes
+    When the first page injects a crafted snapshot with sequence 26, board fill "yellow-diamond", and score 100
+    Then the injected snapshot is accepted, not refused
+    Given a real 5 second delay passes
+    When the first page injects a crafted snapshot with sequence 52, board fill "silver-octagon", and score 200
+    Then the injected snapshot is accepted, not refused
+    Given a real 5 second delay passes
+    When the first page injects a crafted snapshot with sequence 78, board fill "purple-triangle", and score 300
+    Then the injected snapshot is refused, not accepted
+    And no error or failure state is shown on either page
+    Then the first page can still make a fresh move that increases its own local score

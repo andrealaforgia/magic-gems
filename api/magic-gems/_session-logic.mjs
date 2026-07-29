@@ -108,6 +108,27 @@ function maxPlausibleSequence(firstSeenAtMs, nowMs) {
   return Math.ceil(elapsedMs / MIN_REALISTIC_INTERVAL_MS) + SEQUENCE_TIME_CEILING_SAFETY_MARGIN;
 }
 
+// Security warning (commit cca26c8), reopened again: the ceiling above is
+// anchored to MIN_REALISTIC_INTERVAL_MS - the client's own publish GATE
+// (13.4.0), the fastest a send could EVER fire - not to how fast a real
+// board actually settles, which is far slower (a send only fires on an
+// actual completed change). A sustained attack, one bounded-wait round at a
+// time, opens a growing DEFICIT against the real player's own true pace,
+// and past a few minutes into a match the real player's own time to out-
+// climb that deficit at their true pace can exceed what's left of the
+// match - self-healing in principle, too late to matter in practice. This
+// caps the total lifetime advance any player's own missing predecessors may
+// EVER be skipped past via recovery - never resetting, independent of
+// elapsed time or how many rounds a sustained attempt spans - so the
+// worst-case deficit is bounded directly, not merely by how much real time
+// has passed. Chosen so full exhaustion still recovers within roughly a
+// minute or two even at the slowest plausible real pace, comfortably inside
+// the match's own duration (SPEC 13.5.2) regardless of when in the match it
+// happens. Blocks only holding a NEW out-of-order candidate once spent - an
+// exact, in-order update always keeps applying, budget or not (13.4.8: the
+// game itself is never degraded by this).
+const MAX_CUMULATIVE_SKIP_ADVANCE = 30;
+
 function drainConsecutiveHeld(applied, held) {
   let current = applied;
   const remainingHeld = { ...held };
@@ -139,11 +160,23 @@ function reclaimStaleHeldUpdates(session, nowMs) {
     if (heldSequences.length === 0) continue;
     if (nowMs - pending.lastAdvanceMs < HELD_UPDATE_TIMEOUT_MS) continue;
     const newestSequence = Math.max(...heldSequences.map(Number));
+    const previousApplied = snapshots[playerName];
+    const skippedNow = newestSequence - (previousApplied ? previousApplied.sequence + 1 : 0);
     snapshots[playerName] = pending.held[newestSequence];
-    // firstSeenAtMs must never move, even here - this player's own reachable
-    // ceiling would otherwise reset with every skip-ahead, letting the exact
-    // ratchet this anchor exists to close repeat through this path instead.
-    pendingUpdates[playerName] = { held: {}, lastAdvanceMs: nowMs, firstSeenAtMs: pending.firstSeenAtMs };
+    // firstSeenAtMs must never move, even here. Resetting it doesn't reopen
+    // the ratchet (a reset-forward anchor only ever makes the ceiling MORE
+    // restrictive, never less) - it causes the opposite failure: a
+    // legitimate player, well into a real match, would have a later genuine
+    // held update wrongly refused as implausible, because the anchor no
+    // longer reflects how long their own real play has actually been going.
+    // totalSkipAdvance, in contrast, must NEVER reset and only ever grows -
+    // it's the lifetime deficit budget MAX_CUMULATIVE_SKIP_ADVANCE bounds.
+    pendingUpdates[playerName] = {
+      held: {},
+      lastAdvanceMs: nowMs,
+      firstSeenAtMs: pending.firstSeenAtMs,
+      totalSkipAdvance: (pending.totalSkipAdvance || 0) + skippedNow,
+    };
     changed = true;
   }
   return changed ? { ...session, snapshots, pendingUpdates } : session;
@@ -160,6 +193,7 @@ function recordSnapshot(session, playerName, snapshot, nowMs = Date.now()) {
   // again afterward (including through reclaimStaleHeldUpdates's own reset)
   // - the anchor the elapsed-time ceiling below is measured against.
   const firstSeenAtMs = pendingBefore.firstSeenAtMs ?? nowMs;
+  const totalSkipAdvance = pendingBefore.totalSkipAdvance || 0;
 
   // Security warning (commit de091f3), E2: a discarded update must never be
   // indistinguishable from an actually-applied one - `applied` names which
@@ -178,7 +212,10 @@ function recordSnapshot(session, playerName, snapshot, nowMs = Date.now()) {
       session: {
         ...reclaimed,
         snapshots: { ...reclaimed.snapshots, [playerName]: applied },
-        pendingUpdates: { ...reclaimed.pendingUpdates, [playerName]: { held, lastAdvanceMs: nowMs, firstSeenAtMs } },
+        pendingUpdates: {
+          ...reclaimed.pendingUpdates,
+          [playerName]: { held, lastAdvanceMs: nowMs, firstSeenAtMs, totalSkipAdvance },
+        },
       },
     };
   }
@@ -188,6 +225,12 @@ function recordSnapshot(session, playerName, snapshot, nowMs = Date.now()) {
   // plain gap check below.
   if (snapshot.sequence > maxPlausibleSequence(firstSeenAtMs, nowMs)) {
     return { ok: false, error: 'sequence-implausible-for-elapsed-time' };
+  }
+
+  // Security warning (commit cca26c8), reopened again: bounds the worst-case
+  // deficit directly - see MAX_CUMULATIVE_SKIP_ADVANCE's own comment.
+  if (totalSkipAdvance >= MAX_CUMULATIVE_SKIP_ADVANCE) {
+    return { ok: false, error: 'skip-advance-budget-exhausted' };
   }
 
   if (snapshot.sequence - nextExpectedSequence >= MAX_SEQUENCE_GAP) {
@@ -209,6 +252,7 @@ function recordSnapshot(session, playerName, snapshot, nowMs = Date.now()) {
           held: { ...pendingBefore.held, [snapshot.sequence]: snapshot },
           lastAdvanceMs: pendingBefore.lastAdvanceMs ?? nowMs,
           firstSeenAtMs,
+          totalSkipAdvance,
         },
       },
     },
@@ -239,4 +283,5 @@ export {
   HELD_UPDATE_TIMEOUT_MS,
   MIN_REALISTIC_INTERVAL_MS,
   SEQUENCE_TIME_CEILING_SAFETY_MARGIN,
+  MAX_CUMULATIVE_SKIP_ADVANCE,
 };
