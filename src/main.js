@@ -385,6 +385,29 @@
           autoplayTimer = setTimeout(runAutoplayStep, AUTOPLAY_STEP_MS);
           return;
         }
+        // AUTOPLAY-INVALID-MOVE root cause (SPEC 12.2: only valid 3+ moves).
+        // A plan is a fixed key sequence - walk the cursor to gem A, SPACE to
+        // select it, one arrow to aim at gem B, SPACE to commit - and that is
+        // only correct from a CLEAN input state. If a selection is already
+        // active, arrows mean "aim the target" rather than "move the cursor"
+        // (interaction.js's own handleKey), so the cursor never travels and the
+        // commit fires against the STALE selection and whatever neighbour the
+        // last arrow pointed at - a pairing that is essentially never a match,
+        // which the player then SEES swap and bounce back (game.js's commit
+        // rejects it but still returns a swapAnimation for it).
+        //
+        // Two real ways in: the player selects a gem by hand and then switches
+        // autoplay on, and autoplay being switched off mid-plan after its own
+        // SPACE and then switched back on (which discards the pending keys but
+        // clears no selection). Rather than enumerate the entry points, clear
+        // the state here where every plan begins. ESCAPE is guarded on there
+        // BEING a selection: with none active it would open the exit
+        // confirmation (game.js) instead of doing nothing.
+        if (interaction.selection) {
+          dispatchGameKey('Escape');
+          autoplayTimer = setTimeout(runAutoplayStep, AUTOPLAY_STEP_MS);
+          return;
+        }
         autoplayQueue = planAutoplaySteps(board, interaction.cursor);
       }
       const key = autoplayQueue.shift();
@@ -978,6 +1001,15 @@
         // own replica never replicates, permanently desyncing every refill
         // from that point on (the exact defect this scenario file's own
         // sustained-burst regression test exists to catch).
+        // AUTOPLAY-INVALID-MOVE: same clean-input-state guard as the
+        // single-player driver above, for the same reason - a match's own grid
+        // is driven by the identical plan-as-keystrokes mechanism, so it has
+        // the identical stale-selection failure. See that site's own comment.
+        if (interaction.selection) {
+          dispatchGameKey('Escape');
+          autoplayTimer = setTimeout(runAutoplayStep, AUTOPLAY_STEP_MS);
+          return;
+        }
         autoplayQueue = planAutoplaySteps(board, interaction.cursor, cosmeticRandom);
       }
       const key = autoplayQueue.shift();
