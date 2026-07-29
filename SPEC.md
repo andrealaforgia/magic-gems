@@ -317,9 +317,10 @@ clauses are added as each iteration lands.)
       either score changes (the remote player's score being whatever the latest
       snapshot carried, §13.4).
   - 13.3.4 The local player plays their own grid with the usual controls (§6). The
-    remote grid shows the opponent's board; live updates of the opponent's board and
-    score arrive as SNAPSHOTS (§13.4) — until the first snapshot arrives the remote
-    side shows the shared starting board.
+    remote grid shows the opponent's board; live updates of the opponent's board,
+    score, cursor and selection arrive as SEQUENCED UPDATES and are replayed
+    scenically (§13.4) — until the first update arrives the remote side shows the
+    shared starting board.
 
   - 13.3.5 Each player has their OWN independent score and time-multiplier (§10),
     computed and shown on their own side of the split — the multiplier is per-player
@@ -334,25 +335,55 @@ clauses are added as each iteration lands.)
     is surrender per §14.2; the winner proclamation is delivered by the end-game
     iteration, §13.5).
 
-- 13.4 Live opponent sync — by board snapshot. During the match, WHENEVER a player's
-  own board settles after a change (a swap resolving, cascades, and refills), that
-  client sends its FULL current board and its current score to the session. The
-  opponent's client, on receiving a snapshot, simply DRAWS that board on the remote
-  (right) grid and shows that score. There is NO move-by-move replay and NO local
-  reconstruction of the opponent's play: the remote grid is a direct rendering of the
-  latest board the opponent actually sent (the grid just updates to the new board —
-  no animated shatter/fall of their moves), and no sound plays for it. This snapshot
-  model REPLACES the earlier move-replay approach, which could desync and then render
-  illegal swaps.
-  - 13.4.0 ACCURACY IS REQUIRED. The remote grid and the opponent's score shown MUST
-    be the opponent's ACTUAL board and score as of the latest snapshot received (brief
-    async lag between a change and its snapshot arriving is acceptable; the grid must
-    NOT show a stale-forever, different, or invalid board). Because each snapshot is a
-    board the opponent's own client actually had, the remote grid can never drift into
-    an impossible or illegal state — it only ever shows a real board the opponent sent.
-  - 13.4.1 The centre who's-winning gauge (13.3.3) reflects the two players' current
+- 13.4 Live opponent sync — SEQUENCED snapshots, replayed scenically. The remote grid
+  must not merely blink from one board to the next: the opponent's play is REPLICATED
+  so it looks like a game being played, with the same visual life as the local side.
+  This REPLACES both the earlier move-replay approach (which desynced and rendered
+  illegal swaps) and the plain-snapshot approach that followed it (correct, but
+  visually dead). It keeps the safety of the former and the liveliness of the latter.
+  - 13.4.0 WHAT IS SENT. Whenever a player's own board settles after a change (a swap
+    resolving, cascades, refills), that client sends an UPDATE containing: its FULL
+    current board, its current score, its CURSOR POSITION, and its current GEM
+    SELECTION (which gem, if any, is selected). Every update also carries a SEQUENCE
+    NUMBER, counting from the start of that player's match and increasing by one per
+    update. The full board is included in EVERY update, not just the first.
+  - 13.4.1 ORDERING IS ENFORCED, NOT ASSUMED. The server is serverless and gives NO
+    guarantee that requests arrive in the order they were sent. Out-of-order arrival is
+    the specific defect this section exists to prevent: applying update 4 before 3
+    produces a nonsensical replay and, historically, visibly illegal swaps that then
+    corrupted the remote view for the rest of the match. Therefore an update that
+    arrives out of order is HELD, keyed by session and sequence number, until its
+    predecessors have arrived and been processed. Updates are applied in strictly
+    ascending sequence order, with no gaps, never in arrival order.
+  - 13.4.2 GAPS MUST NOT FREEZE THE VIEW. Waiting for a missing update cannot be
+    unbounded: a single lost request must never leave the opponent's grid frozen for
+    the rest of the match. After a bounded wait for a missing sequence number, the
+    replay SKIPS AHEAD to the newest update available and draws that board directly —
+    losing the scenic replay of the skipped moves, but never the correctness of what
+    is displayed. Recovery is silent and automatic; the player is not shown an error.
+  - 13.4.3 THE BOARD IS THE SOURCE OF TRUTH, THE ANIMATION IS NOT. Because every update
+    carries the opponent's full actual board, the remote grid can always be made
+    correct regardless of what was replayed. Where a replayed animation and the
+    received board disagree, the RECEIVED BOARD WINS and the grid is corrected to it.
+    The remote grid must NEVER be left showing a board the opponent did not actually
+    have, and must never display an illegal or impossible position — no matter what
+    arrives, in what order, or how much is lost.
+  - 13.4.4 HELD UPDATES ARE BOUNDED. Updates held awaiting their predecessors must not
+    accumulate without limit, and stale held updates for a finished or abandoned match
+    must not persist indefinitely.
+  - 13.4.5 WHAT THE REPLAY LOOKS LIKE. The remote grid shows the opponent's cursor
+    moving and their gem selection, and their moves resolve with the same visual
+    treatment the local player sees (SPEC §7/§8 — swap, shatter, fall, cascade), so the
+    remote side reads as a live opponent rather than a refreshing picture. Their score
+    updates alongside. NO SOUND plays for remote activity: audio belongs to the local
+    player's own actions only.
+  - 13.4.6 ACCURACY IS REQUIRED. The remote grid and the opponent's score shown MUST
+    reflect the opponent's ACTUAL board and score as of the latest update applied
+    (brief async lag between a change and its update arriving is acceptable; the grid
+    must NOT show a stale-forever, different, or invalid board).
+  - 13.4.7 The centre who's-winning gauge (13.3.3) reflects the two players' current
     scores, tilting toward whoever leads.
-  - 13.4.2 Talking to the server is ASYNCHRONOUS and low-priority — it must NEVER
+  - 13.4.8 Talking to the server is ASYNCHRONOUS and low-priority — it must NEVER
     block or degrade the local game experience. Local input, animation, and
     rendering always take precedence; opponent updates are best-effort and may lag
     slightly behind real time; a slow, delayed, or failed network request must not
