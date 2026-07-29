@@ -268,6 +268,12 @@ test('recordSnapshot refuses to hold beyond the bounded per-player cap, rather t
 // are specifically about the gap mechanism on its own.
 const AMPLE_ELAPSED_MS_FOR_GAP_TESTS = 60 * 60 * 1000;
 
+// MP-SEQ-HARDEN (final round): once the cumulative skip-advance budget gates
+// on the PROJECTED total, it fires for any gap past MAX_CUMULATIVE_SKIP_ADVANCE
+// well before MAX_SEQUENCE_GAP is ever reached for a fresh session (30 < 100)
+// - the plain gap check's own "too far ahead" boundary is no longer the
+// reachable one for a value this large; the budget's own boundary now is
+// (covered separately below). This still refuses, just via the tighter gate.
 test('recordSnapshot refuses a sequence far outside the plain gap, rather than holding it', () => {
   const afterFirst = recordSnapshot(joinedSession(), 'Alice', snap(0), 1000).session;
 
@@ -278,22 +284,8 @@ test('recordSnapshot refuses a sequence far outside the plain gap, rather than h
     1000 + AMPLE_ELAPSED_MS_FOR_GAP_TESTS
   );
 
-  assert.equal(result.ok, false);
-  assert.equal(result.error, 'sequence-too-far-ahead');
+  assert.equal(result.ok, false, 'a sequence this far outside the plain gap must still be refused, whichever check catches it');
   assert.equal(result.session, undefined, 'a refused sequence must never touch the existing session');
-});
-
-test('recordSnapshot draws the line for "too far ahead" at MAX_SEQUENCE_GAP past what is currently expected', () => {
-  const afterFirst = recordSnapshot(joinedSession(), 'Alice', snap(0), 1000).session;
-  const nextExpectedSequence = 1; // sequence 0 just applied
-  const nowMs = 1000 + AMPLE_ELAPSED_MS_FOR_GAP_TESTS;
-
-  const justInsideGap = recordSnapshot(afterFirst, 'Alice', snap(nextExpectedSequence + MAX_SEQUENCE_GAP - 1), nowMs);
-  const justOutsideGap = recordSnapshot(afterFirst, 'Alice', snap(nextExpectedSequence + MAX_SEQUENCE_GAP), nowMs);
-
-  assert.equal(justInsideGap.ok, true, 'expected a sequence just inside the gap to still be legitimately held');
-  assert.equal(justOutsideGap.ok, false, 'expected a sequence at the gap boundary to be refused');
-  assert.equal(justOutsideGap.error, 'sequence-too-far-ahead');
 });
 
 // The core proof for E1: a forged, implausible-sequence request as another
@@ -403,24 +395,24 @@ test('repeating a modest forged jump cannot walk the expected sequence forward w
 // held update wrongly refused as implausible, because the anchor got pulled
 // forward to the reclaim's own recent moment instead of staying at when
 // their match actually began.
-test('a bounded-wait reclaim does not reset the elapsed-time anchor, so a later legitimate held update is not wrongly refused', () => {
+//
+// MP-SEQ-HARDEN (final round): now that the cumulative skip-advance budget
+// gates on the projected total, it's the tighter constraint for any gap
+// large enough to distinguish a preserved vs. reset elapsed-time ceiling
+// through accept/reject alone (the ceiling's own safety margin alone
+// already exceeds the whole lifetime budget) - so this asserts the stored
+// anchor directly instead of inferring it from a downstream decision.
+test('a bounded-wait reclaim does not reset the elapsed-time anchor, so it still reflects when the match actually began', () => {
   const t0 = 1_000_000;
   let session = recordSnapshot(joinedSession(), 'Alice', snap(0), t0).session;
   session = recordSnapshot(session, 'Alice', snap(5), t0 + 1000).session; // held, genuinely ahead
   session = reclaimStaleHeldUpdates(session, t0 + 1000 + HELD_UPDATE_TIMEOUT_MS); // forces the skip-ahead
 
-  // Long after the reclaim, but not implausible for the WHOLE match's real
-  // elapsed time since t0 - only implausible if the anchor had been pulled
-  // forward to the reclaim's own recent moment instead.
-  const muchLater = t0 + 1000 + HELD_UPDATE_TIMEOUT_MS + 1000;
-  const result = recordSnapshot(session, 'Alice', snap(60, [['legitimate']], 30), muchLater);
-
   assert.equal(
-    result.ok,
-    true,
-    'a reset anchor would wrongly refuse this as implausible, even though it is entirely plausible since the match actually began'
+    session.pendingUpdates.Alice.firstSeenAtMs,
+    t0,
+    'a reset anchor would collapse the ceiling to the reclaim\'s own recent moment instead of reflecting the whole match so far'
   );
-  assert.equal(result.applied, false, 'held, genuinely ahead of its own missing predecessor');
 });
 
 test('SEQUENCE_TIME_CEILING_SAFETY_MARGIN and MIN_REALISTIC_INTERVAL_MS are both real, positive constants', () => {
@@ -477,6 +469,32 @@ test('recordSnapshot refuses to hold once the lifetime skip-advance budget is ex
   const result = recordSnapshot(session, 'Alice', snap(nextExpected + 5, [['forged']], 999), now);
 
   assert.equal(result.ok, false);
+  assert.equal(result.error, 'skip-advance-budget-exhausted');
+});
+
+// MP-SEQ-HARDEN (final round): the check above only gates on the total AS
+// IT STANDS before this round begins - it says nothing about what THIS
+// round's own gap would itself add if it later gets skip-ahead-promoted.
+// Starting from a totally fresh budget (0), a single held candidate could
+// still claim a gap up to just under MAX_SEQUENCE_GAP in one shot, since
+// nothing stops the FIRST round on its own - only the plain gap check
+// happened to bound it, coincidentally, not the budget. Gating on the
+// PROJECTED total (what it would become if this candidate is the one later
+// skipped) closes that - the worst-case lifetime advance must never exceed
+// MAX_CUMULATIVE_SKIP_ADVANCE, not merely "whatever was already spent before
+// this round."
+test('recordSnapshot refuses a single round whose own gap alone would already exceed the lifetime budget, even starting from zero', () => {
+  const afterFirst = recordSnapshot(joinedSession(), 'Alice', snap(0), 1000).session;
+
+  // A gap comfortably under MAX_SEQUENCE_GAP (so the plain gap check alone
+  // would have let it through) but well over MAX_CUMULATIVE_SKIP_ADVANCE.
+  const result = recordSnapshot(afterFirst, 'Alice', snap(1 + MAX_CUMULATIVE_SKIP_ADVANCE + 20, [['forged']], 999), 10000);
+
+  assert.equal(
+    result.ok,
+    false,
+    'a single round claiming more than the entire lifetime budget must be refused outright, not merely tolerated because nothing was spent yet'
+  );
   assert.equal(result.error, 'skip-advance-budget-exhausted');
 });
 

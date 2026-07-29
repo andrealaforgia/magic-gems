@@ -227,9 +227,18 @@ function recordSnapshot(session, playerName, snapshot, nowMs = Date.now()) {
     return { ok: false, error: 'sequence-implausible-for-elapsed-time' };
   }
 
-  // Security warning (commit cca26c8), reopened again: bounds the worst-case
-  // deficit directly - see MAX_CUMULATIVE_SKIP_ADVANCE's own comment.
-  if (totalSkipAdvance >= MAX_CUMULATIVE_SKIP_ADVANCE) {
+  // Security warning (commit cca26c8), final round: gates on the PROJECTED
+  // total - what it would become if THIS candidate is the one later
+  // skip-ahead-promoted - not merely the total as it stands before this
+  // round begins. Gating on the prior total alone let a single round
+  // starting from a fresh (zero) budget claim a gap up to just under
+  // MAX_SEQUENCE_GAP in one shot, since nothing had been spent yet to
+  // compare against - the worst case was bounded only by coincidence (the
+  // plain gap check below), not by this budget at all. Projecting first
+  // means the worst-case lifetime advance can never exceed
+  // MAX_CUMULATIVE_SKIP_ADVANCE, regardless of how it's spent.
+  const projectedSkipAdvance = totalSkipAdvance + (snapshot.sequence - nextExpectedSequence);
+  if (projectedSkipAdvance > MAX_CUMULATIVE_SKIP_ADVANCE) {
     return { ok: false, error: 'skip-advance-budget-exhausted' };
   }
 

@@ -46,16 +46,19 @@ Feature: Hardening against forged-sequence poisoning (MP-SEQ-HARDEN)
   # attacker's own accepted jumps advance, so a single individually-plausible
   # forged jump can be repeated to walk the expected sequence forward without
   # limit. The first round below is accepted on its own (nothing wrong with
-  # one modest, real-time-plausible jump in isolation) - the SECOND repeat of
-  # the same-sized jump, no longer plausible for how little additional real
-  # time has actually passed, is what must fail.
+  # one modest jump in isolation) - the second repeat of the same-sized jump
+  # is what must fail. Two independent mechanisms guard this now (the
+  # elapsed-time ceiling and the cumulative skip-advance budget, added in
+  # later rounds of this same hardening) - this only asserts the combined,
+  # observable outcome, not which one fires, since either is a valid closure
+  # of the same repeated-attack gap.
   @E1 @E6 @integration
   Scenario: Repeating a modest forged jump cannot walk the expected sequence forward without limit
     Given a real 5 second delay passes
-    When the first page injects a crafted snapshot with sequence 46, board fill "yellow-diamond", and score 400
+    When the first page injects a crafted snapshot with sequence 21, board fill "yellow-diamond", and score 400
     Then the injected snapshot is accepted, not refused
     Given a real 5 second delay passes
-    When the first page injects a crafted snapshot with sequence 92, board fill "silver-octagon", and score 800
+    When the first page injects a crafted snapshot with sequence 42, board fill "silver-octagon", and score 800
     Then the injected snapshot is refused, not accepted
 
   # MP-SEQ-HARDEN (reopened again): the elapsed-time ceiling above closes the
@@ -76,13 +79,27 @@ Feature: Hardening against forged-sequence poisoning (MP-SEQ-HARDEN)
   @E1 @E4 @E6 @integration
   Scenario: A sustained attack cannot open a deficit larger than the match can recover from, and local play is unaffected throughout
     Given a real 5 second delay passes
-    When the first page injects a crafted snapshot with sequence 26, board fill "yellow-diamond", and score 100
+    When the first page injects a crafted snapshot with sequence 16, board fill "yellow-diamond", and score 100
     Then the injected snapshot is accepted, not refused
     Given a real 5 second delay passes
-    When the first page injects a crafted snapshot with sequence 52, board fill "silver-octagon", and score 200
+    When the first page injects a crafted snapshot with sequence 32, board fill "silver-octagon", and score 200
     Then the injected snapshot is accepted, not refused
     Given a real 5 second delay passes
-    When the first page injects a crafted snapshot with sequence 78, board fill "purple-triangle", and score 300
+    When the first page injects a crafted snapshot with sequence 48, board fill "purple-triangle", and score 300
     Then the injected snapshot is refused, not accepted
     And no error or failure state is shown on either page
     Then the first page can still make a fresh move that increases its own local score
+
+  # MP-SEQ-HARDEN (final round): the budget above gated on the total as it
+  # stood BEFORE a round begins, not on what that round's own gap would
+  # itself contribute if later skip-ahead-promoted - so a single round,
+  # starting from a completely fresh (zero) budget, could still claim a gap
+  # up to just under the plain gap check's own, much wider ceiling in one
+  # shot, since nothing had been spent yet to compare against. Gating on the
+  # projected total instead closes this - even a lone, first-ever round is
+  # held to the same lifetime bound.
+  @E1 @E6 @integration
+  Scenario: A single fresh round cannot claim more than the entire lifetime skip-advance budget in one shot
+    Given a real 5 second delay passes
+    When the first page injects a crafted snapshot with sequence 45, board fill "yellow-diamond", and score 900
+    Then the injected snapshot is refused, not accepted

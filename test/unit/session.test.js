@@ -220,8 +220,10 @@ test('recordSnapshot refuses a sequence far outside the plain gap, rather than h
     nowMs
   );
 
-  assert.equal(result.ok, false);
-  assert.equal(result.error, 'sequence-too-far-ahead');
+  // MP-SEQ-HARDEN (final round): the cumulative skip-advance budget's own
+  // projected-total gate now fires first for a gap this large (30 < 100) -
+  // still refused, just via the tighter, actually-reachable check.
+  assert.equal(result.ok, false, 'a sequence this far outside the plain gap must still be refused, whichever check catches it');
 });
 
 // Security warning (commit de091f3), reopened: the plain gap check above is
@@ -307,9 +309,14 @@ test('recordSnapshot holds a genuinely small gap correctly once nextExpectedSequ
 // QA review (commit cca26c8), highest priority: nothing on this mirror
 // exercised firstSeenAtMs surviving a bounded-wait reclaim - see
 // _session-logic.mjs's own test of the same name for the full rationale on
-// why a reset anchor causes wrongful refusal of later legitimate play,
-// not a reopened ratchet.
-test('a bounded-wait reclaim does not reset the elapsed-time anchor, so a later legitimate held update is not wrongly refused', () => {
+// why a reset anchor causes wrongful refusal of later legitimate play, not a
+// reopened ratchet.
+//
+// MP-SEQ-HARDEN (final round): now that the cumulative skip-advance budget
+// gates on the projected total, it dominates any gap large enough to
+// distinguish a preserved vs. reset ceiling through accept/reject alone -
+// asserts the stored anchor directly instead.
+test('a bounded-wait reclaim does not reset the elapsed-time anchor, so it still reflects when the match actually began', () => {
   const t0 = 1_000_000;
   const session = createSession('ABCDEFGHIJ', 'Alice');
   let current = recordSnapshot(joinSession(session, 'Bob').session, 'Alice', {
@@ -320,15 +327,11 @@ test('a bounded-wait reclaim does not reset the elapsed-time anchor, so a later 
   current = recordSnapshot(current, 'Alice', { board: [['blue-teardrop']], score: 5, sequence: 5 }, t0 + 1000).session;
   current = reclaimStaleHeldUpdates(current, t0 + 1000 + HELD_UPDATE_TIMEOUT_MS);
 
-  const muchLater = t0 + 1000 + HELD_UPDATE_TIMEOUT_MS + 1000;
-  const result = recordSnapshot(current, 'Alice', { board: [['legitimate']], score: 30, sequence: 60 }, muchLater);
-
   assert.equal(
-    result.ok,
-    true,
-    'a reset anchor would wrongly refuse this as implausible, even though it is entirely plausible since the match actually began'
+    current.pendingUpdates.Alice.firstSeenAtMs,
+    t0,
+    'a reset anchor would collapse the ceiling to the reclaim\'s own recent moment instead of reflecting the whole match so far'
   );
-  assert.equal(result.applied, false);
 });
 
 // Security warning (commit cca26c8), reopened again: a light smoke test
@@ -360,6 +363,34 @@ test('recordSnapshot refuses to hold once the lifetime skip-advance budget is ex
   const result = recordSnapshot(current, 'Alice', { board: [['forged']], score: 999, sequence: nextExpected + 5 }, now);
 
   assert.equal(result.ok, false);
+  assert.equal(result.error, 'skip-advance-budget-exhausted');
+});
+
+// MP-SEQ-HARDEN (final round): a light smoke test only - see
+// _session-logic.mjs's own test of the same name for the full rationale on
+// why gating on the total as it stood before this round, rather than the
+// projected total, let a single fresh round claim most of the budget in one
+// shot.
+test('recordSnapshot refuses a single round whose own gap alone would already exceed the lifetime budget, even starting from zero', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const afterFirst = recordSnapshot(joinSession(session, 'Bob').session, 'Alice', {
+    board: [['red-square']],
+    score: 0,
+    sequence: 0,
+  }, 1000).session;
+
+  const result = recordSnapshot(
+    afterFirst,
+    'Alice',
+    { board: [['forged']], score: 999, sequence: 1 + MAX_CUMULATIVE_SKIP_ADVANCE + 20 },
+    10000
+  );
+
+  assert.equal(
+    result.ok,
+    false,
+    'a single round claiming more than the entire lifetime budget must be refused outright, not merely tolerated because nothing was spent yet'
+  );
   assert.equal(result.error, 'skip-advance-budget-exhausted');
 });
 

@@ -165,7 +165,12 @@
       return { ok: false, error: 'sequence-implausible-for-elapsed-time' };
     }
 
-    if (totalSkipAdvance >= MAX_CUMULATIVE_SKIP_ADVANCE) {
+    // Security warning (commit cca26c8), final round: gates on the
+    // PROJECTED total (what it would become if this candidate is the one
+    // later skip-ahead-promoted), not merely the total as it stands before
+    // this round - see api/magic-gems/_session-logic.mjs's own comment.
+    const projectedSkipAdvance = totalSkipAdvance + (snapshot.sequence - nextExpectedSequence);
+    if (projectedSkipAdvance > MAX_CUMULATIVE_SKIP_ADVANCE) {
       return { ok: false, error: 'skip-advance-budget-exhausted' };
     }
 
