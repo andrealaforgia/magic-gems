@@ -570,6 +570,9 @@ test('snapshot accepts a sequence of exactly zero, not just positive sequences',
 test('snapshot rejects a missing cursor with 400', async (t) => {
   const code = await withSnapshotFixture(t);
 
+  // JSON.stringify drops keys whose value is undefined entirely, so this
+  // sends a real request with no "cursor" key at all - the actual "missing
+  // field" shape, not a stand-in for it.
   const result = await postSnapshotBody(code, { cursor: undefined });
 
   assert.equal(result.status, 400);
@@ -610,6 +613,54 @@ test('snapshot accepts a real selection within the grid', async (t) => {
 
   assert.equal(result.status, 200);
   assert.equal(result.body.ok, true);
+});
+
+// Security review (commit e9520b5): cursor/selection must be reconstructed
+// as clean { row, col } objects, not stored/echoed by reference - otherwise
+// extra properties riding alongside a real, in-bounds cell would pass
+// validation intact and persist.
+test('snapshot strips any extra properties from cursor before storing it', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  withFetch(t, fakeUpstash());
+  const created = await createViaHandler('Alice');
+
+  const res = await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'snapshot',
+        code: created.session.code,
+        playerName: 'Alice',
+        ...makeSnapshotBody({ cursor: { row: 2, col: 3, junk: 'x'.repeat(1000) } }),
+      }),
+    })
+  );
+  const body = await res.json();
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(body.session.snapshots.Alice.cursor, { row: 2, col: 3 });
+});
+
+test('snapshot strips any extra properties from selection before storing it', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  withFetch(t, fakeUpstash());
+  const created = await createViaHandler('Alice');
+
+  const res = await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'snapshot',
+        code: created.session.code,
+        playerName: 'Alice',
+        ...makeSnapshotBody({ selection: { row: 1, col: 4, junk: 'x'.repeat(1000) } }),
+      }),
+    })
+  );
+  const body = await res.json();
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(body.session.snapshots.Alice.selection, { row: 1, col: 4 });
 });
 
 test('snapshot rejects a selection outside the grid with 400', async (t) => {

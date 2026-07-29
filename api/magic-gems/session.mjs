@@ -128,6 +128,21 @@ function validSelectionOrError(selection) {
   return validCellOrError(selection, 'selection');
 }
 
+// Security review (commit e9520b5): board is already normalized element-by-
+// element against a closed gem-type set rather than trusted as-is - cursor
+// and selection are a real cell (already validated by this point), but
+// storing/echoing the caller's own object by reference would carry through
+// any extra properties riding alongside `row`/`col`. Reconstructing a clean
+// { row, col } here closes that the same way board's own validation already
+// does.
+function normalizeCell(cell) {
+  return { row: cell.row, col: cell.col };
+}
+
+function normalizeSelection(selection) {
+  return selection === null ? null : normalizeCell(selection);
+}
+
 async function handleCreate(env, hostName) {
   let code = generateSessionCode();
   while (await getStoredSession(env, code)) code = generateSessionCode();
@@ -146,13 +161,20 @@ async function handleJoin(env, code, playerName) {
 // QA review (commit a89ad37): recordSnapshot stores its snapshot object by
 // direct reference, never cloning - safe here specifically because every
 // field is always freshly built from this request's own already-JSON-parsed
-// body, never a live object a caller could go on to mutate. See that test's
-// own rationale (test/unit/session-logic.test.js) before changing what gets
-// passed here.
+// body (cursor/selection via normalizeCell/normalizeSelection, board/score/
+// sequence already primitives-or-arrays-of-primitives), never a live object
+// a caller could go on to mutate. See that test's own rationale
+// (test/unit/session-logic.test.js) before changing what gets passed here.
 async function handleRecordSnapshot(env, code, playerName, board, score, sequence, cursor, selection) {
   const existing = await getStoredSession(env, code);
   if (!existing) return { ok: false, error: 'not-found' };
-  const result = recordSnapshot(existing, playerName, { board, score, sequence, cursor, selection });
+  const result = recordSnapshot(existing, playerName, {
+    board,
+    score,
+    sequence,
+    cursor: normalizeCell(cursor),
+    selection: normalizeSelection(selection),
+  });
   if (!result.ok) return result;
   await updateStoredSession(env, result.session);
   return result;

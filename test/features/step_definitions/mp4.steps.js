@@ -195,8 +195,26 @@ Then(
       this.sentSnapshotPayloads.length >= MIN_UPDATES,
       `expected at least ${MIN_UPDATES} real sent updates, got ${this.sentSnapshotPayloads.length}`
     );
+    // SPEC 13.4.0/E2 has two clauses: the count starts from the beginning of
+    // this player's own match, AND it rises by exactly one per update sent.
+    // A prior revision here (QA review, commit 5d7de4c) checked only the
+    // second by comparing against the FIRST OBSERVED value instead of a
+    // fixed 0 - that silently stopped covering the first clause, since a
+    // sequence that rises by one from wherever it happens to begin passes
+    // identically whether it began at 0 or at some carried-over/reset value
+    // (caught before this landed - a reviewer that only sees the diff has no
+    // way to see the expectation text lost). Both are pinned explicitly now.
+    assert.equal(
+      this.sentSnapshotPayloads[0].sequence,
+      0,
+      `expected the first sent update to start this match's own count at 0, got ${JSON.stringify(this.sentSnapshotPayloads[0].sequence)}`
+    );
     this.sentSnapshotPayloads.forEach((payload, i) => {
-      assert.equal(payload.sequence, i, `expected update ${i} to carry sequence ${i}, got ${JSON.stringify(payload.sequence)}`);
+      assert.equal(
+        payload.sequence,
+        i,
+        `expected update ${i} to carry sequence ${i}, got ${JSON.stringify(payload.sequence)}`
+      );
       assert.ok(
         payload.cursor && Number.isInteger(payload.cursor.row) && Number.isInteger(payload.cursor.col),
         `expected update ${i} to carry a real cursor, got ${JSON.stringify(payload.cursor)}`
