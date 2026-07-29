@@ -195,12 +195,18 @@ Then(
       this.sentSnapshotPayloads.length >= MIN_UPDATES,
       `expected at least ${MIN_UPDATES} real sent updates, got ${this.sentSnapshotPayloads.length}`
     );
-    // SPEC 13.4.0/E2 has two independent clauses, each pinned by its own
-    // assertion: the count starts from the beginning of this player's own
-    // match (a fixed 0, not merely "wherever it happens to begin" - that
-    // weaker form would pass identically for a stream starting at 0 or at
-    // some carried-over/reset value, caught in review before this landed),
-    // and it rises by exactly one per update sent relative to that origin.
+    // SPEC 13.4.0/E2 has two clauses, checked in sequence rather than truly
+    // independently (QA review, this same file): the first assertion gates
+    // the second - it throws before the loop below ever runs if the count
+    // didn't start at 0, so on every path that reaches the loop,
+    // firstSequence is already known to be exactly 0. That's deliberately
+    // fine: SPEC 13.4.0 requires a fixed 0 unconditionally, with no
+    // legitimate non-zero-start case to protect independently against - a
+    // weaker "rises by one from wherever it begins" check (rejected in an
+    // earlier, uncommitted revision of this same assertion) would pass
+    // identically for a stream starting at 0 or at some carried-over/reset
+    // value, which is exactly what the first assertion alone already rules
+    // out before the second ever gets a chance to matter.
     const firstSequence = this.sentSnapshotPayloads[0].sequence;
     assert.equal(
       firstSequence,

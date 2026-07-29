@@ -58,9 +58,11 @@ async function moveCursorTo(page, from, to) {
 // margin for everything before it (session round trips, DOM updates) plus
 // the handoff itself - an empirically-tuned number that happened to work
 // most of the time, not a robust one, and the same recurring failure this
-// tightened. Derived from the LIVE delay instead, with generous real
-// headroom on top, so it can't silently drift out of sync with that value
-// the way a re-typed guess could.
+// tightened. The DELAY component is now read live, so it can't silently
+// drift out of sync with the real value the way a re-typed guess could -
+// this buffer on top of it is still a heuristic margin, not derived from
+// anything (QA review, same category as every other timing buffer in this
+// suite).
 const MATCH_VISIBILITY_TIMEOUT_BUFFER_MS = 5000;
 
 Then('the match begins on both pages', async function () {
