@@ -195,18 +195,25 @@ Then(
       this.sentSnapshotPayloads.length >= MIN_UPDATES,
       `expected at least ${MIN_UPDATES} real sent updates, got ${this.sentSnapshotPayloads.length}`
     );
-    // SPEC 13.4.0/E2 has two clauses, checked in sequence rather than truly
-    // independently (QA review, this same file): the first assertion gates
-    // the second - it throws before the loop below ever runs if the count
-    // didn't start at 0, so on every path that reaches the loop,
-    // firstSequence is already known to be exactly 0. That's deliberately
-    // fine: SPEC 13.4.0 requires a fixed 0 unconditionally, with no
-    // legitimate non-zero-start case to protect independently against - a
-    // weaker "rises by one from wherever it begins" check (rejected in an
-    // earlier, uncommitted revision of this same assertion) would pass
-    // identically for a stream starting at 0 or at some carried-over/reset
-    // value, which is exactly what the first assertion alone already rules
-    // out before the second ever gets a chance to matter.
+    // SPEC 13.4.0/E2 names an ORIGIN ("counting from the start of that
+    // player's match") but no specific numeral - a stream starting at 1
+    // would satisfy the spec text as written just as well as one starting
+    // at 0. The IMPLEMENTATION happens to start at 0 (main.js's own
+    // nextSequence), so pinning 0 here checks that real, current contract,
+    // not something the spec itself mandates - worth not overclaiming if a
+    // later slice (e.g. a reconnect resuming a count) ever legitimately
+    // changes it.
+    //
+    // The two checks below are sequential, not truly independent (QA
+    // review, this same file): the first throws before the loop ever runs
+    // if the count didn't start at 0, so on every path that reaches the
+    // loop, firstSequence is already known to be exactly 0. That's fine for
+    // what's actually being protected against here - a weaker "rises by one
+    // from wherever it begins" check (rejected in an earlier, uncommitted
+    // revision of this same assertion) would pass identically for a stream
+    // starting at 0 or at some carried-over/reset value, which is exactly
+    // what the first assertion alone already rules out before the second
+    // ever gets a chance to matter.
     const firstSequence = this.sentSnapshotPayloads[0].sequence;
     assert.equal(
       firstSequence,
