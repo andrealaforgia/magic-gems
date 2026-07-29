@@ -104,6 +104,27 @@ Feature: A hands-off demo mode that plays the game itself (AUTOPLAY)
   # fix-select/audio/audio-toggle/bonus-tune/bar-frame/revive scenario, all still
   # green with autoplay wired in. Not re-derived here.
 
+  # AUTOPLAY-INVALID-MOVE E1/E2/E6: the Owner saw a visible swap-and-bounce-
+  # back twice, root-caused to a plan being computed against an already-active
+  # selection - a fixed key sequence assumes clean input, but with a
+  # selection already active an arrow aims the target instead of moving the
+  # cursor, so the commit fires against a stale pairing. Fixed once already on
+  # a single clean demonstration, and it regressed - so this drives the exact
+  # trigger (select a gem by hand, then switch autoplay on) repeatedly, not
+  # once, checking the complete real sound record each time.
+  @E12 @integration
+  Scenario: Selecting a gem by hand and then switching autoplay on never produces an invalid swap, across many repeated cycles
+    Given I open "index.html" directly as a file:// URL with no server or build step
+    Then repeatedly selecting a gem by hand before switching autoplay on never produces an invalid swap, across many cycles
+
+  # AUTOPLAY-INVALID-MOVE E1/E3/E6: the second known trigger - autoplay
+  # switched off after its own SPACE (mid-plan) and back on, which discards
+  # the pending keys but leaves the selection itself in place.
+  @E13 @integration
+  Scenario: Toggling autoplay off mid-plan and back on never produces an invalid swap, across many repeated cycles
+    Given I open "index.html" directly as a file:// URL with no server or build step
+    Then repeatedly toggling autoplay off mid-plan and back on never produces an invalid swap, across many cycles
+
   @E9 @integration
   Scenario: A full fresh-load play cycle shows the hint, rips through multiple cycles with feedback, then returns control cleanly
     Given I open "index.html" directly as a file:// URL with no server or build step

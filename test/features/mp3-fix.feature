@@ -79,6 +79,28 @@ Feature: Each player fully controls their own side of the match (MP3-FIX)
   # a plain per-player exit. That more precise claim, including the correct
   # winner/loser on each side, is mp5.feature's own dedicated coverage.
 
+  # AUTOPLAY-INVALID-MOVE E1/E2/E4/E6: the same stale-input-state defect the
+  # single-player driver had, on the match grid instead - the fix (commit
+  # 0099550) applies the identical guard to both drivers. Proven here live,
+  # against the first known trigger, repeated across many cycles.
+  @E4 @integration
+  Scenario: Selecting a gem by hand and then switching autoplay on never produces an invalid swap in a real match, across many repeated cycles
+    Given two independent pages are both at the multiplayer lobby's name entry step
+    When the first page enters the name "Alice" and generates a code
+    And the second page enters the name "Bob" and enters that same code
+    Then the match begins on both pages
+    Then repeatedly selecting a gem by hand before switching autoplay on never produces an invalid swap on the first page's own match, across many cycles
+
+  # AUTOPLAY-INVALID-MOVE E1/E3/E4/E6: the second known trigger, on the match
+  # grid.
+  @E4 @integration
+  Scenario: Toggling autoplay off mid-plan and back on never produces an invalid swap in a real match, across many repeated cycles
+    Given two independent pages are both at the multiplayer lobby's name entry step
+    When the first page enters the name "Alice" and generates a code
+    And the second page enters the name "Bob" and enters that same code
+    Then the match begins on both pages
+    Then repeatedly toggling autoplay off mid-plan and back on never produces an invalid swap on the first page's own match, across many cycles
+
   # AUTOPLAY-RANDOM-CHOICE (SPEC 12.5) E4/E6: both clients build the
   # IDENTICAL starting board from the shared session code (13.3.1) - if
   # autoplay's own move choice were deterministic, two clients autoplaying

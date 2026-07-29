@@ -268,3 +268,67 @@ Then(
     );
   }
 );
+
+// AUTOPLAY-INVALID-MOVE (E4/E6/E8): mirrors autoplay.steps.js's own
+// single-player coverage of both known triggers, against the match driver's
+// identical guard - a live match's own two-page overhead keeps the cycle
+// count smaller than the single-player version, but this is still many
+// cycles, not one.
+const AUTOPLAY_INVALID_MOVE_MATCH_CYCLES = 8;
+
+Then(
+  "repeatedly selecting a gem by hand before switching autoplay on never produces an invalid swap on the first page's own match, across many cycles",
+  { timeout: 120000 },
+  async function () {
+    const stepMs = await this.pageA.evaluate(() => window.MagicGems.AUTOPLAY_STEP_MS);
+    for (let cycle = 0; cycle < AUTOPLAY_INVALID_MOVE_MATCH_CYCLES; cycle++) {
+      // Clears a leftover selection from the previous cycle's own toggle-off
+      // first, so this cycle's manual select is genuinely fresh - see
+      // autoplay.steps.js's own identical comment for why this matters.
+      await this.pageA.evaluate(() => {
+        if (window.MagicGems.getMatchInteractionState().selection) {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+        }
+      });
+      await this.pageA.keyboard.press('ArrowRight');
+      await this.pageA.keyboard.press(' ');
+      const hasSelection = await this.pageA.evaluate(() => window.MagicGems.getMatchInteractionState().selection !== null);
+      assert.ok(hasSelection, `cycle ${cycle}: expected a manual selection to be active before enabling autoplay`);
+      await this.pageA.keyboard.press('a'); // autoplay ON, against the dirty state
+      await this.pageA.waitForTimeout(stepMs * 10);
+      await this.pageA.keyboard.press('a'); // autoplay OFF, ready for the next cycle
+    }
+    const soundLog = await this.pageA.evaluate(() => window.MagicGems.getMatchSoundLog());
+    const invalidCount = soundLog.filter((s) => s === 'invalid').length;
+    assert.equal(
+      invalidCount,
+      0,
+      `expected zero invalid-swap sounds across ${AUTOPLAY_INVALID_MOVE_MATCH_CYCLES} cycles, got ${invalidCount} out of ${soundLog.length} total sounds`
+    );
+  }
+);
+
+Then(
+  "repeatedly toggling autoplay off mid-plan and back on never produces an invalid swap on the first page's own match, across many cycles",
+  { timeout: 120000 },
+  async function () {
+    const stepMs = await this.pageA.evaluate(() => window.MagicGems.AUTOPLAY_STEP_MS);
+    for (let cycle = 0; cycle < AUTOPLAY_INVALID_MOVE_MATCH_CYCLES; cycle++) {
+      await this.pageA.keyboard.press('a'); // autoplay ON
+      await this.pageA.waitForFunction(() => window.MagicGems.getMatchInteractionState().selection !== null, null, {
+        timeout: stepMs * 20,
+      });
+      await this.pageA.keyboard.press('a'); // autoplay OFF mid-plan - selection survives this
+      await this.pageA.keyboard.press('a'); // autoplay back ON, against the dirty state
+      await this.pageA.waitForTimeout(stepMs * 10);
+      await this.pageA.keyboard.press('a'); // autoplay OFF, ready for the next cycle
+    }
+    const soundLog = await this.pageA.evaluate(() => window.MagicGems.getMatchSoundLog());
+    const invalidCount = soundLog.filter((s) => s === 'invalid').length;
+    assert.equal(
+      invalidCount,
+      0,
+      `expected zero invalid-swap sounds across ${AUTOPLAY_INVALID_MOVE_MATCH_CYCLES} cycles, got ${invalidCount} out of ${soundLog.length} total sounds`
+    );
+  }
+);

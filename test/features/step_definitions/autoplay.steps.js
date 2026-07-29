@@ -295,6 +295,81 @@ Then(
   }
 );
 
+// AUTOPLAY-INVALID-MOVE (E6/E8): the fix (commit 0099550) accepted once on a
+// single clean demonstration and regressed anyway - so this repeats the exact
+// trigger many times in one real run rather than once, and checks the
+// complete real sound record, not a sample. Cycle count kept modest (not the
+// 40-run measurement from the fix's own commit message) so this runs in
+// reasonable CI time while still being "many", not "once".
+const AUTOPLAY_INVALID_MOVE_CYCLES = 15;
+
+Then(
+  'repeatedly selecting a gem by hand before switching autoplay on never produces an invalid swap, across many cycles',
+  { timeout: 120000 },
+  async function () {
+    const stepMs = await this.page.evaluate(() => window.MagicGems.AUTOPLAY_STEP_MS);
+    for (let cycle = 0; cycle < AUTOPLAY_INVALID_MOVE_CYCLES; cycle++) {
+      // The PREVIOUS cycle's own toggle-off can itself land mid-plan (autoplay
+      // doesn't always finish a full move within the fixed wait below) -
+      // clearing any such leftover selection first keeps this cycle's own
+      // manual select a genuinely FRESH one, not a stale one colliding with a
+      // still-pending target designation (which would commit a swap instead
+      // of creating a new selection, the same dirty-state class this test
+      // exists to drive deliberately, but only on purpose, one trigger at a
+      // time).
+      await this.page.evaluate(() => {
+        if (window.MagicGems.getInteractionState().selection) {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+        }
+      });
+      // A manual arrow moves the cursor, then SPACE selects the gem under it -
+      // exactly the "dirty" input state the first known trigger starts from.
+      await this.page.keyboard.press('ArrowRight');
+      await this.page.keyboard.press(' ');
+      const hasSelection = await this.page.evaluate(() => window.MagicGems.getInteractionState().selection !== null);
+      assert.ok(hasSelection, `cycle ${cycle}: expected a manual selection to be active before enabling autoplay`);
+      await this.page.keyboard.press('a'); // autoplay ON, against the dirty state
+      await this.page.waitForTimeout(stepMs * 10);
+      await this.page.keyboard.press('a'); // autoplay OFF, ready for the next cycle
+    }
+    const soundLog = await this.page.evaluate(() => window.MagicGems.getSoundLog());
+    const invalidCount = soundLog.filter((s) => s === 'invalid').length;
+    assert.equal(
+      invalidCount,
+      0,
+      `expected zero invalid-swap sounds across ${AUTOPLAY_INVALID_MOVE_CYCLES} cycles, got ${invalidCount} out of ${soundLog.length} total sounds`
+    );
+  }
+);
+
+Then(
+  'repeatedly toggling autoplay off mid-plan and back on never produces an invalid swap, across many cycles',
+  { timeout: 120000 },
+  async function () {
+    const stepMs = await this.page.evaluate(() => window.MagicGems.AUTOPLAY_STEP_MS);
+    for (let cycle = 0; cycle < AUTOPLAY_INVALID_MOVE_CYCLES; cycle++) {
+      await this.page.keyboard.press('a'); // autoplay ON
+      // Waits for autoplay's own SPACE to land mid-plan - the second known
+      // trigger needs the toggle-off to actually happen WHILE a selection is
+      // active, not before or after.
+      await this.page.waitForFunction(() => window.MagicGems.getInteractionState().selection !== null, null, {
+        timeout: stepMs * 20,
+      });
+      await this.page.keyboard.press('a'); // autoplay OFF mid-plan - selection survives this
+      await this.page.keyboard.press('a'); // autoplay back ON, against the dirty state
+      await this.page.waitForTimeout(stepMs * 10);
+      await this.page.keyboard.press('a'); // autoplay OFF, ready for the next cycle
+    }
+    const soundLog = await this.page.evaluate(() => window.MagicGems.getSoundLog());
+    const invalidCount = soundLog.filter((s) => s === 'invalid').length;
+    assert.equal(
+      invalidCount,
+      0,
+      `expected zero invalid-swap sounds across ${AUTOPLAY_INVALID_MOVE_CYCLES} cycles, got ${invalidCount} out of ${soundLog.length} total sounds`
+    );
+  }
+);
+
 // AUTOPLAY-LEGALITY (RE-OPEN): the checks above only ever verified the pure
 // game LOGIC (the matched flag, the invalid sound cue) - never that the
 // ACTUAL RENDERED PIXELS the Owner watches match that logic at every
