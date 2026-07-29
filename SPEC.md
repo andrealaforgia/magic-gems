@@ -216,10 +216,12 @@ A hands-off demo mode in which the game plays itself.
   (6.3), and commits a swap (6.4) that completes a match. It only makes valid moves
   that create a run of 3+ (6.5), so runs clear and play keeps progressing — there is
   always at least one valid move available (8.3). The emulated actions run at a BRISK
-  but still-followable pace — about twice as fast as the earlier deliberately-slow
-  verification pace — with the resulting swap/shatter/fall playing at the normal 9.3
+  but still-followable pace — about two and a half times as fast as the earlier
+  deliberately-slow verification pace (a further 25% off the pause on top of the
+  earlier doubling) — with the resulting swap/shatter/fall playing at the normal 9.3
   pace. (Pace is a tuning choice, adjusted by feel.) It stays coherent — real valid
-  moves, not frozen or skipped.
+  moves, not frozen or skipped: still-followable is the binding constraint, so a swap
+  must remain visually confirmable as a legal match rather than becoming a blur.
 - 12.3 While autoplay is ON, the game ignores normal player input — cursor
   movement, selection, swap-target designation, and cancel are not acted on.
   Pressing A again turns autoplay OFF and returns control to the player.

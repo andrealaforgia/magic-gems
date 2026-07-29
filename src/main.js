@@ -12,15 +12,16 @@
   const SWAP_DURATION_MS = 400;
   const FALL_DURATION_MS = 400;
   const REVIVE_SPIN_DURATION_MS = 700;
-  // SPEC 12.2 (re-frozen again, AUTOPLAY-PACE2X): the Owner still wants
-  // every swap visually confirmable as a legal 3+ match, but AUTOPLAY-SLOW's
-  // fully-slow pace was more deliberate than needed - roughly half that
-  // pause keeps it brisk but still watchable, with the resulting
-  // swap/shatter/fall played at the SAME normal deliberate 9.3 pace as manual
+  // SPEC 12.2 (re-frozen again, AUTOPLAY-PACE25): the Owner still wants every
+  // swap visually confirmable as a legal 3+ match, but has now asked for a
+  // further 25% off the pause on top of AUTOPLAY-PACE2X's halving of
+  // AUTOPLAY-SLOW's fully-slow pace - so two and a half times the original
+  // verification pace, still brisk rather than a blur. The resulting
+  // swap/shatter/fall stays at the SAME normal deliberate 9.3 pace as manual
   // play (no speed-up at all - the separate AUTOPLAY_*_DURATION_MS constants
   // this used to need are gone). A tuning choice adjusted by feel, not a
   // fixed frozen figure.
-  const AUTOPLAY_STEP_MS = 450;
+  const AUTOPLAY_STEP_MS = 360;
 
   // Test-observability only (QA review, commit 280629a): lives outside any one
   // session's own closure so it survives across an exit+restart, letting a test
