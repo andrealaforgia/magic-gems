@@ -1190,6 +1190,12 @@
     // visible confirmation rather than an instant cut two independent clients
     // could otherwise show for inconsistent durations.
     const READY_TO_MATCH_DELAY_MS = 1200;
+    // MP-SEQ-ORDER root-cause: exported the same way AUTOPLAY_STEP_MS is, so
+    // a test can derive its own wait from the LIVE value actually driving
+    // this delay rather than a re-typed guess that can silently drift out of
+    // sync with it (test/features/step_definitions/mp3.steps.js's own "the
+    // match begins on both pages" step).
+    global.MagicGems.READY_TO_MATCH_DELAY_MS = READY_TO_MATCH_DELAY_MS;
 
     function showReady(session) {
       if (unsubscribe) {

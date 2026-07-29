@@ -50,10 +50,25 @@ async function moveCursorTo(page, from, to) {
 // load. waitForMatchReady is the actual readiness signal every other step in
 // this suite depends on; both pages' own waits run in parallel (QA review,
 // commit a8f1895) since neither depends on the other.
+//
+// MP-SEQ-ORDER root-cause: the visibility wait BEFORE that had its own
+// separate problem - a bare 3000ms budget against a lobby that already
+// deliberately waits READY_TO_MATCH_DELAY_MS (1200ms, by design, SPEC
+// 13.2.4) before the handoff even begins, leaving under two real seconds of
+// margin for everything before it (session round trips, DOM updates) plus
+// the handoff itself - an empirically-tuned number that happened to work
+// most of the time, not a robust one, and the same recurring failure this
+// tightened. Derived from the LIVE delay instead, with generous real
+// headroom on top, so it can't silently drift out of sync with that value
+// the way a re-typed guess could.
+const MATCH_VISIBILITY_TIMEOUT_BUFFER_MS = 5000;
+
 Then('the match begins on both pages', async function () {
+  const readyToMatchDelayMs = await this.pageA.evaluate(() => window.MagicGems.READY_TO_MATCH_DELAY_MS);
+  const visibilityTimeoutMs = readyToMatchDelayMs + MATCH_VISIBILITY_TIMEOUT_BUFFER_MS;
   await Promise.all([
-    this.pageA.waitForSelector('#match:not([hidden])', { timeout: 3000 }),
-    this.pageB.waitForSelector('#match:not([hidden])', { timeout: 3000 }),
+    this.pageA.waitForSelector('#match:not([hidden])', { timeout: visibilityTimeoutMs }),
+    this.pageB.waitForSelector('#match:not([hidden])', { timeout: visibilityTimeoutMs }),
   ]);
   await Promise.all([waitForMatchReady(this.pageA), waitForMatchReady(this.pageB)]);
 });
