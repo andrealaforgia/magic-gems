@@ -506,7 +506,9 @@
     const multiplierFillEl = document.getElementById('match-multiplier-fill');
     const multiplierMessageEl = document.getElementById('match-multiplier-message');
     const timerEl = document.getElementById('match-timer');
-    const gaugeFillEl = document.getElementById('match-gauge-fill');
+    const gaugeEl = document.getElementById('match-gauge');
+    const gaugeLocalEl = document.getElementById('match-gauge-local');
+    const gaugeRemoteEl = document.getElementById('match-gauge-remote');
     const autoplayIndicatorEl = document.getElementById('match-autoplay-indicator');
     const audioToastEl = document.getElementById('match-audio-toast');
     const exitConfirmEl = document.getElementById('match-exit-confirm');
@@ -612,13 +614,25 @@
       score = existingLocalSnapshot.score;
     }
 
-    // SPEC 13.3.3/13.4.1: a sensible 50/50 state even at 0-0, not a
-    // divide-by-zero - tilts toward whoever currently leads, using the
-    // opponent's own latest reported score (13.4.0).
+    // SPEC 13.3.3.1/.2: one always-full bar of two adjoining portions meeting at
+    // a moving boundary, each sized as that player's share of the COMBINED score
+    // (13.3.3.2's worked examples are normative: 10 v 20 gives the local portion
+    // 33%, 25 v 5 gives it 83%). The remote share is taken as the complement
+    // rather than computed separately, so the two can never fail to total 100%
+    // and leave the container showing through.
+    //
+    // SPEC 13.3.3.5: exactly-level scores - INCLUDING 0-0, where the share is
+    // otherwise a divide-by-zero - sit the boundary on the halfway mark with
+    // both portions neutral. Nobody leads, so no verdict is shown, and a match
+    // never opens showing either player as losing. The equality test therefore
+    // covers the 0-0 case too and no separate guard is needed.
     function updateGauge() {
       const total = score + remoteScore;
-      const fraction = total === 0 ? 0.5 : score / total;
-      gaugeFillEl.style.width = `${fraction * 100}%`;
+      const localShare = total === 0 ? 0.5 : score / total;
+      gaugeLocalEl.style.width = `${localShare * 100}%`;
+      gaugeRemoteEl.style.width = `${(1 - localShare) * 100}%`;
+      gaugeEl.classList.toggle('is-local-leading', score > remoteScore);
+      gaugeEl.classList.toggle('is-remote-leading', remoteScore > score);
     }
     // Matches renderLocal()/renderRemote()'s own initial paint below - a
     // restored reconnect score, or an opponent snapshot already on record at

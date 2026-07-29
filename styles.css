@@ -362,7 +362,7 @@ body {
    the centre column's own flow (which stays top-anchored under the
    countdown) and anchored to the match view itself instead, both axes, same
    overlay convention as this view's own audio-toast/exit-confirm. Still its
-   own positioning context for match-gauge-fill below. */
+   own positioning context for the gauge portions below. */
 .match-gauge {
   position: absolute;
   top: 50%;
@@ -376,16 +376,56 @@ body {
   overflow: hidden;
 }
 
-/* Anchored to the gauge's own left edge; its own width IS the local player's
-   share of the bar (SPEC 13.3.3's "tug-of-war"), so 50% width means an even
-   contest, not merely "half full". */
-.match-gauge-fill {
+/* SPEC 13.3.3.1: the bar is ALWAYS COMPLETELY FULL - two adjoining portions
+   spanning the whole width with no gap and no unfilled remainder, meeting at a
+   single boundary that MOVES. The local portion grows from the left edge, the
+   remote portion from the right edge, and their widths always total 100%, so
+   the dark container is never visible behind them. */
+.match-gauge-portion {
   position: absolute;
   top: 0;
-  left: 0;
   bottom: 0;
   width: 50%;
+}
+
+.match-gauge-local {
+  left: 0;
+  background: #8a8a95;
+}
+
+.match-gauge-remote {
+  right: 0;
+  background: #8a8a95;
+}
+
+/* SPEC 13.3.3.4: the LEADER's portion is green and the TRAILER's is red, so the
+   colours swap sides according to who leads rather than being fixed to a
+   player. SPEC 13.3.3.5: when the scores are exactly level - including 0-0
+   before anyone has scored - BOTH portions stay neutral (the base colour
+   above), because nobody leads and a match must not open showing anybody as
+   losing. */
+.match-gauge.is-local-leading .match-gauge-local,
+.match-gauge.is-remote-leading .match-gauge-remote {
   background: #00e5a8;
+}
+
+.match-gauge.is-local-leading .match-gauge-remote,
+.match-gauge.is-remote-leading .match-gauge-local {
+  background: #ff6b6b;
+}
+
+/* SPEC 13.3.3.3: a PERMANENT halfway mark at the container's midpoint. It is a
+   fixed reference and does not move - the portions' boundary sits left of it
+   when the local player trails and right of it when they lead. Drawn above the
+   portions so it stays visible wherever the boundary happens to be. */
+.match-gauge-midpoint {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  background: #ffffff;
 }
 
 /* MP3-FIX (SPEC 13.3.5, 10): a per-player multiplier bar on the match's own

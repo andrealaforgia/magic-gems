@@ -119,7 +119,7 @@ Then(
 
     await gaugePage.waitForFunction(
       (expectAboveHalf) => {
-        const width = parseFloat(document.getElementById('match-gauge-fill').style.width);
+        const width = parseFloat(document.getElementById('match-gauge-local').style.width);
         return expectAboveHalf ? width > 50 : width < 50;
       },
       leaderIsLocalOnGaugePage,

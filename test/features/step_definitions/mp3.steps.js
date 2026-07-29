@@ -83,7 +83,7 @@ Then("the first page's match timer reads 10:00 or just under, in the pixel font"
 });
 
 Then("the first page's match gauge is evenly split at the start", async function () {
-  const width = await this.pageA.evaluate(() => document.getElementById('match-gauge-fill').style.width);
+  const width = await this.pageA.evaluate(() => document.getElementById('match-gauge-local').style.width);
   assert.equal(width, '50%');
 });
 
