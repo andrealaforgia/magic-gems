@@ -60,23 +60,32 @@ Given("I record the second page's own remote board and score", async function ()
 // recovery could never fire first and mask the very defect this proves.
 const SUSTAINED_UNCHANGED_WAIT_MS = Math.floor(HELD_UPDATE_TIMEOUT_MS * 0.7);
 
+// QA review (commit de091f3): a single check at the end of the wait left
+// only a slim margin against the production timeout under CI load, and
+// couldn't have caught a change that happened and then (coincidentally)
+// reverted before that one check. Samples throughout the window instead, so
+// every poll cycle in range gets its own chance to catch a wrongly-applied
+// out-of-order update, not just the last one.
 Then("the second page's remote match board and score stay unchanged from what was recorded, for a sustained period", async function () {
   assert.ok(this.recordedRemote, 'expected a previously recorded remote board/score to compare against');
-  await new Promise((resolve) => setTimeout(resolve, SUSTAINED_UNCHANGED_WAIT_MS));
-  const current = await this.pageB.evaluate(() => ({
-    board: window.MagicGems.getMatchRemoteBoard(),
-    score: window.MagicGems.getMatchRemoteScore(),
-  }));
-  assert.deepEqual(
-    current.board,
-    this.recordedRemote.board,
-    'expected the remote board to stay at the last in-order update, never jumping ahead of a held predecessor'
-  );
-  assert.equal(
-    current.score,
-    this.recordedRemote.score,
-    'expected the remote score to stay at the last in-order update, never jumping ahead of a held predecessor'
-  );
+  const deadline = Date.now() + SUSTAINED_UNCHANGED_WAIT_MS;
+  do {
+    const current = await this.pageB.evaluate(() => ({
+      board: window.MagicGems.getMatchRemoteBoard(),
+      score: window.MagicGems.getMatchRemoteScore(),
+    }));
+    assert.deepEqual(
+      current.board,
+      this.recordedRemote.board,
+      'expected the remote board to stay at the last in-order update, never jumping ahead of a held predecessor'
+    );
+    assert.equal(
+      current.score,
+      this.recordedRemote.score,
+      'expected the remote score to stay at the last in-order update, never jumping ahead of a held predecessor'
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  } while (Date.now() < deadline);
 });
 
 Then(

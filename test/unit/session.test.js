@@ -10,6 +10,7 @@ const {
   isSessionReady,
   recordSnapshot,
   recordSurrender,
+  MAX_HELD_UPDATES_PER_PLAYER,
 } = loadMagicGems([new URL('../../src/session.js', import.meta.url)]);
 
 test('generateSessionCode returns a 10-letter uppercase code (SPEC 13.2.2)', () => {
@@ -145,6 +146,49 @@ test('recordSnapshot holds an update that arrives ahead of its predecessor, rath
     { board: [['red-square']], score: 0, sequence: 0 },
     'the applied state must stay at the last in-order update, not jump ahead'
   );
+});
+
+// QA review (commit de091f3): the two-tier strategy's smoke coverage left
+// the bounded held-update cap and multi-update chain-drain untested on this
+// mirror - a future hand-edit to either could diverge from the server copy
+// unnoticed. Closes exactly those two facets, not full 11-test parity (see
+// this file's own comment above on why that isn't worth the drift-risk of a
+// third copy to maintain).
+test('recordSnapshot drains every already-held consecutive successor once the missing predecessor arrives, landing on the newest', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const { session: joined } = joinSession(session, 'Bob');
+  let current = recordSnapshot(joined, 'Alice', { board: [['red-square']], score: 0, sequence: 0 }).session;
+  current = recordSnapshot(current, 'Alice', { board: [['blue-teardrop']], score: 20, sequence: 2 }).session;
+  current = recordSnapshot(current, 'Alice', { board: [['green-octagon']], score: 30, sequence: 3 }).session;
+
+  const result = recordSnapshot(current, 'Alice', { board: [['orange-hexagon']], score: 10, sequence: 1 });
+
+  assert.deepEqual(
+    result.session.snapshots.Alice,
+    { board: [['green-octagon']], score: 30, sequence: 3 },
+    'expected sequences 1, 2 and 3 to drain together once the missing sequence 1 arrived, landing on the newest'
+  );
+});
+
+test('recordSnapshot refuses to hold beyond the bounded per-player cap, rather than accumulating without limit', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  let current = recordSnapshot(joinSession(session, 'Bob').session, 'Alice', {
+    board: [['red-square']],
+    score: 0,
+    sequence: 0,
+  }).session;
+  for (let i = 0; i < MAX_HELD_UPDATES_PER_PLAYER; i++) {
+    current = recordSnapshot(current, 'Alice', { board: [['blue-teardrop']], score: i, sequence: 2 + i }).session;
+  }
+
+  const result = recordSnapshot(current, 'Alice', {
+    board: [['green-octagon']],
+    score: 99,
+    sequence: 2 + MAX_HELD_UPDATES_PER_PLAYER,
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'too-many-held-updates');
 });
 
 // Mirrors _session-logic.mjs's own coverage of the same contract on the
