@@ -195,25 +195,24 @@ Then(
       this.sentSnapshotPayloads.length >= MIN_UPDATES,
       `expected at least ${MIN_UPDATES} real sent updates, got ${this.sentSnapshotPayloads.length}`
     );
-    // SPEC 13.4.0/E2 has two clauses: the count starts from the beginning of
-    // this player's own match, AND it rises by exactly one per update sent.
-    // A prior revision here (QA review, commit 5d7de4c) checked only the
-    // second by comparing against the FIRST OBSERVED value instead of a
-    // fixed 0 - that silently stopped covering the first clause, since a
-    // sequence that rises by one from wherever it happens to begin passes
-    // identically whether it began at 0 or at some carried-over/reset value
-    // (caught before this landed - a reviewer that only sees the diff has no
-    // way to see the expectation text lost). Both are pinned explicitly now.
+    // SPEC 13.4.0/E2 has two independent clauses, each pinned by its own
+    // assertion: the count starts from the beginning of this player's own
+    // match (a fixed 0, not merely "wherever it happens to begin" - that
+    // weaker form would pass identically for a stream starting at 0 or at
+    // some carried-over/reset value, caught in review before this landed),
+    // and it rises by exactly one per update sent relative to that origin.
+    const firstSequence = this.sentSnapshotPayloads[0].sequence;
     assert.equal(
-      this.sentSnapshotPayloads[0].sequence,
+      firstSequence,
       0,
-      `expected the first sent update to start this match's own count at 0, got ${JSON.stringify(this.sentSnapshotPayloads[0].sequence)}`
+      `expected the first sent update to start this match's own count at 0, got ${JSON.stringify(firstSequence)}`
     );
     this.sentSnapshotPayloads.forEach((payload, i) => {
+      const expectedSequence = firstSequence + i;
       assert.equal(
         payload.sequence,
-        i,
-        `expected update ${i} to carry sequence ${i}, got ${JSON.stringify(payload.sequence)}`
+        expectedSequence,
+        `expected update ${i} to carry sequence ${expectedSequence}, got ${JSON.stringify(payload.sequence)}`
       );
       assert.ok(
         payload.cursor && Number.isInteger(payload.cursor.row) && Number.isInteger(payload.cursor.col),
