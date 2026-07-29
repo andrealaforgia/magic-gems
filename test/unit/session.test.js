@@ -11,6 +11,7 @@ const {
   recordSnapshot,
   recordSurrender,
   MAX_HELD_UPDATES_PER_PLAYER,
+  MAX_SEQUENCE_GAP,
 } = loadMagicGems([new URL('../../src/session.js', import.meta.url)]);
 
 test('generateSessionCode returns a 10-letter uppercase code (SPEC 13.2.2)', () => {
@@ -189,6 +190,43 @@ test('recordSnapshot refuses to hold beyond the bounded per-player cap, rather t
 
   assert.equal(result.ok, false);
   assert.equal(result.error, 'too-many-held-updates');
+});
+
+// Security warning (commit de091f3): a light smoke test only - the full
+// coverage of this hardening (why the gap exists, the E1 forged-then-genuine
+// proof, and every `applied` case) lives in _session-logic.mjs's own test
+// file, kept in one place so the two copies can't drift if edited later.
+test('recordSnapshot refuses a sequence implausibly far ahead of what is expected, rather than holding it', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const afterFirst = recordSnapshot(joinSession(session, 'Bob').session, 'Alice', {
+    board: [['red-square']],
+    score: 0,
+    sequence: 0,
+  }).session;
+
+  const result = recordSnapshot(afterFirst, 'Alice', {
+    board: [['forged']],
+    score: 999,
+    sequence: 1 + MAX_SEQUENCE_GAP,
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'sequence-too-far-ahead');
+});
+
+test('recordSnapshot marks a discarded stale update as applied:false, distinguishable from a real apply', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  let current = recordSnapshot(joinSession(session, 'Bob').session, 'Alice', {
+    board: [['red-square']],
+    score: 0,
+    sequence: 0,
+  }).session;
+  current = recordSnapshot(current, 'Alice', { board: [['blue-teardrop']], score: 10, sequence: 1 }).session;
+
+  const result = recordSnapshot(current, 'Alice', { board: [['stale']], score: 999, sequence: 0 });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.applied, false, 'a discarded stale update must not report the same shape as an applied one');
 });
 
 // Mirrors _session-logic.mjs's own coverage of the same contract on the

@@ -24,9 +24,9 @@ When(
     );
     const { code, playerName } = this.sentSnapshotPayloads[0];
     const board = makeBoard(fill);
-    await this.pageA.evaluate(
+    this.lastInjectedSnapshotResult = await this.pageA.evaluate(
       async ({ code, playerName, sequence, board, score }) => {
-        await fetch('/api/magic-gems/session', {
+        const res = await fetch('/api/magic-gems/session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -40,11 +40,24 @@ When(
             selection: null,
           }),
         });
+        return res.json();
       },
       { code, playerName, sequence, board, score }
     );
   }
 );
+
+// MP-SEQ-HARDEN/SPEC 13.4.1-13.4.4 (hardening, ahead of slice 3), E1/E6: the
+// forged-sequence attack must be refused outright, never merely queued -
+// distinguishes this from "held" in the very same response shape E2 hardens.
+Then('the injected snapshot is refused, not accepted', function () {
+  assert.ok(this.lastInjectedSnapshotResult, 'expected a previously injected snapshot response to check');
+  assert.equal(
+    this.lastInjectedSnapshotResult.ok,
+    false,
+    `expected the forged snapshot to be refused, got ${JSON.stringify(this.lastInjectedSnapshotResult)}`
+  );
+});
 
 Given("I record the second page's own remote board and score", async function () {
   this.recordedRemote = await this.pageB.evaluate(() => ({

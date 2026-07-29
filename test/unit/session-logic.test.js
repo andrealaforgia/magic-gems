@@ -9,6 +9,7 @@ import {
   recordSurrender,
   reclaimStaleHeldUpdates,
   MAX_HELD_UPDATES_PER_PLAYER,
+  MAX_SEQUENCE_GAP,
   HELD_UPDATE_TIMEOUT_MS,
 } from '../../api/magic-gems/_session-logic.mjs';
 
@@ -248,6 +249,89 @@ test('recordSnapshot refuses to hold beyond the bounded per-player cap, rather t
 
   assert.equal(result.ok, false);
   assert.equal(result.error, 'too-many-held-updates');
+});
+
+// MP-SEQ-HARDEN/SPEC 13.4.1-13.4.4 (hardening, ahead of slice 3): a forged
+// request carrying an implausible sequence number must be refused outright,
+// never held - if it were held, the bounded-wait skip-ahead (13.4.2, working
+// exactly as designed) would eventually promote it, advancing the expected
+// sequence far past anything the real player could ever legitimately reach,
+// silently and permanently discarding every one of their genuine subsequent
+// updates. Rejecting anything past a small, plausible gap closes this
+// without weakening genuine gap recovery for a real, nearby drop.
+test('recordSnapshot refuses a sequence implausibly far ahead of what is expected, rather than holding it', () => {
+  const afterFirst = recordSnapshot(joinedSession(), 'Alice', snap(0)).session;
+
+  const result = recordSnapshot(afterFirst, 'Alice', snap(Number.MAX_SAFE_INTEGER, [['forged']], 999));
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'sequence-too-far-ahead');
+  assert.equal(result.session, undefined, 'a refused sequence must never touch the existing session');
+});
+
+test('recordSnapshot draws the line for "too far ahead" at MAX_SEQUENCE_GAP past what is currently expected', () => {
+  const afterFirst = recordSnapshot(joinedSession(), 'Alice', snap(0)).session;
+  const nextExpectedSequence = 1; // sequence 0 just applied
+
+  const justInsideGap = recordSnapshot(afterFirst, 'Alice', snap(nextExpectedSequence + MAX_SEQUENCE_GAP - 1));
+  const justOutsideGap = recordSnapshot(afterFirst, 'Alice', snap(nextExpectedSequence + MAX_SEQUENCE_GAP));
+
+  assert.equal(justInsideGap.ok, true, 'expected a sequence just inside the gap to still be legitimately held');
+  assert.equal(justOutsideGap.ok, false, 'expected a sequence at the gap boundary to be refused');
+  assert.equal(justOutsideGap.error, 'sequence-too-far-ahead');
+});
+
+// The core proof for E1: a forged, implausible-sequence request as another
+// player, sent live during a match, must not be able to derail that
+// player's own subsequent GENUINE updates going forward - because it never
+// gets far enough to be adopted as their real state in the first place.
+test('a forged implausible sequence cannot poison the real player\'s own subsequent genuine updates', () => {
+  let session = joinedSession();
+  session = recordSnapshot(session, 'Alice', snap(0)).session;
+
+  const forged = recordSnapshot(session, 'Alice', snap(Number.MAX_SAFE_INTEGER, [['forged']], 999));
+  assert.equal(forged.ok, false, 'the forged update must be refused outright');
+
+  // The real player's own genuine sends continue exactly as they would have
+  // if the forgery had never been attempted.
+  let current = recordSnapshot(session, 'Alice', snap(1)).session;
+  current = recordSnapshot(current, 'Alice', snap(2)).session;
+
+  assert.deepEqual(
+    current.snapshots.Alice,
+    snap(2),
+    'the real player\'s own genuine updates must keep applying normally, unaffected by the forgery attempt'
+  );
+});
+
+// MP-SEQ-HARDEN/E2: a discarded update must never be indistinguishable from
+// an actually-applied one - previously both returned the exact same
+// {ok:true} shape, which is what let a real update vanish silently once a
+// forged one had already poisoned the expected sequence.
+test('recordSnapshot marks a genuinely applied update as applied:true', () => {
+  const result = recordSnapshot(joinedSession(), 'Alice', snap(0));
+
+  assert.equal(result.applied, true);
+});
+
+test('recordSnapshot marks a held (not-yet-applied) update as applied:false', () => {
+  const afterFirst = recordSnapshot(joinedSession(), 'Alice', snap(0)).session;
+
+  const result = recordSnapshot(afterFirst, 'Alice', snap(2));
+
+  assert.equal(result.ok, true);
+  assert.equal(result.applied, false, 'a held update must be distinguishable from one that was actually applied');
+});
+
+test('recordSnapshot marks a stale/duplicate discard as applied:false, distinguishable from a real apply', () => {
+  let session = joinedSession();
+  session = recordSnapshot(session, 'Alice', snap(0)).session;
+  session = recordSnapshot(session, 'Alice', snap(1)).session;
+
+  const result = recordSnapshot(session, 'Alice', snap(0, [['stale-board']], 999));
+
+  assert.equal(result.ok, true);
+  assert.equal(result.applied, false, 'a discarded stale update must not report the same shape as an applied one');
 });
 
 test('reclaimStaleHeldUpdates leaves held updates alone before the bounded wait has elapsed', () => {

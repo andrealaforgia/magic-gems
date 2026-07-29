@@ -46,6 +46,14 @@
   // reclaimStaleHeldUpdates measures the bounded wait against (13.4.2).
   const MAX_HELD_UPDATES_PER_PLAYER = 20;
   const HELD_UPDATE_TIMEOUT_MS = 5000;
+  // Security warning (commit de091f3): mirrors api/magic-gems/_session-logic.mjs's
+  // own copy - see that file's own comment for the full rationale. Rejects
+  // an implausibly-far-ahead sequence outright rather than holding it, so a
+  // forged one can never later be adopted via skip-ahead and poison the
+  // real player's own subsequent updates. Deliberately wider than the
+  // held-count cap above, not equal to it, so the two can guard
+  // independently of one another.
+  const MAX_SEQUENCE_GAP = 100;
 
   function drainConsecutiveHeld(applied, held) {
     let current = applied;
@@ -103,13 +111,14 @@
     const nextExpectedSequence = appliedBefore ? appliedBefore.sequence + 1 : 0;
 
     if (snapshot.sequence < nextExpectedSequence) {
-      return { ok: true, session: reclaimed };
+      return { ok: true, applied: false, session: reclaimed };
     }
 
     if (snapshot.sequence === nextExpectedSequence) {
       const { applied, held } = drainConsecutiveHeld(snapshot, pendingBefore.held);
       return {
         ok: true,
+        applied: true,
         session: {
           ...reclaimed,
           snapshots: { ...reclaimed.snapshots, [playerName]: applied },
@@ -118,12 +127,17 @@
       };
     }
 
+    if (snapshot.sequence - nextExpectedSequence >= MAX_SEQUENCE_GAP) {
+      return { ok: false, error: 'sequence-too-far-ahead' };
+    }
+
     const heldCount = Object.keys(pendingBefore.held).length;
     if (heldCount >= MAX_HELD_UPDATES_PER_PLAYER) {
       return { ok: false, error: 'too-many-held-updates' };
     }
     return {
       ok: true,
+      applied: false,
       session: {
         ...reclaimed,
         pendingUpdates: {
@@ -158,5 +172,6 @@
   global.MagicGems.recordSurrender = recordSurrender;
   global.MagicGems.reclaimStaleHeldUpdates = reclaimStaleHeldUpdates;
   global.MagicGems.MAX_HELD_UPDATES_PER_PLAYER = MAX_HELD_UPDATES_PER_PLAYER;
+  global.MagicGems.MAX_SEQUENCE_GAP = MAX_SEQUENCE_GAP;
   global.MagicGems.HELD_UPDATE_TIMEOUT_MS = HELD_UPDATE_TIMEOUT_MS;
 })(typeof window !== 'undefined' ? window : globalThis);

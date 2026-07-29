@@ -105,11 +105,19 @@ function validScoreOrError(score) {
 }
 
 // MP-SEQ-WIRE/SPEC 13.4.0 (slice 1 of 4): counts this player's own sent
-// updates from the start of their match - a non-negative integer, no upper
-// bound needed (unlike score, it's never player-influenced or displayed).
+// updates from the start of their match.
+//
+// Security warning (commit de091f3), Medium: originally had no upper bound,
+// on the reasoning that it was "never player-influenced or displayed" - no
+// longer true once MP-SEQ-ORDER made its magnitude drive held/applied/
+// discarded classification. Comfortably above anything a real match's own
+// publish rate (session-api-client.js's own PUBLISH_INTERVAL_MS) could ever
+// produce in its full duration (SPEC 13.5.2), same spirit as
+// MAX_SNAPSHOT_SCORE above.
+const MAX_SEQUENCE = 1_000_000;
 function validSequenceOrError(sequence) {
-  if (typeof sequence !== 'number' || !Number.isInteger(sequence) || sequence < 0) {
-    return 'sequence must be a non-negative integer';
+  if (typeof sequence !== 'number' || !Number.isInteger(sequence) || sequence < 0 || sequence > MAX_SEQUENCE) {
+    return `sequence must be a non-negative integer no greater than ${MAX_SEQUENCE}`;
   }
   return null;
 }
@@ -188,6 +196,13 @@ async function handleRecordSnapshot(env, code, playerName, board, score, sequenc
     },
     Date.now()
   );
+  // Security warning (commit de091f3), Low: neither rejection had any
+  // operator-visible signal - a session repeatedly hitting either cap, or
+  // an implausible sequence jump, is exactly the pattern this attack (or an
+  // attempt at it) would produce.
+  if (result.error === 'sequence-too-far-ahead' || result.error === 'too-many-held-updates') {
+    console.warn(`session snapshot rejected: ${result.error} (code=${code}, playerName=${playerName})`);
+  }
   if (!result.ok) return result;
   await updateStoredSession(env, result.session);
   return result;
@@ -225,7 +240,14 @@ export default {
         // just a snapshot POST, since the sender may have stopped sending
         // (nothing new to send) while the receiver keeps polling regardless.
         const reclaimed = reclaimStaleHeldUpdates(session, Date.now());
-        if (reclaimed !== session) await updateStoredSession(process.env, reclaimed);
+        if (reclaimed !== session) {
+          // Security warning (commit de091f3), Low: an operator-visible
+          // signal for a skip-ahead recovery firing - legitimate in normal
+          // operation (a real dropped update), but also exactly what a
+          // successful or attempted poisoning attack would produce.
+          console.warn(`session held-update skip-ahead recovery fired (code=${code})`);
+          await updateStoredSession(process.env, reclaimed);
+        }
         return jsonResponse({ session: reclaimed });
       }
       if (request.method === 'POST') {

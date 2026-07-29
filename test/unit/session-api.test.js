@@ -654,6 +654,55 @@ test('snapshot accepts a sequence of exactly zero, not just positive sequences',
   assert.equal(result.body.ok, true);
 });
 
+// Security warning (commit de091f3), Medium: every other attacker-controlled
+// numeric field (score) already has an explicit ceiling - this one didn't,
+// and its magnitude now directly drives held/applied/discarded
+// classification (MP-SEQ-ORDER), making an unbounded value a real enabler
+// rather than a merely theoretical gap.
+test('snapshot rejects a sequence past the ceiling with 400', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { sequence: Number.MAX_SAFE_INTEGER });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /sequence/i);
+});
+
+// Security warning (commit de091f3), E2: this same {ok:true} response shape
+// previously covered both an actually-applied update and one silently
+// discarded as stale - indistinguishable to the caller. Proven at the real
+// handler round trip, not just the pure logic layer.
+test('a genuinely applied snapshot and a discarded stale one are distinguishable in the real response, not the same shape', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  withFetch(t, fakeUpstash());
+  const created = await createViaHandler('Alice');
+  const code = created.session.code;
+
+  const applied = await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'snapshot', code, playerName: 'Alice', ...makeSnapshotBody({ sequence: 0 }) }),
+    })
+  );
+  const discarded = await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'snapshot', code, playerName: 'Alice', ...makeSnapshotBody({ sequence: 0 }) }),
+    })
+  );
+
+  const appliedBody = await applied.json();
+  const discardedBody = await discarded.json();
+  assert.equal(appliedBody.ok, true);
+  assert.equal(appliedBody.applied, true);
+  assert.equal(discardedBody.ok, true);
+  assert.equal(
+    discardedBody.applied,
+    false,
+    'expected the discarded duplicate to be distinguishable from the applied one, not the same success shape'
+  );
+});
+
 test('snapshot rejects a missing cursor with 400', async (t) => {
   const code = await withSnapshotFixture(t);
 

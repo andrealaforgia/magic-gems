@@ -69,6 +69,20 @@ function joinSession(session, playerName) {
 // against (13.4.2).
 const MAX_HELD_UPDATES_PER_PLAYER = 20;
 const HELD_UPDATE_TIMEOUT_MS = 5000;
+// Security warning (commit de091f3), High: without this, a forged request
+// carrying an implausible sequence number (e.g. Number.MAX_SAFE_INTEGER) as
+// another player would be held like any other out-of-order update, and the
+// bounded-wait skip-ahead below - working exactly as designed for a genuine
+// gap - would eventually promote it, advancing that player's expected
+// sequence far past anything they could ever legitimately reach and
+// silently discarding every one of their real subsequent updates. Rejecting
+// anything past a small, plausible gap outright (never even holding it)
+// closes this without weakening recovery from a real, nearby drop.
+// Deliberately wider than the held-count cap above, not equal to it - a gap
+// this narrow would only ever admit fewer distinct sequences than the count
+// cap allows, making the count cap unreachable and leaving the two unable
+// to guard independently of one another.
+const MAX_SEQUENCE_GAP = 100;
 
 function drainConsecutiveHeld(applied, held) {
   let current = applied;
@@ -116,14 +130,20 @@ function recordSnapshot(session, playerName, snapshot, nowMs = Date.now()) {
   const pendingBefore = (reclaimed.pendingUpdates && reclaimed.pendingUpdates[playerName]) || { held: {} };
   const nextExpectedSequence = appliedBefore ? appliedBefore.sequence + 1 : 0;
 
+  // Security warning (commit de091f3), E2: a discarded update must never be
+  // indistinguishable from an actually-applied one - `applied` names which
+  // of the two happened, whatever `ok` says, so the difference is never
+  // silent even though a stale/duplicate arrival is itself expected,
+  // harmless traffic rather than an error in its own right.
   if (snapshot.sequence < nextExpectedSequence) {
-    return { ok: true, session: reclaimed };
+    return { ok: true, applied: false, session: reclaimed };
   }
 
   if (snapshot.sequence === nextExpectedSequence) {
     const { applied, held } = drainConsecutiveHeld(snapshot, pendingBefore.held);
     return {
       ok: true,
+      applied: true,
       session: {
         ...reclaimed,
         snapshots: { ...reclaimed.snapshots, [playerName]: applied },
@@ -132,12 +152,17 @@ function recordSnapshot(session, playerName, snapshot, nowMs = Date.now()) {
     };
   }
 
+  if (snapshot.sequence - nextExpectedSequence >= MAX_SEQUENCE_GAP) {
+    return { ok: false, error: 'sequence-too-far-ahead' };
+  }
+
   const heldCount = Object.keys(pendingBefore.held).length;
   if (heldCount >= MAX_HELD_UPDATES_PER_PLAYER) {
     return { ok: false, error: 'too-many-held-updates' };
   }
   return {
     ok: true,
+    applied: false,
     session: {
       ...reclaimed,
       pendingUpdates: {
@@ -171,5 +196,6 @@ export {
   recordSurrender,
   reclaimStaleHeldUpdates,
   MAX_HELD_UPDATES_PER_PLAYER,
+  MAX_SEQUENCE_GAP,
   HELD_UPDATE_TIMEOUT_MS,
 };
