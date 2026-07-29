@@ -127,3 +127,18 @@ Feature: Each player fully controls their own side of the match (MP3-FIX)
     And the second page's match timer reads 10:00 or just under, in the pixel font
     And the first page's match gauge is evenly split at the start
     And the second page's match gauge is evenly split at the start
+
+  # MP-SYNC-SEQUENCED root-cause: the match view becomes visible independently
+  # of that client's own match accessors finishing registration - a real
+  # async gap (this client's own gem sprite load) sits between the two, wide
+  # enough to reach for those accessors before they exist. Widened
+  # deliberately here so this reproduces every run, not only under
+  # incidental system load.
+  @integration
+  Scenario: A slow sprite load on one client never lets its own match accessors be reached before they exist
+    Given two independent pages are both at the multiplayer lobby's name entry step
+    And the first page's own gem sprites load slowly
+    When the first page enters the name "Alice" and generates a code
+    And the second page enters the name "Bob" and enters that same code
+    Then the match begins on both pages
+    And the first page's own match score can be read without error

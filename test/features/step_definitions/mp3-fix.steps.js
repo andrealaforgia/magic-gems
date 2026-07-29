@@ -332,3 +332,23 @@ Then(
     );
   }
 );
+
+// MP-SYNC-SEQUENCED root-cause: deliberately widens the real async gap
+// between the match view becoming visible and this client's own match
+// accessors being registered (both depend on the same gem-sprite load
+// finishing), so the race reproduces every run rather than only under
+// incidental system load.
+const SLOW_SPRITE_DELAY_MS = 1500;
+
+Given("the {word} page's own gem sprites load slowly", async function (which) {
+  const page = pageFor(this, which);
+  await page.route('**/assets/gems/**', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, SLOW_SPRITE_DELAY_MS));
+    await route.fallback();
+  });
+});
+
+Then("the {word} page's own match score can be read without error", async function (which) {
+  const score = await pageFor(this, which).evaluate(() => window.MagicGems.getMatchScore());
+  assert.equal(typeof score, 'number', `expected a real numeric score, got ${JSON.stringify(score)}`);
+});
