@@ -101,24 +101,50 @@ test('recordSnapshot stores a player\'s board and score under their own name, wi
   const session = createSession('ABCDEFGHIJ', 'Alice');
   const { session: joined } = joinSession(session, 'Bob');
 
-  const result = recordSnapshot(joined, 'Alice', { board: [['red-square']], score: 40 });
+  const result = recordSnapshot(joined, 'Alice', { board: [['red-square']], score: 40, sequence: 0 });
 
   assert.equal(result.ok, true);
-  assert.deepEqual(result.session.snapshots.Alice, { board: [['red-square']], score: 40 });
+  assert.deepEqual(result.session.snapshots.Alice, { board: [['red-square']], score: 40, sequence: 0 });
   assert.equal(result.session.snapshots.Bob, undefined, 'must not fabricate a snapshot for the other player');
   assert.deepEqual(joined.players, ['Alice', 'Bob'], 'must never mutate the session it was given');
 });
 
-test('recordSnapshot overwrites the player\'s own previous snapshot rather than accumulating it, and never touches the other player\'s', () => {
+test('recordSnapshot replaces the player\'s own previous snapshot as later sequences arrive in order, and never touches the other player\'s', () => {
   const session = createSession('ABCDEFGHIJ', 'Alice');
   const { session: joined } = joinSession(session, 'Bob');
-  const afterBob = recordSnapshot(joined, 'Bob', { board: [['blue-teardrop']], score: 5 }).session;
+  const afterBob = recordSnapshot(joined, 'Bob', { board: [['blue-teardrop']], score: 5, sequence: 0 }).session;
 
-  const afterAlice1 = recordSnapshot(afterBob, 'Alice', { board: [['red-square']], score: 10 }).session;
-  const afterAlice2 = recordSnapshot(afterAlice1, 'Alice', { board: [['green-octagon']], score: 60 }).session;
+  const afterAlice1 = recordSnapshot(afterBob, 'Alice', { board: [['red-square']], score: 10, sequence: 0 }).session;
+  const afterAlice2 = recordSnapshot(afterAlice1, 'Alice', { board: [['green-octagon']], score: 60, sequence: 1 }).session;
 
-  assert.deepEqual(afterAlice2.snapshots.Alice, { board: [['green-octagon']], score: 60 }, 'the newer snapshot must replace the older one, not accumulate');
-  assert.deepEqual(afterAlice2.snapshots.Bob, { board: [['blue-teardrop']], score: 5 }, 'the other player\'s own snapshot must survive untouched');
+  assert.deepEqual(
+    afterAlice2.snapshots.Alice,
+    { board: [['green-octagon']], score: 60, sequence: 1 },
+    'the newer in-order snapshot must replace the older one, not accumulate'
+  );
+  assert.deepEqual(
+    afterAlice2.snapshots.Bob,
+    { board: [['blue-teardrop']], score: 5, sequence: 0 },
+    'the other player\'s own snapshot must survive untouched'
+  );
+});
+
+// MP-SEQ-ORDER/SPEC 13.4.1-13.4.4 (slice 2 of 4): a light smoke test only -
+// the full ordering/holding/bounded-wait coverage lives in
+// _session-logic.mjs's own test file, kept in one place so the two copies
+// can't drift if edited later.
+test('recordSnapshot holds an update that arrives ahead of its predecessor, rather than applying it', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const { session: joined } = joinSession(session, 'Bob');
+  const afterFirst = recordSnapshot(joined, 'Alice', { board: [['red-square']], score: 0, sequence: 0 }).session;
+
+  const result = recordSnapshot(afterFirst, 'Alice', { board: [['green-octagon']], score: 60, sequence: 2 });
+
+  assert.deepEqual(
+    result.session.snapshots.Alice,
+    { board: [['red-square']], score: 0, sequence: 0 },
+    'the applied state must stay at the last in-order update, not jump ahead'
+  );
 });
 
 // Mirrors _session-logic.mjs's own coverage of the same contract on the
@@ -128,12 +154,12 @@ test('recordSnapshot overwrites the player\'s own previous snapshot rather than 
 test('recordSnapshot does not mutate the snapshot object the caller passed in', () => {
   const session = createSession('ABCDEFGHIJ', 'Alice');
   const board = [['red-square']];
-  const snapshot = { board, score: 10 };
+  const snapshot = { board, score: 10, sequence: 0 };
 
   recordSnapshot(session, 'Alice', snapshot);
 
   assert.deepEqual(board, [['red-square']]);
-  assert.deepEqual(snapshot, { board: [['red-square']], score: 10 });
+  assert.deepEqual(snapshot, { board: [['red-square']], score: 10, sequence: 0 });
 });
 
 // Security review (commit be737cd), Finding 1 pattern: mirrors
@@ -142,7 +168,7 @@ test('recordSnapshot refuses to record a snapshot for a name that isn\'t actuall
   const session = createSession('ABCDEFGHIJ', 'Alice');
   const { session: joined } = joinSession(session, 'Bob');
 
-  const result = recordSnapshot(joined, 'Mallory', { board: [['red-square']], score: 0 });
+  const result = recordSnapshot(joined, 'Mallory', { board: [['red-square']], score: 0, sequence: 0 });
 
   assert.equal(result.ok, false);
   assert.equal(result.error, 'not-a-player');

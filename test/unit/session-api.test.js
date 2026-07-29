@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import handler, { RATE_LIMIT_MAX_REQUESTS } from '../../api/magic-gems/session.mjs';
 import { sessionKey } from '../../api/magic-gems/_upstash.mjs';
+import { HELD_UPDATE_TIMEOUT_MS } from '../../api/magic-gems/_session-logic.mjs';
 
 const CONFIGURED_ENV = { UPSTASH_REDIS_REST_URL: 'https://x', UPSTASH_REDIS_REST_TOKEN: 'tok' };
 
@@ -275,7 +276,7 @@ test('snapshot records the caller\'s board, score, sequence, cursor, and selecti
         action: 'snapshot',
         code: created.session.code,
         playerName: 'Alice',
-        ...makeSnapshotBody({ score: 120, sequence: 3, cursor: { row: 2, col: 5 }, selection: { row: 1, col: 5 } }),
+        ...makeSnapshotBody({ score: 120, sequence: 0, cursor: { row: 2, col: 5 }, selection: { row: 1, col: 5 } }),
       }),
     })
   );
@@ -286,7 +287,7 @@ test('snapshot records the caller\'s board, score, sequence, cursor, and selecti
   assert.deepEqual(body.session.snapshots.Alice, {
     board: makeBoard(),
     score: 120,
-    sequence: 3,
+    sequence: 0,
     cursor: { row: 2, col: 5 },
     selection: { row: 1, col: 5 },
   });
@@ -328,6 +329,92 @@ test('a successful snapshot is actually persisted, not just echoed back in its o
     makeSnapshotBody({ board: makeBoard('blue-teardrop'), score: 70, sequence: 1 }),
     'expected the second snapshot to replace the first, not accumulate'
   );
+});
+
+// MP-SEQ-ORDER/SPEC 13.4.1-13.4.4 (slice 2 of 4): the handler-level wiring
+// itself (not just the pure logic in _session-logic.mjs, covered
+// exhaustively in its own test file) - proves recordSnapshot's ordering
+// actually reaches the real GET/POST round trip, and that GET itself
+// reclaims a stale held update, not only a snapshot POST.
+test('a snapshot arriving ahead of its predecessor is held, not applied - GET still shows the last in-order update', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  withFetch(t, fakeUpstash());
+  const created = await createViaHandler('Alice');
+  const code = created.session.code;
+
+  await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'snapshot', code, playerName: 'Alice', ...makeSnapshotBody({ score: 0, sequence: 0 }) }),
+    })
+  );
+  await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'snapshot', code, playerName: 'Alice', ...makeSnapshotBody({ score: 200, sequence: 2 }) }),
+    })
+  );
+
+  const getRes = await handler.fetch(new Request(`https://x/api/magic-gems/session?code=${code}`));
+  const getBody = await getRes.json();
+
+  assert.equal(getBody.session.snapshots.Alice.sequence, 0, 'sequence 2 arrived ahead of its predecessor and must be held, not applied');
+});
+
+test('once the missing predecessor arrives, the held update applies too - GET reflects the newest', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  withFetch(t, fakeUpstash());
+  const created = await createViaHandler('Alice');
+  const code = created.session.code;
+
+  for (const sequence of [0, 2]) {
+    await handler.fetch(
+      new Request('https://x/api/magic-gems/session', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'snapshot', code, playerName: 'Alice', ...makeSnapshotBody({ score: sequence, sequence }) }),
+      })
+    );
+  }
+  await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'snapshot', code, playerName: 'Alice', ...makeSnapshotBody({ score: 1, sequence: 1 }) }),
+    })
+  );
+
+  const getRes = await handler.fetch(new Request(`https://x/api/magic-gems/session?code=${code}`));
+  const getBody = await getRes.json();
+
+  assert.equal(getBody.session.snapshots.Alice.sequence, 2, 'expected the held sequence 2 to have drained in behind its now-arrived predecessor');
+});
+
+test('GET reclaims a stale held update past the bounded wait, skipping ahead silently rather than freezing the view', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'] });
+  withEnv(t, CONFIGURED_ENV);
+  withFetch(t, fakeUpstash());
+  const created = await createViaHandler('Alice');
+  const code = created.session.code;
+
+  await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'snapshot', code, playerName: 'Alice', ...makeSnapshotBody({ score: 0, sequence: 0 }) }),
+    })
+  );
+  await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'snapshot', code, playerName: 'Alice', ...makeSnapshotBody({ score: 300, sequence: 3 }) }),
+    })
+  );
+  t.mock.timers.tick(HELD_UPDATE_TIMEOUT_MS);
+
+  const getRes = await handler.fetch(new Request(`https://x/api/magic-gems/session?code=${code}`));
+  const getBody = await getRes.json();
+
+  assert.equal(getRes.status, 200);
+  assert.equal(getBody.session.snapshots.Alice.sequence, 3, 'expected a silent skip-ahead to the newest held update once the bounded wait elapsed');
+  assert.equal(getBody.error, undefined, 'skip-ahead recovery must never surface as an error');
 });
 
 test('snapshot refuses a name that is not actually one of the session\'s own players, as a normal 200 result, not a 500', async (t) => {

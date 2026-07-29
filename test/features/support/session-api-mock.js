@@ -1,8 +1,7 @@
 import { loadMagicGems } from '../../support/load-src.js';
 
-const { generateSessionCode, createSession, joinSession, recordSnapshot, recordSurrender } = loadMagicGems([
-  new URL('../../../src/session.js', import.meta.url),
-]);
+const { generateSessionCode, createSession, joinSession, recordSnapshot, recordSurrender, reclaimStaleHeldUpdates } =
+  loadMagicGems([new URL('../../../src/session.js', import.meta.url)]);
 
 // A realistic in-memory stand-in for the real Upstash-backed API
 // (api/magic-gems/session.mjs) - reuses the exact same pure decision logic
@@ -21,7 +20,14 @@ export function installSessionApiMock(context) {
 
     if (request.method() === 'GET') {
       const code = url.searchParams.get('code');
-      return json({ session: store.has(code) ? store.get(code) : null });
+      if (!store.has(code)) return json({ session: null });
+      // MP-SEQ-ORDER/SPEC 13.4.2: a real poll must also get the chance to
+      // reclaim a stale held update, matching the real handler
+      // (api/magic-gems/session.mjs) - not only a snapshot POST, since the
+      // sender may have gone quiet while the receiver keeps polling.
+      const reclaimed = reclaimStaleHeldUpdates(store.get(code), Date.now());
+      store.set(code, reclaimed);
+      return json({ session: reclaimed });
     }
     if (request.method() === 'POST') {
       const body = JSON.parse(request.postData() || '{}');

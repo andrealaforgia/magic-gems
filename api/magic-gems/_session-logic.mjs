@@ -61,11 +61,93 @@ function joinSession(session, playerName) {
 // playerName must actually be one of this session's own players - otherwise
 // anyone holding the code could inject a snapshot into a slot they were
 // never part of.
-function recordSnapshot(session, playerName, snapshot) {
+// MP-SEQ-ORDER/SPEC 13.4.1-13.4.4 (slice 2 of 4): held updates, keyed by
+// player, bounded per player so a client sending permanently-gapped or
+// garbage-high sequence numbers can't grow server-side state without limit
+// (13.4.4). lastAdvanceMs tracks when this player's applied state last moved
+// forward - the clock reclaimStaleHeldUpdates measures the bounded wait
+// against (13.4.2).
+const MAX_HELD_UPDATES_PER_PLAYER = 20;
+const HELD_UPDATE_TIMEOUT_MS = 5000;
+
+function drainConsecutiveHeld(applied, held) {
+  let current = applied;
+  const remainingHeld = { ...held };
+  let nextSequence = applied.sequence + 1;
+  while (Object.prototype.hasOwnProperty.call(remainingHeld, nextSequence)) {
+    current = remainingHeld[nextSequence];
+    delete remainingHeld[nextSequence];
+    nextSequence++;
+  }
+  return { applied: current, held: remainingHeld };
+}
+
+// SPEC 13.4.2: a missing update must never freeze the opponent's view for
+// the rest of the match. Once a player's held updates have waited past the
+// bounded timeout for their missing predecessor, skip ahead directly to the
+// NEWEST held update (losing the scenic replay of what's skipped, never the
+// correctness of what's shown, 13.4.3) and clear the held buffer - silent
+// and automatic, no error surfaced (13.4.4/E4). Run opportunistically
+// against every player, not just one - a session touched only by its OTHER
+// player (e.g. their own next poll or send) must still reclaim a stale gap.
+function reclaimStaleHeldUpdates(session, nowMs) {
+  if (!session.pendingUpdates) return session;
+  let changed = false;
+  const snapshots = { ...session.snapshots };
+  const pendingUpdates = { ...session.pendingUpdates };
+  for (const playerName of Object.keys(session.pendingUpdates)) {
+    const pending = session.pendingUpdates[playerName];
+    const heldSequences = Object.keys(pending.held || {});
+    if (heldSequences.length === 0) continue;
+    if (nowMs - pending.lastAdvanceMs < HELD_UPDATE_TIMEOUT_MS) continue;
+    const newestSequence = Math.max(...heldSequences.map(Number));
+    snapshots[playerName] = pending.held[newestSequence];
+    pendingUpdates[playerName] = { held: {}, lastAdvanceMs: nowMs };
+    changed = true;
+  }
+  return changed ? { ...session, snapshots, pendingUpdates } : session;
+}
+
+function recordSnapshot(session, playerName, snapshot, nowMs = Date.now()) {
   if (!session.players.includes(playerName)) return { ok: false, error: 'not-a-player' };
+
+  const reclaimed = reclaimStaleHeldUpdates(session, nowMs);
+  const appliedBefore = reclaimed.snapshots && reclaimed.snapshots[playerName];
+  const pendingBefore = (reclaimed.pendingUpdates && reclaimed.pendingUpdates[playerName]) || { held: {} };
+  const nextExpectedSequence = appliedBefore ? appliedBefore.sequence + 1 : 0;
+
+  if (snapshot.sequence < nextExpectedSequence) {
+    return { ok: true, session: reclaimed };
+  }
+
+  if (snapshot.sequence === nextExpectedSequence) {
+    const { applied, held } = drainConsecutiveHeld(snapshot, pendingBefore.held);
+    return {
+      ok: true,
+      session: {
+        ...reclaimed,
+        snapshots: { ...reclaimed.snapshots, [playerName]: applied },
+        pendingUpdates: { ...reclaimed.pendingUpdates, [playerName]: { held, lastAdvanceMs: nowMs } },
+      },
+    };
+  }
+
+  const heldCount = Object.keys(pendingBefore.held).length;
+  if (heldCount >= MAX_HELD_UPDATES_PER_PLAYER) {
+    return { ok: false, error: 'too-many-held-updates' };
+  }
   return {
     ok: true,
-    session: { ...session, snapshots: { ...session.snapshots, [playerName]: snapshot } },
+    session: {
+      ...reclaimed,
+      pendingUpdates: {
+        ...reclaimed.pendingUpdates,
+        [playerName]: {
+          held: { ...pendingBefore.held, [snapshot.sequence]: snapshot },
+          lastAdvanceMs: pendingBefore.lastAdvanceMs ?? nowMs,
+        },
+      },
+    },
   };
 }
 
@@ -80,4 +162,14 @@ function recordSurrender(session, playerName) {
   return { ok: true, session: { ...session, surrenderedBy: playerName } };
 }
 
-export { CODE_LENGTH, generateSessionCode, createSession, joinSession, recordSnapshot, recordSurrender };
+export {
+  CODE_LENGTH,
+  generateSessionCode,
+  createSession,
+  joinSession,
+  recordSnapshot,
+  recordSurrender,
+  reclaimStaleHeldUpdates,
+  MAX_HELD_UPDATES_PER_PLAYER,
+  HELD_UPDATE_TIMEOUT_MS,
+};

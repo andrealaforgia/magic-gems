@@ -7,6 +7,9 @@ import {
   joinSession,
   recordSnapshot,
   recordSurrender,
+  reclaimStaleHeldUpdates,
+  MAX_HELD_UPDATES_PER_PLAYER,
+  HELD_UPDATE_TIMEOUT_MS,
 } from '../../api/magic-gems/_session-logic.mjs';
 
 // QA review (commit 87bd778): this server-side copy had no dedicated test
@@ -94,24 +97,32 @@ test('recordSnapshot stores a player\'s board and score under their own name, wi
   const session = createSession('ABCDEFGHIJ', 'Alice');
   const { session: joined } = joinSession(session, 'Bob');
 
-  const result = recordSnapshot(joined, 'Alice', { board: [['red-square']], score: 40 });
+  const result = recordSnapshot(joined, 'Alice', { board: [['red-square']], score: 40, sequence: 0 });
 
   assert.equal(result.ok, true);
-  assert.deepEqual(result.session.snapshots.Alice, { board: [['red-square']], score: 40 });
+  assert.deepEqual(result.session.snapshots.Alice, { board: [['red-square']], score: 40, sequence: 0 });
   assert.equal(result.session.snapshots.Bob, undefined, 'must not fabricate a snapshot for the other player');
   assert.deepEqual(joined.players, ['Alice', 'Bob'], 'must never mutate the session it was given');
 });
 
-test('recordSnapshot overwrites the player\'s own previous snapshot rather than accumulating it, and never touches the other player\'s', () => {
+test('recordSnapshot replaces the player\'s own previous snapshot as later sequences arrive in order, and never touches the other player\'s', () => {
   const session = createSession('ABCDEFGHIJ', 'Alice');
   const { session: joined } = joinSession(session, 'Bob');
-  const afterBob = recordSnapshot(joined, 'Bob', { board: [['blue-teardrop']], score: 5 }).session;
+  const afterBob = recordSnapshot(joined, 'Bob', { board: [['blue-teardrop']], score: 5, sequence: 0 }).session;
 
-  const afterAlice1 = recordSnapshot(afterBob, 'Alice', { board: [['red-square']], score: 10 }).session;
-  const afterAlice2 = recordSnapshot(afterAlice1, 'Alice', { board: [['green-octagon']], score: 60 }).session;
+  const afterAlice1 = recordSnapshot(afterBob, 'Alice', { board: [['red-square']], score: 10, sequence: 0 }).session;
+  const afterAlice2 = recordSnapshot(afterAlice1, 'Alice', { board: [['green-octagon']], score: 60, sequence: 1 }).session;
 
-  assert.deepEqual(afterAlice2.snapshots.Alice, { board: [['green-octagon']], score: 60 }, 'the newer snapshot must replace the older one, not accumulate');
-  assert.deepEqual(afterAlice2.snapshots.Bob, { board: [['blue-teardrop']], score: 5 }, 'the other player\'s own snapshot must survive untouched');
+  assert.deepEqual(
+    afterAlice2.snapshots.Alice,
+    { board: [['green-octagon']], score: 60, sequence: 1 },
+    'the newer in-order snapshot must replace the older one, not accumulate'
+  );
+  assert.deepEqual(
+    afterAlice2.snapshots.Bob,
+    { board: [['blue-teardrop']], score: 5, sequence: 0 },
+    'the other player\'s own snapshot must survive untouched'
+  );
 });
 
 // QA review (commit 6cdd179, narrowed per commit f3cb41d's own follow-up
@@ -126,12 +137,12 @@ test('recordSnapshot overwrites the player\'s own previous snapshot rather than 
 test('recordSnapshot does not mutate the snapshot object the caller passed in', () => {
   const session = createSession('ABCDEFGHIJ', 'Alice');
   const board = [['red-square']];
-  const snapshot = { board, score: 10 };
+  const snapshot = { board, score: 10, sequence: 0 };
 
   recordSnapshot(session, 'Alice', snapshot);
 
   assert.deepEqual(board, [['red-square']]);
-  assert.deepEqual(snapshot, { board: [['red-square']], score: 10 });
+  assert.deepEqual(snapshot, { board: [['red-square']], score: 10, sequence: 0 });
 });
 
 // Security review (commit be737cd), Finding 1 pattern: a name that isn't
@@ -141,11 +152,157 @@ test('recordSnapshot refuses to record a snapshot for a name that isn\'t actuall
   const session = createSession('ABCDEFGHIJ', 'Alice');
   const { session: joined } = joinSession(session, 'Bob');
 
-  const result = recordSnapshot(joined, 'Mallory', { board: [['red-square']], score: 0 });
+  const result = recordSnapshot(joined, 'Mallory', { board: [['red-square']], score: 0, sequence: 0 });
 
   assert.equal(result.ok, false);
   assert.equal(result.error, 'not-a-player');
   assert.equal(joined.snapshots, undefined, 'a refused snapshot must never touch the existing session');
+});
+
+// MP-SEQ-ORDER/SPEC 13.4.1-13.4.4 (slice 2 of 4): the server is serverless and
+// gives no guarantee requests arrive in the order they were sent, so ordering
+// has to be enforced here rather than assumed. Updates apply in strictly
+// ascending sequence order with no gaps, an update arriving ahead of its
+// predecessors is held rather than applied, a bounded wait against a real gap
+// eventually skips ahead instead of freezing the view, and held state itself
+// stays bounded.
+function joinedSession() {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  return joinSession(session, 'Bob').session;
+}
+
+function snap(sequence, board = [[`board-${sequence}`]], score = sequence) {
+  return { board, score, sequence };
+}
+
+test('recordSnapshot applies the very first sequence (0) immediately', () => {
+  const result = recordSnapshot(joinedSession(), 'Alice', snap(0));
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.session.snapshots.Alice, snap(0));
+});
+
+test('recordSnapshot holds an update that arrives ahead of its predecessor, rather than applying it', () => {
+  const afterFirst = recordSnapshot(joinedSession(), 'Alice', snap(0)).session;
+
+  const result = recordSnapshot(afterFirst, 'Alice', snap(2));
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(
+    result.session.snapshots.Alice,
+    snap(0),
+    'the applied state must stay at the last in-order update, not jump ahead'
+  );
+});
+
+test('recordSnapshot applies a held update, and any already-held successor, once its predecessor finally arrives', () => {
+  let session = joinedSession();
+  session = recordSnapshot(session, 'Alice', snap(0)).session;
+  session = recordSnapshot(session, 'Alice', snap(2)).session; // arrives early, held
+  session = recordSnapshot(session, 'Alice', snap(3)).session; // arrives early, held
+
+  const result = recordSnapshot(session, 'Alice', snap(1)); // the missing predecessor
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(
+    result.session.snapshots.Alice,
+    snap(3),
+    'once 1 arrives, 2 and 3 (already held) must drain in order too, landing on the newest'
+  );
+});
+
+test('recordSnapshot never regresses the applied state for a stale/duplicate sequence that arrives after a newer one', () => {
+  let session = joinedSession();
+  session = recordSnapshot(session, 'Alice', snap(0)).session;
+  session = recordSnapshot(session, 'Alice', snap(1)).session;
+
+  const result = recordSnapshot(session, 'Alice', snap(0, [['stale-board']], 999));
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(
+    result.session.snapshots.Alice,
+    snap(1),
+    'a stale, already-superseded sequence must never overwrite the newer applied state (13.4.3)'
+  );
+});
+
+test('recordSnapshot ordering for one player never touches the other player\'s own applied state or held buffer', () => {
+  let session = joinedSession();
+  session = recordSnapshot(session, 'Bob', snap(0)).session;
+  session = recordSnapshot(session, 'Alice', snap(0)).session;
+
+  const result = recordSnapshot(session, 'Alice', snap(5)); // held for Alice only
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.session.snapshots.Bob, snap(0), 'Bob\'s own applied snapshot must be untouched by Alice\'s held update');
+});
+
+test('recordSnapshot refuses to hold beyond the bounded per-player cap, rather than accumulating without limit', () => {
+  let session = joinedSession();
+  session = recordSnapshot(session, 'Alice', snap(0)).session;
+  for (let i = 0; i < MAX_HELD_UPDATES_PER_PLAYER; i++) {
+    session = recordSnapshot(session, 'Alice', snap(2 + i)).session;
+  }
+
+  const result = recordSnapshot(session, 'Alice', snap(2 + MAX_HELD_UPDATES_PER_PLAYER));
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'too-many-held-updates');
+});
+
+test('reclaimStaleHeldUpdates leaves held updates alone before the bounded wait has elapsed', () => {
+  let session = joinedSession();
+  session = recordSnapshot(session, 'Alice', snap(0), 1000).session;
+  session = recordSnapshot(session, 'Alice', snap(2), 1000).session; // held at t=1000
+
+  const result = reclaimStaleHeldUpdates(session, 1000 + HELD_UPDATE_TIMEOUT_MS - 1);
+
+  assert.deepEqual(result.snapshots.Alice, snap(0), 'still waiting - must not skip ahead early');
+});
+
+test('reclaimStaleHeldUpdates skips ahead to the newest held update once the bounded wait elapses, discarding the gap silently', () => {
+  let session = joinedSession();
+  session = recordSnapshot(session, 'Alice', snap(0), 1000).session;
+  session = recordSnapshot(session, 'Alice', snap(3), 1000).session; // held at t=1000, missing 1 and 2
+  session = recordSnapshot(session, 'Alice', snap(2), 1000).session; // also held, older than 3
+
+  const result = reclaimStaleHeldUpdates(session, 1000 + HELD_UPDATE_TIMEOUT_MS);
+
+  assert.deepEqual(
+    result.snapshots.Alice,
+    snap(3),
+    'expected a skip-ahead directly to the newest held update (13.4.2), not the oldest held one'
+  );
+  const nextAfterReclaim = recordSnapshot(result, 'Alice', snap(4));
+  assert.deepEqual(
+    nextAfterReclaim.session.snapshots.Alice,
+    snap(4),
+    'the held buffer must be cleared by the reclaim, so a fresh in-order update applies normally afterwards'
+  );
+});
+
+test('reclaimStaleHeldUpdates is a no-op when nothing is held', () => {
+  let session = joinedSession();
+  session = recordSnapshot(session, 'Alice', snap(0), 1000).session;
+
+  const result = reclaimStaleHeldUpdates(session, 1000 + HELD_UPDATE_TIMEOUT_MS * 10);
+
+  assert.deepEqual(result.snapshots.Alice, snap(0));
+});
+
+test('recordSnapshot itself reclaims a stale held update for the OTHER player before deciding a newly-arriving one', () => {
+  let session = joinedSession();
+  session = recordSnapshot(session, 'Bob', snap(0), 1000).session;
+  session = recordSnapshot(session, 'Bob', snap(2), 1000).session; // held for Bob at t=1000
+
+  // A wholly unrelated call from Alice, long after Bob's bounded wait elapsed.
+  const result = recordSnapshot(session, 'Alice', snap(0), 1000 + HELD_UPDATE_TIMEOUT_MS);
+
+  assert.deepEqual(
+    result.session.snapshots.Bob,
+    snap(2),
+    'Bob\'s own stale gap must have been reclaimed as a side effect of any later activity on the same session'
+  );
 });
 
 // MP5/SPEC 13.5.1: a surrendering player's exit is communicated through the

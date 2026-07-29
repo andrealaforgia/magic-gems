@@ -6,7 +6,15 @@
 // production once this function and the static game ended up at different
 // relative locations after deployment.
 import { getStoredSession, setStoredSession, updateStoredSession, checkRateLimit } from './_upstash.mjs';
-import { generateSessionCode, createSession, joinSession, recordSnapshot, recordSurrender, CODE_LENGTH } from './_session-logic.mjs';
+import {
+  generateSessionCode,
+  createSession,
+  joinSession,
+  recordSnapshot,
+  recordSurrender,
+  reclaimStaleHeldUpdates,
+  CODE_LENGTH,
+} from './_session-logic.mjs';
 
 const CODE_PATTERN = new RegExp(`^[A-Z]{${CODE_LENGTH}}$`);
 const MAX_NAME_LENGTH = 20;
@@ -168,13 +176,18 @@ async function handleJoin(env, code, playerName) {
 async function handleRecordSnapshot(env, code, playerName, board, score, sequence, cursor, selection) {
   const existing = await getStoredSession(env, code);
   if (!existing) return { ok: false, error: 'not-found' };
-  const result = recordSnapshot(existing, playerName, {
-    board,
-    score,
-    sequence,
-    cursor: normalizeCell(cursor),
-    selection: normalizeSelection(selection),
-  });
+  const result = recordSnapshot(
+    existing,
+    playerName,
+    {
+      board,
+      score,
+      sequence,
+      cursor: normalizeCell(cursor),
+      selection: normalizeSelection(selection),
+    },
+    Date.now()
+  );
   if (!result.ok) return result;
   await updateStoredSession(env, result.session);
   return result;
@@ -206,7 +219,14 @@ export default {
         const codeError = validCodeOrError(code);
         if (codeError) return jsonResponse({ error: codeError }, 400);
         const session = await getStoredSession(process.env, code);
-        return jsonResponse({ session });
+        if (!session) return jsonResponse({ session });
+        // MP-SEQ-ORDER/SPEC 13.4.2: a poll is also a real chance to notice a
+        // player's held updates have waited past the bounded timeout - not
+        // just a snapshot POST, since the sender may have stopped sending
+        // (nothing new to send) while the receiver keeps polling regardless.
+        const reclaimed = reclaimStaleHeldUpdates(session, Date.now());
+        if (reclaimed !== session) await updateStoredSession(process.env, reclaimed);
+        return jsonResponse({ session: reclaimed });
       }
       if (request.method === 'POST') {
         const body = await request.json();
