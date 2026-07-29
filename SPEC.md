@@ -371,12 +371,20 @@ clauses are added as each iteration lands.)
   - 13.4.4 HELD UPDATES ARE BOUNDED. Updates held awaiting their predecessors must not
     accumulate without limit, and stale held updates for a finished or abandoned match
     must not persist indefinitely.
-  - 13.4.5 WHAT THE REPLAY LOOKS LIKE. The remote grid shows the opponent's cursor
-    moving and their gem selection, and their moves resolve with the same visual
-    treatment the local player sees (SPEC §7/§8 — swap, shatter, fall, cascade), so the
-    remote side reads as a live opponent rather than a refreshing picture. Their score
-    updates alongside. NO SOUND plays for remote activity: audio belongs to the local
-    player's own actions only.
+  - 13.4.5 WHAT THE REPLAY LOOKS LIKE. The remote grid is rendered as a live opponent
+    playing, not as a refreshing picture. In order:
+    - 13.4.5.1 The opponent's BOARD is displayed, from the latest update applied.
+    - 13.4.5.2 The opponent's CURSOR is drawn as it moves, with the SAME white
+      highlight the local player's own cursor uses (§6.1) — so a watcher sees the
+      opponent's cursor travelling across their grid cell by cell.
+    - 13.4.5.3 The opponent's SELECTION for the swap is shown, highlighted the same way
+      a local selection is (§6.2), and the designated swap target likewise (§6.3).
+    - 13.4.5.4 The SWAP itself is rendered with the full visual treatment the local
+      player gets (§7/§8) — the gems swapping, the matched gems breaking/shattering,
+      the fall and the cascade. Not an instant board substitution.
+    - 13.4.5.5 Their score updates alongside.
+    - 13.4.5.6 NO SOUND plays for remote activity: audio belongs to the local player's
+      own actions only.
   - 13.4.6 ACCURACY IS REQUIRED. The remote grid and the opponent's score shown MUST
     reflect the opponent's ACTUAL board and score as of the latest update applied
     (brief async lag between a change and its update arriving is acceptable; the grid
