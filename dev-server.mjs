@@ -87,10 +87,39 @@ function runCommand([name, ...args]) {
   }
 }
 
+// Security review of this file, seq 1329 (one Medium, two Lows) - all three
+// share one root cause: this prefix was an open read/write data plane over the
+// same keys the real handler uses, bypassing that handler's ownership checks
+// and reachable by anything that could name the URL.
+//
+// The Medium was demonstrated, not theorised: dispatch keyed on the path alone,
+// so a bodiless GET to /__upstash/set/<key> - trivially triggered cross-origin
+// by any page open in another tab, since the side effect lands even when the
+// response cannot be read - wrote an empty string over a live session key and
+// destroyed the match.
+//
+// Nothing but the real handler is ever a legitimate caller here, and it always
+// presents the bearer token. Requiring it closes the cross-origin route by
+// construction: a browser cannot attach an Authorization header cross-origin
+// without a preflight, and this server answers no preflight. Method and Origin
+// checks are kept as well - defence that does not depend on the token staying
+// secret, since this one is a hardcoded development constant.
+function storeRequestError(req, method) {
+  if (req.method !== method) return `store route requires ${method}`;
+  // No browser is ever a legitimate caller; a request carrying Origin is by
+  // definition page-driven rather than the handler.
+  if (req.headers.origin) return 'store route is not browser-reachable';
+  const auth = req.headers.authorization || '';
+  if (auth !== `Bearer ${process.env.UPSTASH_REDIS_REST_TOKEN}`) return 'store route requires the store token';
+  return null;
+}
+
 async function handleUpstash(req, res, url, body) {
   const path = url.pathname.slice(UPSTASH_PREFIX.length);
 
   if (path === '/pipeline') {
+    const denied = storeRequestError(req, 'POST');
+    if (denied) return json(res, 403, { error: denied });
     const commands = JSON.parse(body || '[]');
     return json(res, 200, commands.map(runCommand));
   }
@@ -98,9 +127,15 @@ async function handleUpstash(req, res, url, body) {
   const [, op, rawKey] = path.split('/');
   const key = decodeURIComponent(rawKey || '');
 
-  if (op === 'get') return json(res, 200, runCommand(['GET', key]));
+  if (op === 'get') {
+    const denied = storeRequestError(req, 'GET');
+    if (denied) return json(res, 403, { error: denied });
+    return json(res, 200, runCommand(['GET', key]));
+  }
 
   if (op === 'set') {
+    const denied = storeRequestError(req, 'POST');
+    if (denied) return json(res, 403, { error: denied });
     const ex = url.searchParams.get('EX');
     setKey(key, body, { ttlSeconds: ex === null ? null : Number(ex) });
     return json(res, 200, { result: 'OK' });
@@ -149,9 +184,22 @@ async function serveStatic(res, pathname) {
   }
 }
 
+// Second Low from the same review: chunks were accumulated without any cap
+// before JSON.parse, so a single long-running request could grow memory
+// unbounded. A board snapshot is a few kilobytes; a megabyte is generous.
+const MAX_BODY_BYTES = 1024 * 1024;
+
 async function readBody(req) {
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > MAX_BODY_BYTES) {
+      req.destroy();
+      throw new Error('request body too large');
+    }
+    chunks.push(chunk);
+  }
   return Buffer.concat(chunks).toString('utf8');
 }
 
