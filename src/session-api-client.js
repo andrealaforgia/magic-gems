@@ -84,7 +84,12 @@
       // ride alongside the same board/score payload. MP-SEQ-CURSOR/SPEC
       // 13.4.5.3 (slice 3 of 4) adds the designated swap target the same
       // way - null until the player has actually aimed at a neighbour.
-      sendSnapshot(code, playerName, board, score, sequence, cursor, selection, target) {
+      // Owner extension: cursorPath carries every real cell the cursor has
+      // occupied since the last successfully-sent snapshot, each with the
+      // real elapsed time since the previous one, so the opponent's client
+      // can reproduce the true path and pace rather than a reconstructed
+      // shortcut at a fixed cadence.
+      sendSnapshot(code, playerName, board, score, sequence, cursor, selection, target, cursorPath) {
         return postAction({
           action: 'snapshot',
           code,
@@ -95,6 +100,7 @@
           cursor,
           selection,
           target,
+          cursorPath,
         }).catch(
           () => undefined
         );

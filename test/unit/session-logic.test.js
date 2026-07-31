@@ -104,7 +104,7 @@ test('recordSnapshot stores a player\'s board and score under their own name, wi
   const result = recordSnapshot(joined, 'Alice', { board: [['red-square']], score: 40, sequence: 0 });
 
   assert.equal(result.ok, true);
-  assert.deepEqual(result.session.snapshots.Alice, { board: [['red-square']], score: 40, sequence: 0 });
+  assert.deepEqual(result.session.snapshots.Alice, { board: [['red-square']], score: 40, sequence: 0, cursorPath: [] });
   assert.equal(result.session.snapshots.Bob, undefined, 'must not fabricate a snapshot for the other player');
   assert.deepEqual(joined.players, ['Alice', 'Bob'], 'must never mutate the session it was given');
 });
@@ -119,12 +119,12 @@ test('recordSnapshot replaces the player\'s own previous snapshot as later seque
 
   assert.deepEqual(
     afterAlice2.snapshots.Alice,
-    { board: [['green-octagon']], score: 60, sequence: 1 },
+    { board: [['green-octagon']], score: 60, sequence: 1, cursorPath: [] },
     'the newer in-order snapshot must replace the older one, not accumulate'
   );
   assert.deepEqual(
     afterAlice2.snapshots.Bob,
-    { board: [['blue-teardrop']], score: 5, sequence: 0 },
+    { board: [['blue-teardrop']], score: 5, sequence: 0, cursorPath: [] },
     'the other player\'s own snapshot must survive untouched'
   );
 });
@@ -175,8 +175,14 @@ function joinedSession() {
   return joinSession(session, 'Bob').session;
 }
 
+// MP-SEQ-CURSOR (Owner extension): cursorPath defaults to [] here so every
+// snap(N)-built expectation already matches recordSnapshot's own real
+// output shape - it's the one field that ACCUMULATES rather than
+// overwrites (see _session-logic.mjs's own accumulateCursorPath), but an
+// empty array accumulated with more empty arrays is still empty, so this
+// default holds across every held/drain/skip-ahead path these tests cover.
 function snap(sequence, board = [[`board-${sequence}`]], score = sequence) {
-  return { board, score, sequence };
+  return { board, score, sequence, cursorPath: [] };
 }
 
 test('recordSnapshot applies the very first sequence (0) immediately', () => {

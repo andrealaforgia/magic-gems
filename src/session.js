@@ -77,16 +77,29 @@
   // advance ever skipped via recovery, independent of elapsed time.
   const MAX_CUMULATIVE_SKIP_ADVANCE = 30;
 
+  // MP-SEQ-CURSOR (Owner extension): mirrors api/magic-gems/_session-logic.mjs's
+  // own copy - see that file's own comment for the full rationale. cursorPath
+  // is the one field that ACCUMULATES across applied updates rather than
+  // overwriting, so a receiver whose own poll cadence is slower than the
+  // sender's publish cadence still eventually sees every real waypoint.
+  const MAX_STORED_CURSOR_PATH_LENGTH = 200;
+
+  function accumulateCursorPath(previousCursorPath, incomingCursorPath) {
+    return [...(previousCursorPath || []), ...(incomingCursorPath || [])].slice(-MAX_STORED_CURSOR_PATH_LENGTH);
+  }
+
   function drainConsecutiveHeld(applied, held) {
     let current = applied;
+    let cursorPath = accumulateCursorPath(undefined, applied.cursorPath);
     const remainingHeld = { ...held };
     let nextSequence = applied.sequence + 1;
     while (Object.prototype.hasOwnProperty.call(remainingHeld, nextSequence)) {
       current = remainingHeld[nextSequence];
+      cursorPath = accumulateCursorPath(cursorPath, current.cursorPath);
       delete remainingHeld[nextSequence];
       nextSequence++;
     }
-    return { applied: current, held: remainingHeld };
+    return { applied: { ...current, cursorPath }, held: remainingHeld };
   }
 
   // SPEC 13.4.2: a missing update must never freeze the opponent's view for
@@ -107,7 +120,15 @@
       const newestSequence = Math.max(...heldSequences.map(Number));
       const previousApplied = snapshots[playerName];
       const skippedNow = newestSequence - (previousApplied ? previousApplied.sequence + 1 : 0);
-      snapshots[playerName] = pending.held[newestSequence];
+      // MP-SEQ-CURSOR (Owner extension): accumulate cursorPath across every
+      // held entry being skipped through, in ascending sequence order - see
+      // api/magic-gems/_session-logic.mjs's own comment for the rationale.
+      const orderedHeldSequences = heldSequences.map(Number).sort((a, b) => a - b);
+      let cursorPath = previousApplied && previousApplied.cursorPath;
+      for (const heldSequence of orderedHeldSequences) {
+        cursorPath = accumulateCursorPath(cursorPath, pending.held[heldSequence].cursorPath);
+      }
+      snapshots[playerName] = { ...pending.held[newestSequence], cursorPath };
       pendingUpdates[playerName] = {
         held: {},
         lastAdvanceMs: nowMs,
@@ -147,12 +168,19 @@
 
     if (snapshot.sequence === nextExpectedSequence) {
       const { applied, held } = drainConsecutiveHeld(snapshot, pendingBefore.held);
+      // MP-SEQ-CURSOR (Owner extension): continues the accumulation from
+      // whatever was already stored by an earlier call - see
+      // api/magic-gems/_session-logic.mjs's own comment for the rationale.
+      const withAccumulatedCursorPath = {
+        ...applied,
+        cursorPath: accumulateCursorPath(appliedBefore && appliedBefore.cursorPath, applied.cursorPath),
+      };
       return {
         ok: true,
         applied: true,
         session: {
           ...reclaimed,
-          snapshots: { ...reclaimed.snapshots, [playerName]: applied },
+          snapshots: { ...reclaimed.snapshots, [playerName]: withAccumulatedCursorPath },
           pendingUpdates: {
             ...reclaimed.pendingUpdates,
             [playerName]: { held, lastAdvanceMs: nowMs, firstSeenAtMs, totalSkipAdvance },

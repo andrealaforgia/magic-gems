@@ -633,14 +633,25 @@
     // player's own interaction uses (drawInteraction, already shape-generic).
     // No cursor is shown at all until the first snapshot actually arrives
     // (13.3.4's own "until the first update arrives" boundary already
-    // governs remoteBoard/remoteScore the same way).
-    let remoteInteraction = initialRemoteSnapshot
-      ? {
-          cursor: initialRemoteSnapshot.cursor,
-          selection: initialRemoteSnapshot.selection,
-          target: initialRemoteSnapshot.target ?? null,
-        }
-      : null;
+    // governs remoteBoard/remoteScore the same way) - applyRemoteSnapshotInteraction
+    // (below) knows a null remoteVisualCursor means there is nowhere to
+    // travel FROM yet, so this first one simply appears.
+    let remoteVisualCursor = null;
+    let remoteVisualSelection = null;
+    let remoteVisualTarget = null;
+    let remoteCursorPath = [];
+    let remoteCursorStepElapsedMs = 0;
+    let remotePendingSelection = null;
+    let remotePendingTarget = null;
+    // MP-SEQ-CURSOR (Owner extension): the highest moveSeq already
+    // incorporated into remoteCursorPath - the sender resends a retained
+    // window of recent steps (its own cursorMoveLog's own comment explains
+    // why), so the SAME step can legitimately arrive more than once. moveSeq
+    // is a stable, per-move-never-reused id, so "already incorporated" is a
+    // simple integer comparison regardless of how much a resent window
+    // overlaps with what was already seen.
+    let remoteLastIncorporatedMoveSeq = -1;
+    if (initialRemoteSnapshot) applyRemoteSnapshotInteraction(initialRemoteSnapshot);
 
     // SPEC 13.2.6/MP-RECONNECT (mid-match): a player who reconnects to an
     // already-started match has their own last snapshot stored server-side
@@ -830,10 +841,108 @@
     // the identical drawInteraction() used for the local player's own -
     // nothing shown until the first snapshot has actually arrived (13.3.4's
     // "until the first update arrives" boundary already governs remoteBoard
-    // the same way).
+    // the same way). Draws the VISUAL cursor position (see
+    // applyRemoteSnapshotInteraction/advanceRemoteCursor below), which can be
+    // mid-travel toward the latest applied one rather than already there.
     function renderRemote() {
       drawBoard(remoteCtx, remoteBoard, cellSize, sprites);
-      if (remoteInteraction) drawInteraction(remoteCtx, remoteInteraction, cellSize);
+      if (remoteVisualCursor) {
+        drawInteraction(
+          remoteCtx,
+          { cursor: remoteVisualCursor, selection: remoteVisualSelection, target: remoteVisualTarget },
+          cellSize
+        );
+      }
+    }
+
+    // MP-SEQ-CURSOR/SPEC 13.4.5.2 (E2, corrected, then Owner-extended): the
+    // sync interval and the ordering machinery's own coalescing/skip-ahead
+    // recovery can each legitimately fold several of the opponent's real,
+    // single-cell moves into one applied update - so the remote cursor is
+    // never redrawn straight at its latest position. The Owner's own further
+    // extension on top of that: it is not enough to walk SOME path between
+    // the two endpoints (a reconstructed shortcut can pass a mere
+    // never-jumps check while still showing cells the opponent never
+    // actually visited) - the exact real cells, in the exact real order,
+    // MUST be shown, at the exact real pace they happened. cursorPath (sent
+    // alongside cursor/selection/target) carries exactly that: every real
+    // cell the sender's own cursor recently occupied, each paired with the
+    // real milliseconds elapsed since the previous one - so this only ever
+    // plays back real, sender-recorded waypoints and real, sender-recorded
+    // delays, never inventing either.
+    //
+    // The sender resends a retained window rather than clearing it on every
+    // successful send (its own cursorMoveLog comment explains why: this
+    // client's own poll cadence is slower than the sender's publish cadence,
+    // so a send succeeding doesn't mean this client has actually polled it
+    // yet) - so the SAME step can legitimately arrive more than once.
+    // moveSeq (a separate, own-never-reused id per step) is what tells a
+    // genuinely new step apart from an already-incorporated resend; without
+    // it, naively concatenating every arriving cursorPath would replay
+    // already-drawn cells a second time.
+    //
+    // Selection/target only ever sit at the SAME cell the cursor already
+    // occupies (interaction.js's own selectUnderCursor never moves the
+    // cursor, and arrow keys move the TARGET instead of the cursor once a
+    // selection is active) - so they are held back as "pending" and only
+    // revealed once the travel above has visually caught up to that cell,
+    // rather than appearing to leap in ahead of the cursor that made them.
+    function applyRemoteSnapshotInteraction(snapshot) {
+      const nextSelection = snapshot.selection;
+      const nextTarget = snapshot.target ?? null;
+      remotePendingSelection = nextSelection;
+      remotePendingTarget = nextTarget;
+      const cursorPath = snapshot.cursorPath || [];
+      if (remoteVisualCursor === null) {
+        // Nothing shown yet (13.3.4's own boundary) - nowhere to travel FROM,
+        // so this first one simply appears rather than animating, even if a
+        // path happens to be present. Its own steps count as already
+        // incorporated (there is nothing useful left to replay from before
+        // the cursor was ever shown at all).
+        remoteVisualCursor = snapshot.cursor;
+        remoteVisualSelection = nextSelection;
+        remoteVisualTarget = nextTarget;
+        remoteCursorPath = [];
+        if (cursorPath.length > 0) {
+          remoteLastIncorporatedMoveSeq = Math.max(...cursorPath.map((step) => step.moveSeq));
+        }
+        return;
+      }
+      const freshSteps = cursorPath.filter((step) => step.moveSeq > remoteLastIncorporatedMoveSeq);
+      if (freshSteps.length > 0) {
+        remoteCursorPath = remoteCursorPath.concat(
+          freshSteps.map((step) => ({ row: step.row, col: step.col, delayMs: step.dtMs }))
+        );
+        remoteLastIncorporatedMoveSeq = Math.max(remoteLastIncorporatedMoveSeq, ...freshSteps.map((step) => step.moveSeq));
+      } else if (remoteCursorPath.length === 0) {
+        // Nothing fresh in this update and travel already caught up -
+        // selection/target may update immediately (E3/E4 unchanged, no
+        // travel requirement of their own).
+        remoteVisualSelection = nextSelection;
+        remoteVisualTarget = nextTarget;
+      }
+    }
+
+    // One step per call regardless of how large dtMs is (never a `while`
+    // draining several at once) - a stall or a backlog still gives every
+    // real waypoint its own rendered frame, which is what makes it provable
+    // by reading actual pixels rather than only trusting recorded state.
+    // Overshoot is carried forward (subtracted, not reset to 0) so a run of
+    // several short real delays still adds up to their real total rather
+    // than each independently rounding up to the next frame.
+    function advanceRemoteCursor(dtMs) {
+      if (remoteCursorPath.length === 0) return;
+      remoteCursorStepElapsedMs += dtMs;
+      const nextStep = remoteCursorPath[0];
+      if (remoteCursorStepElapsedMs < nextStep.delayMs) return;
+      remoteCursorStepElapsedMs -= nextStep.delayMs;
+      remoteVisualCursor = { row: nextStep.row, col: nextStep.col };
+      remoteCursorPath.shift();
+      if (remoteCursorPath.length === 0) {
+        remoteVisualSelection = remotePendingSelection;
+        remoteVisualTarget = remotePendingTarget;
+      }
+      renderRemote();
     }
 
     renderLocal();
@@ -874,6 +983,41 @@
     // identity comparison alone tells the two cases apart, no deep-equal
     // needed.
     let lastSentInteraction = null;
+    // MP-SEQ-CURSOR (Owner extension, on top of the frozen SPEC 13.4.5.2):
+    // every REAL cell this player's own cursor has occupied since the last
+    // snapshot that actually reached the server, in true order, each paired
+    // with the real time elapsed since the previous one - so the opponent's
+    // client can reproduce the exact path taken (never a reconstructed
+    // shortcut between endpoints) at the exact pace it happened (never a
+    // fixed cadence). Cleared only once a send actually succeeds, same
+    // retry-unconsumed-on-failure convention as nextSequence/lastSentBoard
+    // above - a failed send's own path segment is simply retried, unshortened,
+    // next tick, never dropped.
+    //
+    // This client's own responsibility ends at "report what's new since my
+    // last successful send" - it does NOT resend older history once that
+    // send succeeds. The receiving client's own poll cadence being slower
+    // than this one's publish cadence (SESSION_POLL_INTERVAL_MS >
+    // SESSION_PUBLISH_INTERVAL_MS) could otherwise mean an update is
+    // overwritten before the opponent ever polls it - but that gap is closed
+    // server-side instead (_session-logic.mjs accumulates cursorPath across
+    // applied updates rather than overwriting), specifically so it doesn't
+    // have to be closed by resending here, which would burn extra sequence
+    // numbers for no real move and desync anything that assumes this
+    // client's sequence only advances on genuine board/interaction changes.
+    // moveSeq (its own separate, never-resetting counter) still matters even
+    // so: the server's own accumulated backlog is served on every poll until
+    // it ages out of that backlog, so the receiver still needs it to tell an
+    // already-incorporated step from a genuinely new one.
+    let cursorMoveLog = [];
+    let lastCursorMoveAtMs = performance.now();
+    let nextCursorMoveSeq = 0;
+    function recordCursorMove(previousCursor, nextCursor) {
+      if (nextCursor.row === previousCursor.row && nextCursor.col === previousCursor.col) return;
+      const now = performance.now();
+      cursorMoveLog.push({ row: nextCursor.row, col: nextCursor.col, dtMs: now - lastCursorMoveAtMs, moveSeq: nextCursorMoveSeq++ });
+      lastCursorMoveAtMs = now;
+    }
     let sendingSnapshot = false;
     // MP-SEQ-WIRE/SPEC 13.4.0 (slice 1 of 4): counts this player's own sent
     // updates from the start of THIS match, rising by exactly one per update
@@ -889,6 +1033,7 @@
       const boardToSend = board;
       const interactionToSend = interaction;
       const sequenceToSend = nextSequence;
+      const cursorPathToSend = cursorMoveLog;
       const result = await sessionSync.sendSnapshot(
         session.code,
         localPlayerName,
@@ -897,11 +1042,17 @@
         sequenceToSend,
         interactionToSend.cursor,
         interactionToSend.selection,
-        interactionToSend.target
+        interactionToSend.target,
+        cursorPathToSend
       );
       if (result && result.ok) {
         lastSentBoard = boardToSend;
         lastSentInteraction = interactionToSend;
+        // Only clear the portion actually sent - a move recorded AFTER this
+        // request body was already built (while it was in flight) must not
+        // be lost, the same "retry unconsumed, never drop" guarantee the
+        // comment above cursorMoveLog's own declaration promises.
+        cursorMoveLog = cursorMoveLog.slice(cursorPathToSend.length);
         nextSequence++;
       }
       sendingSnapshot = false;
@@ -919,8 +1070,9 @@
         // MP-SEQ-CURSOR/SPEC 13.4.5.2-13.4.5.3 (slice 3 of 4): same source as
         // the board/score above - the opponent's cursor/selection/target ride
         // in the same already-applied snapshot (slice 2's ordering/holding/
-        // skip-ahead already governs which snapshot this is).
-        remoteInteraction = { cursor: snapshot.cursor, selection: snapshot.selection, target: snapshot.target ?? null };
+        // skip-ahead already governs which snapshot this is). Travels toward
+        // it rather than snapping straight there - see applyRemoteSnapshotInteraction.
+        applyRemoteSnapshotInteraction(snapshot);
         remoteScoreEl.textContent = `Score: ${remoteScore}`;
         updateGauge();
         renderRemote();
@@ -1008,6 +1160,7 @@
       if (next.board !== board || next.interaction !== interaction) {
         soundsForKeydown(key, interaction, next).forEach((name) => sound.play(name));
       }
+      recordCursorMove(interaction.cursor, next.interaction.cursor);
       board = next.board;
       interaction = next.interaction;
       exitConfirmOpen = next.exitConfirmOpen;
@@ -1098,11 +1251,12 @@
     }
 
     let lastFrameTimeMs = null;
+    // MP-SEQ-CURSOR/SPEC 13.4.5.2 (E2, corrected): the remote cursor's own
+    // travel animation runs on its own clock, independent of the local
+    // side's (which pauses/resets whenever local play is idle) - the
+    // opponent can be moving while this player's own board is doing nothing.
+    let lastRemoteFrameTimeMs = null;
     function tick(frameTimeMs) {
-      // MP-SYNC-SNAPSHOT/SPEC 13.4: the remote grid is a static direct draw,
-      // re-rendered only when a fresh snapshot arrives (see pollMatchState's
-      // own callback above) - it never animates on its own, so this loop has
-      // nothing remote to advance, unlike the local side's swap/cascade/fall.
       const localActive = fragments.length > 0 || activeAnimation !== null || animationQueue.length > 0;
       if (localActive) {
         if (lastFrameTimeMs !== null) {
@@ -1121,6 +1275,8 @@
       } else {
         lastFrameTimeMs = null;
       }
+      if (lastRemoteFrameTimeMs !== null) advanceRemoteCursor(frameTimeMs - lastRemoteFrameTimeMs);
+      lastRemoteFrameTimeMs = frameTimeMs;
       const remainingMs = MATCH_DURATION_MS - (performance.now() - matchStartMs);
       timerEl.textContent = formatTimer(remainingMs);
       updateMultiplierBar(computeTimeMultiplier(performance.now() - lastCompletionTimeMs));

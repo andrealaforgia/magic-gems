@@ -151,6 +151,54 @@ function validTargetOrError(target) {
   return validCellOrError(target, 'target');
 }
 
+// MP-SEQ-CURSOR (Owner extension, on top of the frozen SPEC 13.4.5.2, not a
+// rewrite of it): every real cell the sender's own cursor has occupied
+// recently, in true order, each paired with the real milliseconds elapsed
+// since the previous one - so the opponent's client can reproduce the exact
+// path taken (never a reconstructed shortcut between endpoints) at the exact
+// pace it happened (never a fixed cadence). Bounded the same way
+// MAX_SEQUENCE/MAX_SNAPSHOT_SCORE are: comfortably above anything genuine
+// play could produce, while still rejecting a malicious or malformed
+// payload.
+//
+// moveSeq: a SEPARATE, own-per-cursor-move counter (never resets, unrelated
+// to the snapshot's own `sequence`) - the client's own poll cadence is
+// deliberately slower than its publish cadence (session-api-client.js's own
+// POLL_INTERVAL_MS/PUBLISH_INTERVAL_MS), so a snapshot can be overwritten by
+// a newer one before the opponent ever polls it. The client compensates by
+// RESENDING a short retained window of recent steps rather than only the
+// newest ones - moveSeq is what lets the receiver tell "already incorporated
+// this one, it's a resend" from "genuinely new" without relying on array
+// position, which a resent, overlapping window makes meaningless.
+const MAX_CURSOR_PATH_LENGTH = 200;
+// A single match's own full duration (SPEC 13.5.2) - no real gap between two
+// moves from the same player, in the same match, could ever exceed it.
+const MAX_CURSOR_PATH_STEP_MS = 10 * 60 * 1000;
+
+function validCursorPathStepOrError(step, index) {
+  const cellError = validCellOrError(step, `cursorPath[${index}]`);
+  if (cellError) return cellError;
+  if (typeof step.dtMs !== 'number' || !Number.isFinite(step.dtMs) || step.dtMs < 0 || step.dtMs > MAX_CURSOR_PATH_STEP_MS) {
+    return `cursorPath[${index}].dtMs must be a non-negative number no greater than ${MAX_CURSOR_PATH_STEP_MS}`;
+  }
+  if (!Number.isInteger(step.moveSeq) || step.moveSeq < 0 || step.moveSeq > MAX_SEQUENCE) {
+    return `cursorPath[${index}].moveSeq must be a non-negative integer no greater than ${MAX_SEQUENCE}`;
+  }
+  return null;
+}
+
+function validCursorPathOrError(cursorPath) {
+  if (!Array.isArray(cursorPath)) return 'cursorPath must be an array';
+  if (cursorPath.length > MAX_CURSOR_PATH_LENGTH) {
+    return `cursorPath must have no more than ${MAX_CURSOR_PATH_LENGTH} entries`;
+  }
+  for (let i = 0; i < cursorPath.length; i++) {
+    const stepError = validCursorPathStepOrError(cursorPath[i], i);
+    if (stepError) return stepError;
+  }
+  return null;
+}
+
 // Security review (commit e9520b5): board is already normalized element-by-
 // element against a closed gem-type set rather than trusted as-is - cursor
 // and selection are a real cell (already validated by this point), but
@@ -164,6 +212,14 @@ function normalizeCell(cell) {
 
 function normalizeSelection(selection) {
   return selection === null ? null : normalizeCell(selection);
+}
+
+// Same reasoning as normalizeCell/normalizeSelection above - reconstructs a
+// clean array of { row, col, dtMs } rather than storing/echoing the caller's
+// own step objects by reference, so no extra property riding alongside them
+// carries through to storage.
+function normalizeCursorPath(cursorPath) {
+  return cursorPath.map((step) => ({ row: step.row, col: step.col, dtMs: step.dtMs, moveSeq: step.moveSeq }));
 }
 
 async function handleCreate(env, hostName) {
@@ -188,7 +244,7 @@ async function handleJoin(env, code, playerName) {
 // sequence already primitives-or-arrays-of-primitives), never a live object
 // a caller could go on to mutate. See that test's own rationale
 // (test/unit/session-logic.test.js) before changing what gets passed here.
-async function handleRecordSnapshot(env, code, playerName, board, score, sequence, cursor, selection, target) {
+async function handleRecordSnapshot(env, code, playerName, board, score, sequence, cursor, selection, target, cursorPath) {
   const existing = await getStoredSession(env, code);
   if (!existing) return { ok: false, error: 'not-found' };
   const result = recordSnapshot(
@@ -201,6 +257,7 @@ async function handleRecordSnapshot(env, code, playerName, board, score, sequenc
       cursor: normalizeCell(cursor),
       selection: normalizeSelection(selection),
       target: normalizeSelection(target),
+      cursorPath: normalizeCursorPath(cursorPath),
     },
     Date.now()
   );
@@ -291,6 +348,8 @@ export default {
           if (selectionError) return jsonResponse({ error: selectionError }, 400);
           const targetError = validTargetOrError(body.target);
           if (targetError) return jsonResponse({ error: targetError }, 400);
+          const cursorPathError = validCursorPathOrError(body.cursorPath);
+          if (cursorPathError) return jsonResponse({ error: cursorPathError }, 400);
           const result = await handleRecordSnapshot(
             process.env,
             body.code,
@@ -300,7 +359,8 @@ export default {
             body.sequence,
             body.cursor,
             body.selection,
-            body.target
+            body.target,
+            body.cursorPath
           );
           return jsonResponse(result);
         }

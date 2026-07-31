@@ -110,7 +110,7 @@ test('recordSnapshot stores a player\'s board and score under their own name, wi
   const result = recordSnapshot(joined, 'Alice', { board: [['red-square']], score: 40, sequence: 0 });
 
   assert.equal(result.ok, true);
-  assert.deepEqual(result.session.snapshots.Alice, { board: [['red-square']], score: 40, sequence: 0 });
+  assert.deepEqual(result.session.snapshots.Alice, { board: [['red-square']], score: 40, sequence: 0, cursorPath: [] });
   assert.equal(result.session.snapshots.Bob, undefined, 'must not fabricate a snapshot for the other player');
   assert.deepEqual(joined.players, ['Alice', 'Bob'], 'must never mutate the session it was given');
 });
@@ -125,12 +125,12 @@ test('recordSnapshot replaces the player\'s own previous snapshot as later seque
 
   assert.deepEqual(
     afterAlice2.snapshots.Alice,
-    { board: [['green-octagon']], score: 60, sequence: 1 },
+    { board: [['green-octagon']], score: 60, sequence: 1, cursorPath: [] },
     'the newer in-order snapshot must replace the older one, not accumulate'
   );
   assert.deepEqual(
     afterAlice2.snapshots.Bob,
-    { board: [['blue-teardrop']], score: 5, sequence: 0 },
+    { board: [['blue-teardrop']], score: 5, sequence: 0, cursorPath: [] },
     'the other player\'s own snapshot must survive untouched'
   );
 });
@@ -148,7 +148,7 @@ test('recordSnapshot holds an update that arrives ahead of its predecessor, rath
 
   assert.deepEqual(
     result.session.snapshots.Alice,
-    { board: [['red-square']], score: 0, sequence: 0 },
+    { board: [['red-square']], score: 0, sequence: 0, cursorPath: [] },
     'the applied state must stay at the last in-order update, not jump ahead'
   );
 });
@@ -170,7 +170,7 @@ test('recordSnapshot drains every already-held consecutive successor once the mi
 
   assert.deepEqual(
     result.session.snapshots.Alice,
-    { board: [['green-octagon']], score: 30, sequence: 3 },
+    { board: [['green-octagon']], score: 30, sequence: 3, cursorPath: [] },
     'expected sequences 1, 2 and 3 to drain together once the missing sequence 1 arrived, landing on the newest'
   );
 });

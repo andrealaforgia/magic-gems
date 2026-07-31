@@ -57,6 +57,7 @@ export function installSessionApiMock(context) {
           cursor: body.cursor,
           selection: body.selection,
           target: body.target,
+          cursorPath: body.cursorPath,
         });
         if (result.ok) store.set(body.code, result.session);
         return json(result);

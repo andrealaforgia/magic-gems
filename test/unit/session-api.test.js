@@ -260,11 +260,12 @@ function makeSnapshotBody(overrides = {}) {
     cursor: { row: 0, col: 0 },
     selection: null,
     target: null,
+    cursorPath: [],
     ...overrides,
   };
 }
 
-test('snapshot records the caller\'s board, score, sequence, cursor, selection, and target under their own name in the session', async (t) => {
+test('snapshot records the caller\'s board, score, sequence, cursor, selection, target, and cursorPath under their own name in the session', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   const fetchImpl = fakeUpstash();
   withFetch(t, fetchImpl);
@@ -283,6 +284,7 @@ test('snapshot records the caller\'s board, score, sequence, cursor, selection, 
           cursor: { row: 2, col: 5 },
           selection: { row: 1, col: 5 },
           target: { row: 1, col: 6 },
+          cursorPath: [{ row: 2, col: 4, dtMs: 0, moveSeq: 0 }, { row: 2, col: 5, dtMs: 140, moveSeq: 1 }],
         }),
       }),
     })
@@ -298,6 +300,7 @@ test('snapshot records the caller\'s board, score, sequence, cursor, selection, 
     cursor: { row: 2, col: 5 },
     selection: { row: 1, col: 5 },
     target: { row: 1, col: 6 },
+    cursorPath: [{ row: 2, col: 4, dtMs: 0, moveSeq: 0 }, { row: 2, col: 5, dtMs: 140, moveSeq: 1 }],
   });
 });
 
@@ -894,6 +897,141 @@ test('snapshot rejects a missing target with 400', async (t) => {
 
   assert.equal(result.status, 400);
   assert.match(result.body.error, /target/i);
+});
+
+// MP-SEQ-CURSOR (Owner extension, on top of the frozen SPEC 13.4.5.2): every
+// real cell the cursor has occupied recently, with the real elapsed time
+// since the previous one - lets the opponent reproduce the true path and
+// pace rather than a reconstructed shortcut at a fixed cadence. moveSeq is a
+// separate, own monotonic counter (never resets) that lets the receiver tell
+// an already-incorporated resend apart from a genuinely new step, since the
+// client's slower poll cadence means the same retained window is resent more
+// than once (see this field's own comment above validCursorPathStepOrError).
+test('snapshot accepts an empty cursorPath - no cursor movement since the last send', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { cursorPath: [] });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.ok, true);
+});
+
+test('snapshot accepts a cursorPath of real in-grid steps with real elapsed times', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, {
+    cursorPath: [
+      { row: 0, col: 1, dtMs: 0, moveSeq: 0 },
+      { row: 0, col: 2, dtMs: 340, moveSeq: 1 },
+    ],
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.ok, true);
+});
+
+test('snapshot strips any extra properties from each cursorPath step before storing it', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  withFetch(t, fakeUpstash());
+  const created = await createViaHandler('Alice');
+
+  const res = await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'snapshot',
+        code: created.session.code,
+        playerName: 'Alice',
+        ...makeSnapshotBody({ cursorPath: [{ row: 1, col: 2, dtMs: 50, moveSeq: 3, junk: 'x'.repeat(1000) }] }),
+      }),
+    })
+  );
+  const body = await res.json();
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(body.session.snapshots.Alice.cursorPath, [{ row: 1, col: 2, dtMs: 50, moveSeq: 3 }]);
+});
+
+test('snapshot rejects a cursorPath that is not an array with 400', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { cursorPath: { row: 0, col: 1, dtMs: 0, moveSeq: 0 } });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /cursorPath/i);
+});
+
+test('snapshot rejects a missing cursorPath with 400', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { cursorPath: undefined });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /cursorPath/i);
+});
+
+test('snapshot rejects a cursorPath step outside the grid with 400', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { cursorPath: [{ row: 0, col: -1, dtMs: 0, moveSeq: 0 }] });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /cursorPath/i);
+});
+
+test('snapshot rejects a cursorPath step with a negative dtMs with 400', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { cursorPath: [{ row: 0, col: 1, dtMs: -1, moveSeq: 0 }] });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /cursorPath/i);
+});
+
+test('snapshot rejects a cursorPath step with a non-numeric dtMs with 400', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { cursorPath: [{ row: 0, col: 1, dtMs: 'soon', moveSeq: 0 }] });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /cursorPath/i);
+});
+
+test('snapshot rejects a cursorPath longer than the allowed maximum with 400', async (t) => {
+  const code = await withSnapshotFixture(t);
+  const tooLong = Array.from({ length: 201 }, (_, i) => ({ row: i % 8, col: 0, dtMs: 1, moveSeq: i }));
+
+  const result = await postSnapshotBody(code, { cursorPath: tooLong });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /cursorPath/i);
+});
+
+test('snapshot rejects a cursorPath step with a negative moveSeq with 400', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { cursorPath: [{ row: 0, col: 1, dtMs: 0, moveSeq: -1 }] });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /cursorPath/i);
+});
+
+test('snapshot rejects a cursorPath step with a non-integer moveSeq with 400', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { cursorPath: [{ row: 0, col: 1, dtMs: 0, moveSeq: 1.5 }] });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /cursorPath/i);
+});
+
+test('snapshot rejects a cursorPath step with a missing moveSeq with 400', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { cursorPath: [{ row: 0, col: 1, dtMs: 0 }] });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /cursorPath/i);
 });
 
 // MP5/SPEC 13.5.1: a surrendering player's exit is communicated through the

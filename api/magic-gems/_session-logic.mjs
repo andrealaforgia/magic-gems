@@ -69,6 +69,29 @@ function joinSession(session, playerName) {
 // against (13.4.2).
 const MAX_HELD_UPDATES_PER_PLAYER = 20;
 const HELD_UPDATE_TIMEOUT_MS = 5000;
+
+// MP-SEQ-CURSOR (Owner extension, on top of the frozen SPEC 13.4.5.2): every
+// other field on a snapshot OVERWRITES on apply (only the latest ever
+// matters, 13.4.0) - cursorPath is the one exception, ACCUMULATED instead.
+// The receiving client's own poll cadence is deliberately slower than the
+// sender's own publish cadence (session-api-client.js's own
+// POLL_INTERVAL_MS/PUBLISH_INTERVAL_MS), so if cursorPath just overwrote
+// like everything else, an update applied between two of that client's polls
+// would have its own cursorPath silently lost the moment a later one
+// replaced it - never delivered at all, not even coalesced, because nothing
+// ever read it. Accumulating (both across a single drainConsecutiveHeld
+// chain and across separate recordSnapshot calls over time) means a slower
+// poller still eventually sees every real waypoint. Bounded the same
+// defensive way as the wire-level validation cap (session.mjs's own
+// MAX_CURSOR_PATH_LENGTH) - trimming the OLDEST entries first is safe
+// specifically because the receiving client dedupes by each step's own
+// moveSeq, so it only ever needs entries newer than what it already
+// incorporated.
+const MAX_STORED_CURSOR_PATH_LENGTH = 200;
+
+function accumulateCursorPath(previousCursorPath, incomingCursorPath) {
+  return [...(previousCursorPath || []), ...(incomingCursorPath || [])].slice(-MAX_STORED_CURSOR_PATH_LENGTH);
+}
 // Security warning (commit de091f3), High: without this, a forged request
 // carrying an implausible sequence number (e.g. Number.MAX_SAFE_INTEGER) as
 // another player would be held like any other out-of-order update, and the
@@ -131,14 +154,20 @@ const MAX_CUMULATIVE_SKIP_ADVANCE = 30;
 
 function drainConsecutiveHeld(applied, held) {
   let current = applied;
+  // MP-SEQ-CURSOR (Owner extension): every step drained through here was a
+  // real, successfully-sent update - accumulated in true (ascending
+  // sequence) order rather than discarded the way board/score/etc from the
+  // same in-between updates already are (E1, unchanged).
+  let cursorPath = accumulateCursorPath(undefined, applied.cursorPath);
   const remainingHeld = { ...held };
   let nextSequence = applied.sequence + 1;
   while (Object.prototype.hasOwnProperty.call(remainingHeld, nextSequence)) {
     current = remainingHeld[nextSequence];
+    cursorPath = accumulateCursorPath(cursorPath, current.cursorPath);
     delete remainingHeld[nextSequence];
     nextSequence++;
   }
-  return { applied: current, held: remainingHeld };
+  return { applied: { ...current, cursorPath }, held: remainingHeld };
 }
 
 // SPEC 13.4.2: a missing update must never freeze the opponent's view for
@@ -162,7 +191,17 @@ function reclaimStaleHeldUpdates(session, nowMs) {
     const newestSequence = Math.max(...heldSequences.map(Number));
     const previousApplied = snapshots[playerName];
     const skippedNow = newestSequence - (previousApplied ? previousApplied.sequence + 1 : 0);
-    snapshots[playerName] = pending.held[newestSequence];
+    // MP-SEQ-CURSOR (Owner extension): the skip drops board/score/etc from
+    // every held update except the newest (E1, unchanged) - but cursorPath
+    // is real, additive data from EVERY one of them, cheap to keep, so it's
+    // accumulated across the whole held set in true sequence order rather
+    // than thrown away along with the rest of what's skipped.
+    const orderedHeldSequences = heldSequences.map(Number).sort((a, b) => a - b);
+    let cursorPath = previousApplied && previousApplied.cursorPath;
+    for (const heldSequence of orderedHeldSequences) {
+      cursorPath = accumulateCursorPath(cursorPath, pending.held[heldSequence].cursorPath);
+    }
+    snapshots[playerName] = { ...pending.held[newestSequence], cursorPath };
     // firstSeenAtMs must never move, even here. Resetting it doesn't reopen
     // the ratchet (a reset-forward anchor only ever makes the ceiling MORE
     // restrictive, never less) - it causes the opposite failure: a
@@ -206,12 +245,20 @@ function recordSnapshot(session, playerName, snapshot, nowMs = Date.now()) {
 
   if (snapshot.sequence === nextExpectedSequence) {
     const { applied, held } = drainConsecutiveHeld(snapshot, pendingBefore.held);
+    // MP-SEQ-CURSOR (Owner extension): drainConsecutiveHeld already merged
+    // this CALL's own chain - this continues that same accumulation from
+    // whatever was already stored by an EARLIER call, so the backlog spans
+    // every applied update across the match, not just one call's own.
+    const withAccumulatedCursorPath = {
+      ...applied,
+      cursorPath: accumulateCursorPath(appliedBefore && appliedBefore.cursorPath, applied.cursorPath),
+    };
     return {
       ok: true,
       applied: true,
       session: {
         ...reclaimed,
-        snapshots: { ...reclaimed.snapshots, [playerName]: applied },
+        snapshots: { ...reclaimed.snapshots, [playerName]: withAccumulatedCursorPath },
         pendingUpdates: {
           ...reclaimed.pendingUpdates,
           [playerName]: { held, lastAdvanceMs: nowMs, firstSeenAtMs, totalSkipAdvance },
