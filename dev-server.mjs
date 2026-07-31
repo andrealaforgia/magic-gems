@@ -25,6 +25,33 @@ process.env.UPSTASH_REDIS_REST_TOKEN = 'local-dev';
 
 const { default: sessionHandler } = await import('./api/magic-gems/session.mjs');
 
+// Static files are read from disk per request, so a browser reload always gets
+// the current client code - but this handler is imported ONCE, here. After any
+// edit under api/ the server would keep serving the API from startup while
+// serving fresh client code, a split that is invisible from the browser and
+// silently misattributes the result. That is not hypothetical: it produced a
+// new client talking to a stale API during a live review, and the reviewer had
+// no way to know.
+//
+// ESM has no reliable way to evict a module and its transitive imports from the
+// loader cache, so the honest fix is to replace the process rather than pretend
+// the handler can be reloaded in place.
+{
+  const { spawn } = await import('node:child_process');
+  const { watch } = await import('node:fs');
+  let restarting = false;
+  watch(new URL('./api/magic-gems/', import.meta.url), { recursive: true }, (_event, file) => {
+    if (restarting || !String(file).endsWith('.mjs')) return;
+    restarting = true;
+    console.log(`\n  ${file} changed - restarting so the API is not served stale.\n`);
+    spawn(process.execPath, [new URL(import.meta.url).pathname], {
+      stdio: 'inherit',
+      detached: true,
+    }).unref();
+    process.exit(0);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // In-memory stand-in for Upstash Redis, covering only the commands
 // _upstash.mjs issues: GET, SET (with EX and KEEPTTL), INCR and EXPIRE ... NX.
