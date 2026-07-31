@@ -81,11 +81,21 @@
       // block or stutter local play either way (E4/E6/13.4.2).
       //
       // MP-SEQ-WIRE/SPEC 13.4.0 (slice 1 of 4): sequence/cursor/selection
-      // ride alongside the same board/score payload - this slice only puts
-      // them on the wire, nothing reads or acts on them on the receiving
-      // side yet.
-      sendSnapshot(code, playerName, board, score, sequence, cursor, selection) {
-        return postAction({ action: 'snapshot', code, playerName, board, score, sequence, cursor, selection }).catch(
+      // ride alongside the same board/score payload. MP-SEQ-CURSOR/SPEC
+      // 13.4.5.3 (slice 3 of 4) adds the designated swap target the same
+      // way - null until the player has actually aimed at a neighbour.
+      sendSnapshot(code, playerName, board, score, sequence, cursor, selection, target) {
+        return postAction({
+          action: 'snapshot',
+          code,
+          playerName,
+          board,
+          score,
+          sequence,
+          cursor,
+          selection,
+          target,
+        }).catch(
           () => undefined
         );
       },

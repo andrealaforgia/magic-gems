@@ -259,11 +259,12 @@ function makeSnapshotBody(overrides = {}) {
     sequence: 0,
     cursor: { row: 0, col: 0 },
     selection: null,
+    target: null,
     ...overrides,
   };
 }
 
-test('snapshot records the caller\'s board, score, sequence, cursor, and selection under their own name in the session', async (t) => {
+test('snapshot records the caller\'s board, score, sequence, cursor, selection, and target under their own name in the session', async (t) => {
   withEnv(t, CONFIGURED_ENV);
   const fetchImpl = fakeUpstash();
   withFetch(t, fetchImpl);
@@ -276,7 +277,13 @@ test('snapshot records the caller\'s board, score, sequence, cursor, and selecti
         action: 'snapshot',
         code: created.session.code,
         playerName: 'Alice',
-        ...makeSnapshotBody({ score: 120, sequence: 0, cursor: { row: 2, col: 5 }, selection: { row: 1, col: 5 } }),
+        ...makeSnapshotBody({
+          score: 120,
+          sequence: 0,
+          cursor: { row: 2, col: 5 },
+          selection: { row: 1, col: 5 },
+          target: { row: 1, col: 6 },
+        }),
       }),
     })
   );
@@ -290,6 +297,7 @@ test('snapshot records the caller\'s board, score, sequence, cursor, and selecti
     sequence: 0,
     cursor: { row: 2, col: 5 },
     selection: { row: 1, col: 5 },
+    target: { row: 1, col: 6 },
   });
 });
 
@@ -815,6 +823,77 @@ test('snapshot rejects a selection missing a coordinate with 400', async (t) => 
 
   assert.equal(result.status, 400);
   assert.match(result.body.error, /selection/i);
+});
+
+// MP-SEQ-CURSOR/SPEC 13.4.5.3 (slice 3 of 4): the opponent's designated swap
+// target (once aimed at a neighbour) rides alongside cursor/selection - null
+// until a target is actually designated, same shape and validation as
+// selection.
+test('snapshot accepts a null target - no swap target designated yet', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { target: null });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.ok, true);
+});
+
+test('snapshot accepts a real target within the grid', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { target: { row: 2, col: 4 } });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.ok, true);
+});
+
+test('snapshot strips any extra properties from target before storing it', async (t) => {
+  withEnv(t, CONFIGURED_ENV);
+  withFetch(t, fakeUpstash());
+  const created = await createViaHandler('Alice');
+
+  const res = await handler.fetch(
+    new Request('https://x/api/magic-gems/session', {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'snapshot',
+        code: created.session.code,
+        playerName: 'Alice',
+        ...makeSnapshotBody({ target: { row: 3, col: 5, junk: 'x'.repeat(1000) } }),
+      }),
+    })
+  );
+  const body = await res.json();
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(body.session.snapshots.Alice.target, { row: 3, col: 5 });
+});
+
+test('snapshot rejects a target outside the grid with 400', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { target: { row: 0, col: -1 } });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /target/i);
+});
+
+test('snapshot rejects a target missing a coordinate with 400', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { target: { row: 0 } });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /target/i);
+});
+
+test('snapshot rejects a missing target with 400', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { target: undefined });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /target/i);
 });
 
 // MP5/SPEC 13.5.1: a surrendering player's exit is communicated through the

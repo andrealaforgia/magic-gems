@@ -15,7 +15,7 @@ function fakeFetch(capturedRequests) {
   };
 }
 
-test('sendSnapshot posts the board, score, sequence, cursor, and selection in one request body', async () => {
+test('sendSnapshot posts the board, score, sequence, cursor, selection, and target in one request body', async () => {
   const capturedRequests = [];
   const { createRestSessionClient } = loadMagicGems([new URL('../../src/session-api-client.js', import.meta.url)], {
     fetchImpl: fakeFetch(capturedRequests),
@@ -24,8 +24,9 @@ test('sendSnapshot posts the board, score, sequence, cursor, and selection in on
   const board = [['red-square']];
   const cursor = { row: 2, col: 5 };
   const selection = { row: 1, col: 5 };
+  const target = { row: 1, col: 6 };
 
-  await client.sendSnapshot('ABCDEFGHIJ', 'Alice', board, 120, 3, cursor, selection);
+  await client.sendSnapshot('ABCDEFGHIJ', 'Alice', board, 120, 3, cursor, selection, target);
 
   assert.equal(capturedRequests.length, 1);
   assert.deepEqual(capturedRequests[0].body, {
@@ -37,17 +38,19 @@ test('sendSnapshot posts the board, score, sequence, cursor, and selection in on
     sequence: 3,
     cursor,
     selection,
+    target,
   });
 });
 
-test('sendSnapshot posts a null selection as-is, not fabricating a cell', async () => {
+test('sendSnapshot posts a null selection and a null target as-is, not fabricating a cell', async () => {
   const capturedRequests = [];
   const { createRestSessionClient } = loadMagicGems([new URL('../../src/session-api-client.js', import.meta.url)], {
     fetchImpl: fakeFetch(capturedRequests),
   });
   const client = createRestSessionClient();
 
-  await client.sendSnapshot('ABCDEFGHIJ', 'Alice', [['red-square']], 0, 0, { row: 0, col: 0 }, null);
+  await client.sendSnapshot('ABCDEFGHIJ', 'Alice', [['red-square']], 0, 0, { row: 0, col: 0 }, null, null);
 
   assert.equal(capturedRequests[0].body.selection, null);
+  assert.equal(capturedRequests[0].body.target, null);
 });

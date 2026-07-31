@@ -144,6 +144,13 @@ function validSelectionOrError(selection) {
   return validCellOrError(selection, 'selection');
 }
 
+// MP-SEQ-CURSOR/SPEC 13.4.5.3 (slice 3 of 4): the designated swap target -
+// null until the player has aimed at a neighbour, same shape as selection.
+function validTargetOrError(target) {
+  if (target === null) return null;
+  return validCellOrError(target, 'target');
+}
+
 // Security review (commit e9520b5): board is already normalized element-by-
 // element against a closed gem-type set rather than trusted as-is - cursor
 // and selection are a real cell (already validated by this point), but
@@ -181,7 +188,7 @@ async function handleJoin(env, code, playerName) {
 // sequence already primitives-or-arrays-of-primitives), never a live object
 // a caller could go on to mutate. See that test's own rationale
 // (test/unit/session-logic.test.js) before changing what gets passed here.
-async function handleRecordSnapshot(env, code, playerName, board, score, sequence, cursor, selection) {
+async function handleRecordSnapshot(env, code, playerName, board, score, sequence, cursor, selection, target) {
   const existing = await getStoredSession(env, code);
   if (!existing) return { ok: false, error: 'not-found' };
   const result = recordSnapshot(
@@ -193,6 +200,7 @@ async function handleRecordSnapshot(env, code, playerName, board, score, sequenc
       sequence,
       cursor: normalizeCell(cursor),
       selection: normalizeSelection(selection),
+      target: normalizeSelection(target),
     },
     Date.now()
   );
@@ -281,6 +289,8 @@ export default {
           if (cursorError) return jsonResponse({ error: cursorError }, 400);
           const selectionError = validSelectionOrError(body.selection);
           if (selectionError) return jsonResponse({ error: selectionError }, 400);
+          const targetError = validTargetOrError(body.target);
+          if (targetError) return jsonResponse({ error: targetError }, 400);
           const result = await handleRecordSnapshot(
             process.env,
             body.code,
@@ -289,7 +299,8 @@ export default {
             body.score,
             body.sequence,
             body.cursor,
-            body.selection
+            body.selection,
+            body.target
           );
           return jsonResponse(result);
         }
