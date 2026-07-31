@@ -627,6 +627,20 @@
     const initialRemoteSnapshot = session.snapshots && session.snapshots[remotePlayerName];
     let remoteBoard = initialRemoteSnapshot ? initialRemoteSnapshot.board : startingBoard;
     let remoteScore = initialRemoteSnapshot ? initialRemoteSnapshot.score : 0;
+    // MP-SEQ-CURSOR/SPEC 13.4.5.2-13.4.5.3 (slice 3 of 4): the opponent's own
+    // cursor/selection/target ride alongside their board/score in the same
+    // snapshot - drawn with the identical highlight treatment the local
+    // player's own interaction uses (drawInteraction, already shape-generic).
+    // No cursor is shown at all until the first snapshot actually arrives
+    // (13.3.4's own "until the first update arrives" boundary already
+    // governs remoteBoard/remoteScore the same way).
+    let remoteInteraction = initialRemoteSnapshot
+      ? {
+          cursor: initialRemoteSnapshot.cursor,
+          selection: initialRemoteSnapshot.selection,
+          target: initialRemoteSnapshot.target ?? null,
+        }
+      : null;
 
     // SPEC 13.2.6/MP-RECONNECT (mid-match): a player who reconnects to an
     // already-started match has their own last snapshot stored server-side
@@ -810,10 +824,16 @@
 
     // MP-SYNC-SNAPSHOT/SPEC 13.4: the remote grid is a direct rendering of
     // the latest board the opponent actually sent - no animated shatter/fall
-    // of their moves, no sound, and no reconstructed cursor/selection (their
-    // own interaction state is never part of a snapshot).
+    // of their moves, no sound (E5, still true for this slice too).
+    // MP-SEQ-CURSOR/SPEC 13.4.5.2-13.4.5.3 (slice 3 of 4): the opponent's own
+    // cursor/selection/target ARE now part of a snapshot, and are drawn with
+    // the identical drawInteraction() used for the local player's own -
+    // nothing shown until the first snapshot has actually arrived (13.3.4's
+    // "until the first update arrives" boundary already governs remoteBoard
+    // the same way).
     function renderRemote() {
       drawBoard(remoteCtx, remoteBoard, cellSize, sprites);
+      if (remoteInteraction) drawInteraction(remoteCtx, remoteInteraction, cellSize);
     }
 
     renderLocal();
@@ -841,9 +861,19 @@
     // Only the LATEST board/score is ever meaningful (13.4.0: a snapshot
     // OVERWRITES, it doesn't append) - so unlike an ordered move log, a
     // dropped send is harmless and there is nothing to batch or queue: this
-    // just resends the current board once it differs from the last one that
-    // actually made it through.
+    // just resends the current snapshot once it differs from the last one
+    // that actually made it through.
     let lastSentBoard = null;
+    // MP-SEQ-CURSOR/SPEC 13.4.5.2-13.4.5.3 (slice 3 of 4): cursor/selection/
+    // target moving with no board change (the common case - most cursor
+    // moves and selections never touch the board) must still reach the
+    // opponent, so the resend gate also fires on an interaction change, not
+    // board change alone. interaction.js's own handleKey always returns a
+    // NEW object on a real change and the SAME reference otherwise (e.g. an
+    // out-of-bounds move, or SPACE with a selection already active) - so
+    // identity comparison alone tells the two cases apart, no deep-equal
+    // needed.
+    let lastSentInteraction = null;
     let sendingSnapshot = false;
     // MP-SEQ-WIRE/SPEC 13.4.0 (slice 1 of 4): counts this player's own sent
     // updates from the start of THIS match, rising by exactly one per update
@@ -853,23 +883,25 @@
     // is a later slice - this one only puts the number on the wire.
     let nextSequence = 0;
     async function flushSnapshot() {
-      if (sendingSnapshot || !localPlaySettled() || board === lastSentBoard) return;
+      if (sendingSnapshot || !localPlaySettled()) return;
+      if (board === lastSentBoard && interaction === lastSentInteraction) return;
       sendingSnapshot = true;
       const boardToSend = board;
+      const interactionToSend = interaction;
       const sequenceToSend = nextSequence;
-      const cursorToSend = interaction.cursor;
-      const selectionToSend = interaction.selection;
       const result = await sessionSync.sendSnapshot(
         session.code,
         localPlayerName,
         boardToSend,
         score,
         sequenceToSend,
-        cursorToSend,
-        selectionToSend
+        interactionToSend.cursor,
+        interactionToSend.selection,
+        interactionToSend.target
       );
       if (result && result.ok) {
         lastSentBoard = boardToSend;
+        lastSentInteraction = interactionToSend;
         nextSequence++;
       }
       sendingSnapshot = false;
@@ -884,6 +916,11 @@
       if (snapshot) {
         remoteBoard = snapshot.board;
         remoteScore = snapshot.score;
+        // MP-SEQ-CURSOR/SPEC 13.4.5.2-13.4.5.3 (slice 3 of 4): same source as
+        // the board/score above - the opponent's cursor/selection/target ride
+        // in the same already-applied snapshot (slice 2's ordering/holding/
+        // skip-ahead already governs which snapshot this is).
+        remoteInteraction = { cursor: snapshot.cursor, selection: snapshot.selection, target: snapshot.target ?? null };
         remoteScoreEl.textContent = `Score: ${remoteScore}`;
         updateGauge();
         renderRemote();

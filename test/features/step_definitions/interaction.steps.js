@@ -5,9 +5,13 @@ import { classifiedGrid } from '../support/board-reader.js';
 
 const BOARD_SIZE = 8;
 
-async function readHighlightGrid(page) {
-  return page.evaluate(({ size }) => {
-    const canvas = document.getElementById('board');
+// canvasId defaults to the single-player board - multiplayer's own local and
+// remote canvases (MP-SEQ-CURSOR) share this same reader by passing their own
+// element id, so a remote highlight is read and classified through the
+// identical pixel-level path a local one already is.
+async function readHighlightGrid(page, canvasId = 'board') {
+  return page.evaluate(({ size, id }) => {
+    const canvas = document.getElementById(id);
     const ctx = canvas.getContext('2d');
     const cellSize = canvas.width / size;
     const inset = window.MagicGems.HIGHLIGHT_RING_INSET;
@@ -23,11 +27,11 @@ async function readHighlightGrid(page) {
       samples.push(rowSamples);
     }
     return { samples, palette: window.MagicGems.HIGHLIGHT_COLORS };
-  }, { size: BOARD_SIZE });
+  }, { size: BOARD_SIZE, id: canvasId });
 }
 
-export async function findHighlight(page, type) {
-  const { samples, palette } = await readHighlightGrid(page);
+export async function findHighlight(page, type, canvasId = 'board') {
+  const { samples, palette } = await readHighlightGrid(page, canvasId);
   const found = [];
   for (let row = 0; row < samples.length; row++) {
     for (let col = 0; col < samples[row].length; col++) {
