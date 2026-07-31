@@ -4,6 +4,10 @@ export default {
   commandRunner: { command: 'npm run test:unit' },
   reporters: ['clear-text', 'progress'],
   coverageAnalysis: 'off',
+  // Reaper: excludes the live relay mailbox (actively written by concurrent
+  // agents) from the sandbox copy - without this, a mailbox file can vanish
+  // mid-copy (ENOENT) since it's rotated/consumed while Stryker is sandboxing.
+  ignorePatterns: ['.relay'],
 };
 
 // 11 survivors on src/board.js's wouldMatchAt/hasMatch/UMD-wrapper are provably
