@@ -91,19 +91,25 @@ Feature: Live opponent cursor, selection, and target on the remote grid (MP-SEQ-
     Then the second page's remote target highlight eventually is at cell 1,1
     And the second page's remote selection highlight eventually is at cell 0,1
 
-  # E7 (integration, critical), cursor half: a real live two-player match
-  # shows the opponent's cursor visibly TRAVELLING (not teleporting - the
-  # same corrected E2 bar) on the remote grid, in both directions, so neither
-  # side is a special case. Kept separate from the selection/target half
-  # below (QA review, Farley Index/Granular) so a red build points at
-  # exactly which behaviour broke.
+  # E7 (integration, critical), cursor half, first direction: a real live
+  # two-player match shows the opponent's cursor visibly TRAVELLING (not
+  # teleporting - the same corrected E2 bar) on the remote grid. Kept
+  # separate from the selection/target half below, and from its own other
+  # direction, so a red build points at exactly which behaviour broke (QA
+  # review, Farley Index/Granular).
   @E7 @integration
-  Scenario: Both directions of a live match show the opponent's real cursor travelling on the remote grid
+  Scenario: The first page's real cursor travelling is shown live on the second page's remote grid
     Given the second page's remote cursor highlight eventually is at cell 0,0
     And I record the second page's own remote cursor trail
     When I press "ArrowDown" on the first page
     And I press "ArrowDown" on the first page
     Then the second page's own remote cursor trail eventually shows cell 2,0 as the resting position, having passed through cell 1,0 along the way
+
+  # E7 (integration, critical), cursor half, other direction: the same
+  # behaviour, opponent and receiver swapped - proves neither side is a
+  # special case.
+  @E7 @integration
+  Scenario: The second page's real cursor travelling is shown live on the first page's remote grid
     Given the first page's remote cursor highlight eventually is at cell 0,0
     And I record the first page's own remote cursor trail
     When I press "ArrowRight" on the second page

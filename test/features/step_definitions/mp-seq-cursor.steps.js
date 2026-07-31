@@ -16,6 +16,14 @@ const BOARD_SIZE = 8;
 const REMOTE_POLL_INTERVAL_MS = 200;
 const REMOTE_POLL_DEADLINE_MS = 20000;
 const REMOTE_STEP_TIMEOUT_MS = REMOTE_POLL_DEADLINE_MS + 5000;
+// QA review: named and justified, not a bare literal - ordinary scheduling/
+// frame jitter on this path is single digits to low tens of milliseconds
+// (production advances the remote cursor by at most one step per animation
+// frame, ~16ms typical); this margin sits an order of magnitude above that,
+// so a fixed-cadence implementation (which would produce two near-equal
+// durations regardless of the real gap between moves) could not clear it by
+// chance alone.
+const PACE_DISTINGUISHABILITY_MARGIN_MS = 200;
 
 // QA review: one shared "poll until predicate" primitive instead of two
 // near-duplicate loops - the highlight check and the cursor-trail check both
@@ -184,29 +192,40 @@ After(async function () {
   pagesWithActiveTrails = [];
 });
 
+// QA review: the settle-and-cleanup scaffolding (poll until the trail's own
+// last entry is the expected resting cell, then always stop the poller) was
+// duplicated across the two "passed through" Then defs below - factored out
+// so each of those keeps only the assertion that's actually distinct between
+// them.
+async function waitForTrailSettledAt(world, which, finalRow, finalCol, onSettled) {
+  const page = pageFor(world, which);
+  try {
+    const trail = await pollUntil(
+      () => readRemoteCursorTrail(page),
+      (t) => {
+        const last = t[t.length - 1];
+        return Boolean(last && last.row === finalRow && last.col === finalCol);
+      },
+      (t) => `expected the remote cursor trail to settle at cell ${finalRow},${finalCol}, got ${JSON.stringify(t)}`
+    );
+    onSettled(trail);
+  } finally {
+    await stopRemoteCursorTrail(page);
+    pagesWithActiveTrails = pagesWithActiveTrails.filter((p) => p !== page);
+  }
+}
+
 Then(
   "the {word} page's own remote cursor trail eventually shows cell {int},{int} as the resting position, having passed through cell {int},{int} along the way",
   { timeout: REMOTE_STEP_TIMEOUT_MS },
   async function (which, finalRow, finalCol, midRow, midCol) {
-    const page = pageFor(this, which);
-    try {
-      const trail = await pollUntil(
-        () => readRemoteCursorTrail(page),
-        (t) => {
-          const last = t[t.length - 1];
-          return Boolean(last && last.row === finalRow && last.col === finalCol);
-        },
-        (t) => `expected the remote cursor trail to settle at cell ${finalRow},${finalCol}, got ${JSON.stringify(t)}`
-      );
+    await waitForTrailSettledAt(this, which, finalRow, finalCol, (trail) => {
       const passedThroughMid = trail.some((cell) => cell.row === midRow && cell.col === midCol);
       assert.ok(
         passedThroughMid,
         `expected the remote cursor trail to pass through cell ${midRow},${midCol} on its way to ${finalRow},${finalCol} (not jump straight there), got ${JSON.stringify(trail)}`
       );
-    } finally {
-      await stopRemoteCursorTrail(page);
-      pagesWithActiveTrails = pagesWithActiveTrails.filter((p) => p !== page);
-    }
+    });
   }
 );
 
@@ -222,16 +241,7 @@ Then(
   "the {word} page's own remote cursor trail eventually shows cell {int},{int} as the resting position, having passed through cell {int},{int} then cell {int},{int} along the way",
   { timeout: REMOTE_STEP_TIMEOUT_MS },
   async function (which, finalRow, finalCol, firstMidRow, firstMidCol, secondMidRow, secondMidCol) {
-    const page = pageFor(this, which);
-    try {
-      const trail = await pollUntil(
-        () => readRemoteCursorTrail(page),
-        (t) => {
-          const last = t[t.length - 1];
-          return Boolean(last && last.row === finalRow && last.col === finalCol);
-        },
-        (t) => `expected the remote cursor trail to settle at cell ${finalRow},${finalCol}, got ${JSON.stringify(t)}`
-      );
+    await waitForTrailSettledAt(this, which, finalRow, finalCol, (trail) => {
       const firstMidIndex = trail.findIndex((cell) => cell.row === firstMidRow && cell.col === firstMidCol);
       const secondMidIndex = trail.findIndex((cell) => cell.row === secondMidRow && cell.col === secondMidCol);
       assert.ok(
@@ -246,10 +256,7 @@ Then(
         firstMidIndex < secondMidIndex,
         `expected cell ${firstMidRow},${firstMidCol} to be visited BEFORE cell ${secondMidRow},${secondMidCol} (the real order, not a shortcut), got ${JSON.stringify(trail)}`
       );
-    } finally {
-      await stopRemoteCursorTrail(page);
-      pagesWithActiveTrails = pagesWithActiveTrails.filter((p) => p !== page);
-    }
+    });
   }
 );
 
@@ -287,7 +294,7 @@ Then(
       const slowDurationMs = atMsFor(slowToRow, slowToCol) - atMsFor(slowFromRow, slowFromCol);
       const fastDurationMs = atMsFor(fastToRow, fastToCol) - atMsFor(fastFromRow, fastFromCol);
       assert.ok(
-        slowDurationMs > fastDurationMs + 200,
+        slowDurationMs > fastDurationMs + PACE_DISTINGUISHABILITY_MARGIN_MS,
         `expected the slow move (${slowDurationMs}ms) to take meaningfully longer than the fast move (${fastDurationMs}ms), on the same receiving client`
       );
     } finally {

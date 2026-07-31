@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import handler, { RATE_LIMIT_MAX_REQUESTS } from '../../api/magic-gems/session.mjs';
+import handler, {
+  RATE_LIMIT_MAX_REQUESTS,
+  MAX_SEQUENCE,
+  MAX_CURSOR_PATH_LENGTH,
+  MAX_CURSOR_PATH_STEP_MS,
+} from '../../api/magic-gems/session.mjs';
 import { sessionKey } from '../../api/magic-gems/_upstash.mjs';
 import { HELD_UPDATE_TIMEOUT_MS } from '../../api/magic-gems/_session-logic.mjs';
 
@@ -1029,6 +1034,56 @@ test('snapshot rejects a cursorPath step with a missing moveSeq with 400', async
   const code = await withSnapshotFixture(t);
 
   const result = await postSnapshotBody(code, { cursorPath: [{ row: 0, col: 1, dtMs: 0 }] });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /cursorPath/i);
+});
+
+// Reaper review (commit c79e5e5): each of these three ceilings was only
+// ever exercised one-past-the-boundary (rejected) - whether a value AT the
+// boundary is accepted was unpinned in all three (`>` vs `>=`).
+test('snapshot accepts a cursorPath step with dtMs exactly at the allowed maximum', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { cursorPath: [{ row: 0, col: 1, dtMs: MAX_CURSOR_PATH_STEP_MS, moveSeq: 0 }] });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.ok, true);
+});
+
+test('snapshot accepts a cursorPath step with moveSeq exactly at the allowed maximum', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, { cursorPath: [{ row: 0, col: 1, dtMs: 0, moveSeq: MAX_SEQUENCE }] });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.ok, true);
+});
+
+test('snapshot accepts a cursorPath exactly at the allowed maximum length', async (t) => {
+  const code = await withSnapshotFixture(t);
+  const atMax = Array.from({ length: MAX_CURSOR_PATH_LENGTH }, (_, i) => ({ row: i % 8, col: 0, dtMs: 1, moveSeq: i }));
+
+  const result = await postSnapshotBody(code, { cursorPath: atMax });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.ok, true);
+});
+
+// Reaper review (commit c79e5e5): every existing multi-entry cursorPath test
+// happened to have a valid FIRST entry, so a mutant that only ever checks
+// index 0 (returning on its own first iteration regardless of the rest)
+// survived - this pins a cursorPath whose first step is valid but SECOND is
+// not, which only a genuine per-entry loop rejects.
+test('snapshot rejects a cursorPath whose second step is invalid, even though its first step is valid', async (t) => {
+  const code = await withSnapshotFixture(t);
+
+  const result = await postSnapshotBody(code, {
+    cursorPath: [
+      { row: 0, col: 1, dtMs: 0, moveSeq: 0 },
+      { row: 0, col: -1, dtMs: 0, moveSeq: 1 },
+    ],
+  });
 
   assert.equal(result.status, 400);
   assert.match(result.body.error, /cursorPath/i);

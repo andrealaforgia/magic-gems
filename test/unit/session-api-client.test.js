@@ -44,7 +44,11 @@ test('sendSnapshot posts the board, score, sequence, cursor, selection, target, 
   });
 });
 
-test('sendSnapshot posts a null selection and a null target as-is, not fabricating a cell', async () => {
+// QA review: these two used to be separate tests with identical setup,
+// differing only in which field they asserted - merged since both are
+// checking the same underlying guarantee (a falsy/empty value is posted
+// as-is, never fabricated into something else) against the same one call.
+test('sendSnapshot posts a null selection, a null target, and an empty cursorPath all as-is, never fabricating a value', async () => {
   const capturedRequests = [];
   const { createRestSessionClient } = loadMagicGems([new URL('../../src/session-api-client.js', import.meta.url)], {
     fetchImpl: fakeFetch(capturedRequests),
@@ -55,16 +59,5 @@ test('sendSnapshot posts a null selection and a null target as-is, not fabricati
 
   assert.equal(capturedRequests[0].body.selection, null);
   assert.equal(capturedRequests[0].body.target, null);
-});
-
-test('sendSnapshot posts an empty cursorPath as-is when the cursor has not moved since the last send', async () => {
-  const capturedRequests = [];
-  const { createRestSessionClient } = loadMagicGems([new URL('../../src/session-api-client.js', import.meta.url)], {
-    fetchImpl: fakeFetch(capturedRequests),
-  });
-  const client = createRestSessionClient();
-
-  await client.sendSnapshot('ABCDEFGHIJ', 'Alice', [['red-square']], 0, 0, { row: 0, col: 0 }, null, null, []);
-
   assert.deepEqual(capturedRequests[0].body.cursorPath, []);
 });

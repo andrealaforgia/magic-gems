@@ -871,14 +871,15 @@
     // plays back real, sender-recorded waypoints and real, sender-recorded
     // delays, never inventing either.
     //
-    // The sender resends a retained window rather than clearing it on every
-    // successful send (its own cursorMoveLog comment explains why: this
-    // client's own poll cadence is slower than the sender's publish cadence,
-    // so a send succeeding doesn't mean this client has actually polled it
-    // yet) - so the SAME step can legitimately arrive more than once.
-    // moveSeq (a separate, own-never-reused id per step) is what tells a
-    // genuinely new step apart from an already-incorporated resend; without
-    // it, naively concatenating every arriving cursorPath would replay
+    // The SERVER accumulates cursorPath across applied updates rather than
+    // overwriting it (this client's own poll cadence is slower than the
+    // sender's publish cadence, so a send succeeding doesn't mean this
+    // client has actually polled it yet - see _session-logic.mjs's own
+    // comment) - so the SAME accumulated backlog can legitimately be served
+    // more than once, across consecutive polls. moveSeq (a separate,
+    // own-never-reused id per step) is what tells a genuinely new step apart
+    // from one already incorporated from an earlier poll; without it,
+    // naively concatenating every arriving cursorPath would replay
     // already-drawn cells a second time.
     //
     // Selection/target only ever sit at the SAME cell the cursor already
@@ -887,6 +888,21 @@
     // selection is active) - so they are held back as "pending" and only
     // revealed once the travel above has visually caught up to that cell,
     // rather than appearing to leap in ahead of the cursor that made them.
+    //
+    // Security review: a bare Math.max(...array) risks a call-stack blowup
+    // if the array is ever large - safe today (both inputs are already
+    // bounded well below any real limit) but avoided anyway since nothing
+    // about correctness depends on the spread form.
+    function maxMoveSeq(steps, startingFrom) {
+      return steps.reduce((max, step) => Math.max(max, step.moveSeq), startingFrom);
+    }
+    // Bounds the QUEUE of steps still waiting to animate, separate from the
+    // server's own MAX_STORED_CURSOR_PATH_LENGTH (which bounds what's
+    // accumulated there) - without this, a queue that receives fresh steps
+    // faster than it drains them (e.g. many polls' worth arriving before the
+    // per-step delayMs pacing lets the queue empty) could otherwise grow
+    // without limit.
+    const MAX_REMOTE_CURSOR_QUEUE_LENGTH = 1000;
     function applyRemoteSnapshotInteraction(snapshot) {
       const nextSelection = snapshot.selection;
       const nextTarget = snapshot.target ?? null;
@@ -904,16 +920,23 @@
         remoteVisualTarget = nextTarget;
         remoteCursorPath = [];
         if (cursorPath.length > 0) {
-          remoteLastIncorporatedMoveSeq = Math.max(...cursorPath.map((step) => step.moveSeq));
+          remoteLastIncorporatedMoveSeq = maxMoveSeq(cursorPath, remoteLastIncorporatedMoveSeq);
         }
         return;
       }
       const freshSteps = cursorPath.filter((step) => step.moveSeq > remoteLastIncorporatedMoveSeq);
       if (freshSteps.length > 0) {
-        remoteCursorPath = remoteCursorPath.concat(
-          freshSteps.map((step) => ({ row: step.row, col: step.col, delayMs: step.dtMs }))
-        );
-        remoteLastIncorporatedMoveSeq = Math.max(remoteLastIncorporatedMoveSeq, ...freshSteps.map((step) => step.moveSeq));
+        // Security review: the server bounds what any ONE snapshot's own
+        // cursorPath can carry (session.mjs's own MAX_CURSOR_PATH_LENGTH),
+        // but nothing bounded this QUEUE across many polls' worth of fresh
+        // steps piling up faster than they drain - drop the OLDEST past a
+        // generous bound, the same "keep the most recent, the receiver's
+        // own moveSeq high-water mark never needs the rest" reasoning the
+        // server's own storage cap already uses.
+        remoteCursorPath = remoteCursorPath
+          .concat(freshSteps.map((step) => ({ row: step.row, col: step.col, delayMs: step.dtMs })))
+          .slice(-MAX_REMOTE_CURSOR_QUEUE_LENGTH);
+        remoteLastIncorporatedMoveSeq = maxMoveSeq(freshSteps, remoteLastIncorporatedMoveSeq);
       } else if (remoteCursorPath.length === 0) {
         // Nothing fresh in this update and travel already caught up -
         // selection/target may update immediately (E3/E4 unchanged, no

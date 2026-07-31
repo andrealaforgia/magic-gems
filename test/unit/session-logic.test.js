@@ -14,6 +14,7 @@ import {
   MIN_REALISTIC_INTERVAL_MS,
   SEQUENCE_TIME_CEILING_SAFETY_MARGIN,
   MAX_CUMULATIVE_SKIP_ADVANCE,
+  MAX_STORED_CURSOR_PATH_LENGTH,
 } from '../../api/magic-gems/_session-logic.mjs';
 
 // QA review (commit 87bd778): this server-side copy had no dedicated test
@@ -658,6 +659,45 @@ test('recordSnapshot itself reclaims a stale held update for the OTHER player be
     result.session.snapshots.Bob,
     snap(2),
     'Bob\'s own stale gap must have been reclaimed as a side effect of any later activity on the same session'
+  );
+});
+
+// MP-SEQ-CURSOR (Owner extension) / Reaper review (commit c79e5e5): cursorPath
+// is the one field recordSnapshot ACCUMULATES rather than overwrites - these
+// prove the two properties that make that real: it survives across SEPARATE
+// calls (not just within one drainConsecutiveHeld chain), and it's actually
+// bounded rather than growing forever.
+function cursorStep(moveSeq, row = 0, col = 0) {
+  return { row, col, dtMs: 10, moveSeq };
+}
+
+test('recordSnapshot accumulates cursorPath across separate in-order calls, not just within one drain chain', () => {
+  let session = joinedSession();
+  session = recordSnapshot(session, 'Alice', { ...snap(0), cursorPath: [cursorStep(0)] }).session;
+
+  const result = recordSnapshot(session, 'Alice', { ...snap(1), cursorPath: [cursorStep(1)] });
+
+  assert.deepEqual(
+    result.session.snapshots.Alice.cursorPath,
+    [cursorStep(0), cursorStep(1)],
+    'the second call\'s own stored cursorPath must still contain the first call\'s steps, not just its own'
+  );
+});
+
+test('recordSnapshot bounds the accumulated cursorPath rather than growing it without limit', () => {
+  let session = joinedSession();
+  session = recordSnapshot(session, 'Alice', { ...snap(0), cursorPath: [cursorStep(0)] }).session;
+
+  for (let i = 1; i <= MAX_STORED_CURSOR_PATH_LENGTH; i++) {
+    session = recordSnapshot(session, 'Alice', { ...snap(i), cursorPath: [cursorStep(i)] }).session;
+  }
+
+  const cursorPath = session.snapshots.Alice.cursorPath;
+  assert.equal(cursorPath.length, MAX_STORED_CURSOR_PATH_LENGTH, 'expected accumulation to be capped, not to grow without bound');
+  assert.equal(
+    cursorPath[cursorPath.length - 1].moveSeq,
+    MAX_STORED_CURSOR_PATH_LENGTH,
+    'expected the MOST RECENT steps to survive the cap, not the oldest'
   );
 });
 

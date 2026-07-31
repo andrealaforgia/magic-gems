@@ -16,7 +16,12 @@ const {
   MIN_REALISTIC_INTERVAL_MS,
   HELD_UPDATE_TIMEOUT_MS,
   MAX_CUMULATIVE_SKIP_ADVANCE,
+  MAX_STORED_CURSOR_PATH_LENGTH,
 } = loadMagicGems([new URL('../../src/session.js', import.meta.url)]);
+
+function cursorStep(moveSeq, row = 0, col = 0) {
+  return { row, col, dtMs: 10, moveSeq };
+}
 
 test('generateSessionCode returns a 10-letter uppercase code (SPEC 13.2.2)', () => {
   const code = generateSessionCode();
@@ -172,6 +177,60 @@ test('recordSnapshot drains every already-held consecutive successor once the mi
     result.session.snapshots.Alice,
     { board: [['green-octagon']], score: 30, sequence: 3, cursorPath: [] },
     'expected sequences 1, 2 and 3 to drain together once the missing sequence 1 arrived, landing on the newest'
+  );
+});
+
+// MP-SEQ-CURSOR (Owner extension) / Reaper review (commit c79e5e5): mirrors
+// _session-logic.mjs's own coverage of these same two facets - see this
+// file's own comment above on the two-tier strategy.
+test('recordSnapshot accumulates cursorPath across separate in-order calls, not just within one drain chain', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  const { session: joined } = joinSession(session, 'Bob');
+  const afterFirst = recordSnapshot(joined, 'Alice', {
+    board: [['red-square']],
+    score: 0,
+    sequence: 0,
+    cursorPath: [cursorStep(0)],
+  }).session;
+
+  const result = recordSnapshot(afterFirst, 'Alice', {
+    board: [['blue-teardrop']],
+    score: 10,
+    sequence: 1,
+    cursorPath: [cursorStep(1)],
+  });
+
+  assert.deepEqual(
+    result.session.snapshots.Alice.cursorPath,
+    [cursorStep(0), cursorStep(1)],
+    'the second call\'s own stored cursorPath must still contain the first call\'s steps, not just its own'
+  );
+});
+
+test('recordSnapshot bounds the accumulated cursorPath rather than growing it without limit', () => {
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  let current = recordSnapshot(joinSession(session, 'Bob').session, 'Alice', {
+    board: [['red-square']],
+    score: 0,
+    sequence: 0,
+    cursorPath: [cursorStep(0)],
+  }).session;
+
+  for (let i = 1; i <= MAX_STORED_CURSOR_PATH_LENGTH; i++) {
+    current = recordSnapshot(current, 'Alice', {
+      board: [['red-square']],
+      score: 0,
+      sequence: i,
+      cursorPath: [cursorStep(i)],
+    }).session;
+  }
+
+  const cursorPath = current.snapshots.Alice.cursorPath;
+  assert.equal(cursorPath.length, MAX_STORED_CURSOR_PATH_LENGTH, 'expected accumulation to be capped, not to grow without bound');
+  assert.equal(
+    cursorPath[cursorPath.length - 1].moveSeq,
+    MAX_STORED_CURSOR_PATH_LENGTH,
+    'expected the MOST RECENT steps to survive the cap, not the oldest'
   );
 });
 
@@ -331,6 +390,33 @@ test('a bounded-wait reclaim does not reset the elapsed-time anchor, so it still
     current.pendingUpdates.Alice.firstSeenAtMs,
     t0,
     'a reset anchor would collapse the ceiling to the reclaim\'s own recent moment instead of reflecting the whole match so far'
+  );
+});
+
+// MP-SEQ-CURSOR (Owner extension) / Reaper review (commit c79e5e5): mirrors
+// _session-logic.mjs's own coverage - a skip-ahead over MULTIPLE held
+// updates must accumulate all of their cursorPath steps, in true (ascending
+// sequence) order, not just adopt the newest held update's own steps alone.
+test('reclaimStaleHeldUpdates accumulates cursorPath across every held update it skips through, in ascending sequence order', () => {
+  const t0 = 1000;
+  const session = createSession('ABCDEFGHIJ', 'Alice');
+  let current = recordSnapshot(joinSession(session, 'Bob').session, 'Alice', {
+    board: [['red-square']],
+    score: 0,
+    sequence: 0,
+    cursorPath: [cursorStep(0)],
+  }, t0).session;
+  // Held out of arrival order (3 before 2) - accumulation must still land in
+  // ASCENDING sequence order, not arrival order.
+  current = recordSnapshot(current, 'Alice', { board: [['green-octagon']], score: 30, sequence: 3, cursorPath: [cursorStep(3)] }, t0).session;
+  current = recordSnapshot(current, 'Alice', { board: [['blue-teardrop']], score: 20, sequence: 2, cursorPath: [cursorStep(2)] }, t0).session;
+
+  current = reclaimStaleHeldUpdates(current, t0 + HELD_UPDATE_TIMEOUT_MS);
+
+  assert.deepEqual(
+    current.snapshots.Alice.cursorPath,
+    [cursorStep(0), cursorStep(2), cursorStep(3)],
+    'expected sequences 0, 2, and 3 to accumulate together in ascending order once skip-ahead landed on the newest'
   );
 });
 

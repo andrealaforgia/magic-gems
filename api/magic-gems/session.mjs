@@ -393,4 +393,4 @@ export default {
 // the real threshold directly instead of duplicating the literal - the exact
 // drift that let it fall out of sync with real client traffic once already
 // (security review, commit 7b43738).
-export { RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_SECONDS };
+export { RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_SECONDS, MAX_SEQUENCE, MAX_CURSOR_PATH_LENGTH, MAX_CURSOR_PATH_STEP_MS };
