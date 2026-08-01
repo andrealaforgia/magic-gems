@@ -9,9 +9,6 @@
   // CSS padding) so a narrow window shrinks the grids to make room for it
   // rather than the margin being squeezed out.
   const WINDOW_MARGIN_PX = 24;
-  const SWAP_DURATION_MS = 400;
-  const FALL_DURATION_MS = 400;
-  const REVIVE_SPIN_DURATION_MS = 700;
   // SPEC 12.2 (re-frozen again, AUTOPLAY-PACE25): the Owner still wants every
   // swap visually confirmable as a legal 3+ match, but has now asked for a
   // further 25% off the pause on top of AUTOPLAY-PACE2X's halving of
@@ -44,7 +41,6 @@
       handleGameKey,
       computeCellSize,
       ensurePlayable,
-      applySwap,
       createFragments,
       updateFragments,
       pruneOffscreen,
@@ -65,6 +61,7 @@
       soundsForCascadeStep,
       reviveSpinFrameIndex,
       planAutoplaySteps,
+      buildQueue,
     } = global.MagicGems;
     const canvas = document.getElementById('board');
     const scoreEl = document.getElementById('score');
@@ -133,50 +130,6 @@
       }
     }
 
-    function buildSwapPhase(fromBoard, a, b) {
-      return {
-        kind: 'swap',
-        duration: SWAP_DURATION_MS,
-        board: fromBoard,
-        a,
-        b,
-        gemAtA: fromBoard[a.row][a.col],
-        gemAtB: fromBoard[b.row][b.col],
-      };
-    }
-
-    function buildCascadePhase(step, chainPosition) {
-      return { kind: 'cascade', duration: FALL_DURATION_MS, chainPosition, ...step };
-    }
-
-    function buildRevivePhase(finalBoard, changedCells) {
-      return { kind: 'revive', duration: REVIVE_SPIN_DURATION_MS, board: finalBoard, changedCells };
-    }
-
-    function buildQueue(result) {
-      const queue = [];
-      if (result.swapAnimation) {
-        const { a, b, preSwapBoard, matched } = result.swapAnimation;
-        queue.push(buildSwapPhase(preSwapBoard, a, b));
-        if (!matched) {
-          queue.push(buildSwapPhase(applySwap(preSwapBoard, a, b), a, b));
-        }
-      }
-      // Each step's chain position (SPEC 10.6) is fixed here, from its own index
-      // within *this* commit's own steps - never a shared counter read later, which
-      // a second swap committed before this chain finishes draining could reset
-      // out from under these still-queued steps.
-      result.steps.forEach((step, i) => {
-        queue.push(buildCascadePhase(step, i + 1));
-      });
-      // SPEC 8.3.1: the revive highlight plays last, after any cascade has fully
-      // settled - result.board is already the final, post-revive board by this point.
-      if (result.revived) {
-        queue.push(buildRevivePhase(result.board, result.changedCells));
-      }
-      return queue;
-    }
-
     function advanceQueue() {
       if (activeAnimation !== null || animationQueue.length === 0) return;
       activeAnimation = animationQueue.shift();
@@ -226,12 +179,12 @@
     }
 
     function renderRevivePhase(anim, progress) {
-      const hidden = new Set(anim.changedCells.map((c) => `${c.row},${c.col}`));
+      const hidden = new Set(anim.rotatingCells.map((c) => `${c.row},${c.col}`));
       drawBoard(ctx, anim.board, cellSize, sprites, hidden);
       const frameIndex = reviveSpinFrameIndex(progress);
-      for (const { row, col } of anim.changedCells) {
+      for (const { row, col } of anim.rotatingCells) {
         const { x, y } = cellCenter(row, col);
-        drawGem(ctx, anim.board[row][col], x, y, cellSize, sprites, frameIndex);
+        drawGem(ctx, anim.finalBoard[row][col], x, y, cellSize, sprites, frameIndex);
       }
     }
 
@@ -494,7 +447,6 @@
       handleGameKey,
       computeCellSize,
       ensurePlayable,
-      applySwap,
       createFragments,
       updateFragments,
       pruneOffscreen,
@@ -518,6 +470,7 @@
       activateSeededRandom,
       createRestSessionClient,
       SESSION_PUBLISH_INTERVAL_MS,
+      buildQueue,
     } = global.MagicGems;
 
     const matchEl = document.getElementById('match');
@@ -730,38 +683,6 @@
       }
     }
 
-    function buildSwapPhase(fromBoard, a, b) {
-      return {
-        kind: 'swap',
-        duration: SWAP_DURATION_MS,
-        board: fromBoard,
-        a,
-        b,
-        gemAtA: fromBoard[a.row][a.col],
-        gemAtB: fromBoard[b.row][b.col],
-      };
-    }
-
-    function buildCascadePhase(step, chainPosition) {
-      return { kind: 'cascade', duration: FALL_DURATION_MS, chainPosition, ...step };
-    }
-
-    function buildRevivePhase(finalBoard, changedCells) {
-      return { kind: 'revive', duration: REVIVE_SPIN_DURATION_MS, board: finalBoard, changedCells };
-    }
-
-    function buildQueue(result) {
-      const queue = [];
-      if (result.swapAnimation) {
-        const { a, b, preSwapBoard, matched } = result.swapAnimation;
-        queue.push(buildSwapPhase(preSwapBoard, a, b));
-        if (!matched) queue.push(buildSwapPhase(applySwap(preSwapBoard, a, b), a, b));
-      }
-      result.steps.forEach((step, i) => queue.push(buildCascadePhase(step, i + 1)));
-      if (result.revived) queue.push(buildRevivePhase(result.board, result.changedCells));
-      return queue;
-    }
-
     function advanceQueue() {
       if (activeAnimation !== null || animationQueue.length === 0) return;
       activeAnimation = animationQueue.shift();
@@ -811,12 +732,12 @@
     }
 
     function renderRevivePhase(anim, progress) {
-      const hidden = new Set(anim.changedCells.map((c) => `${c.row},${c.col}`));
+      const hidden = new Set(anim.rotatingCells.map((c) => `${c.row},${c.col}`));
       drawBoard(localCtx, anim.board, cellSize, sprites, hidden);
       const frameIndex = reviveSpinFrameIndex(progress);
-      for (const { row, col } of anim.changedCells) {
+      for (const { row, col } of anim.rotatingCells) {
         const { x, y } = cellCenter(row, col);
-        global.MagicGems.drawGem(localCtx, anim.board[row][col], x, y, cellSize, sprites, frameIndex);
+        global.MagicGems.drawGem(localCtx, anim.finalBoard[row][col], x, y, cellSize, sprites, frameIndex);
       }
     }
 
