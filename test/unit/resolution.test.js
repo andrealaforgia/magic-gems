@@ -43,12 +43,28 @@ function buildStuckBoardRequiringPairEscalation() {
   return buildStuckBoardRequiringPairEscalationFor(GEM_TYPES);
 }
 
-// dr/dc between two {row, col} cells - used throughout to assert the Owner's
-// stated adjacency requirement, not just that the board became playable.
-function isOrthogonallyAdjacent(a, b) {
-  const dr = Math.abs(a.row - b.row);
-  const dc = Math.abs(a.col - b.col);
-  return (dr === 1 && dc === 0) || (dr === 0 && dc === 1);
+function orthogonalNeighborsOf(size, row, col) {
+  const neighbors = [];
+  if (row > 0) neighbors.push({ row: row - 1, col });
+  if (row < size - 1) neighbors.push({ row: row + 1, col });
+  if (col > 0) neighbors.push({ row, col: col - 1 });
+  if (col < size - 1) neighbors.push({ row, col: col + 1 });
+  return neighbors;
+}
+
+// True if some cell orthogonally adjacent to `changed` - other than a cell
+// that was itself changed by this same revive - already held `changed`'s new
+// type on the ORIGINAL board. This is the observable signature of "an
+// adjacent reference gem, unchanged, of that type", without needing the
+// function to separately name which cell was the reference: only a changed
+// gem may rotate (examiner correction), so the reference is never reported,
+// only inferable from the original board.
+function hasUnchangedAdjacentReferenceOfType(originalBoard, changedCells, changed) {
+  const size = originalBoard.length;
+  return orthogonalNeighborsOf(size, changed.row, changed.col).some((n) => {
+    const isAnotherChangedCell = changedCells.some((c) => c.row === n.row && c.col === n.col);
+    return !isAnotherChangedCell && originalBoard[n.row][n.col] === changed.gemType;
+  });
 }
 
 test('applySwap exchanges exactly the two given cells and leaves the rest untouched', () => {
@@ -567,7 +583,7 @@ function applyChanges(board, changedCells) {
 
 test('ensurePlayable revives a stuck board in place with a single minimal change, adjacent to and matching its reference gem, never a whole-board reshuffle (SPEC 8.3)', () => {
   const stuck = buildStuckBoard();
-  const { board: result, changedCells, rotatingCells } = ensurePlayable(stuck);
+  const { board: result, changedCells } = ensurePlayable(stuck);
 
   assert.equal(result.length, stuck.length, 'must keep the board\'s own size - never replaced by a fresh reshuffle');
   // This fixture is known solvable with one cell - the count itself is what
@@ -578,17 +594,16 @@ test('ensurePlayable revives a stuck board in place with a single minimal change
   assert.equal(hasMatch(result), false, 'the revived board must not itself contain an immediate match');
   assert.equal(hasAnyValidMove(result), true, 'the revived board must have at least one valid move');
 
-  // The Owner's stated requirement: this is not an arbitrary substitution - the
-  // changed cell must be the adjacent neighbour of some reference gem and must
-  // take THAT gem's own type (a legible pair forming), with both reported to
-  // rotate. A test asserting only playability would pass an arbitrary-type,
+  // The Owner's stated requirement: this is not an arbitrary substitution -
+  // the changed cell must be the adjacent neighbour of some (unchanged)
+  // reference gem and must take THAT gem's own type (a legible pair
+  // forming). A test asserting only playability would pass an arbitrary-type,
   // arbitrary-position substitution unchanged.
-  assert.equal(rotatingCells.length, 2, 'both the reference and its transformed neighbour must be reported to rotate');
   const [changed] = changedCells;
-  const reference = rotatingCells.find((c) => !(c.row === changed.row && c.col === changed.col));
-  assert.ok(reference, 'expected a distinct reference cell among rotatingCells');
-  assert.ok(isOrthogonallyAdjacent(reference, changed), 'the changed cell must be orthogonally adjacent to its reference');
-  assert.equal(changed.gemType, stuck[reference.row][reference.col], 'the changed cell must take the reference gem\'s own type, not an arbitrary one');
+  assert.ok(
+    hasUnchangedAdjacentReferenceOfType(stuck, changedCells, changed),
+    'the changed cell must be orthogonally adjacent to an unchanged reference gem of the type it became'
+  );
 });
 
 test('tryReviveByAdjacentPair finds a same-type adjacent-neighbour transform when one exists (SPEC 8.3)', () => {
@@ -601,11 +616,32 @@ test('tryReviveByAdjacentPair finds a same-type adjacent-neighbour transform whe
   assert.equal(hasMatch(result.board), false);
   assert.equal(hasAnyValidMove(result.board), true);
 
-  assert.equal(result.rotatingCells.length, 2);
   const [changed] = result.changedCells;
-  const reference = result.rotatingCells.find((c) => !(c.row === changed.row && c.col === changed.col));
-  assert.ok(isOrthogonallyAdjacent(reference, changed), 'the changed cell must be orthogonally adjacent to its reference');
-  assert.equal(changed.gemType, stuck[reference.row][reference.col], 'the changed cell must take the reference gem\'s own type');
+  assert.ok(
+    hasUnchangedAdjacentReferenceOfType(stuck, result.changedCells, changed),
+    'the changed cell must be orthogonally adjacent to an unchanged reference gem of the type it became'
+  );
+});
+
+// Examiner correction: randomness isn't visible in a single event - a fixed
+// top-left scan would satisfy every assertion above too, just always
+// returning the SAME (reference, neighbour) pair for a given board. This
+// forces the revive repeatedly from the identical starting board and checks
+// the selected cell varies, which only a genuine random selection can do.
+test('tryReviveByAdjacentPair genuinely randomizes which cell it revives, not a fixed scan order', () => {
+  const stuck = buildStuckBoard();
+  const seenChangedPositions = new Set();
+  const TRIALS = 50;
+  for (let i = 0; i < TRIALS; i++) {
+    const result = tryReviveByAdjacentPair(stuck);
+    assert.ok(result, 'expected a solution on every trial for this fixture');
+    const [changed] = result.changedCells;
+    seenChangedPositions.add(`${changed.row},${changed.col}`);
+  }
+  assert.ok(
+    seenChangedPositions.size > 1,
+    `expected the revived cell to vary across ${TRIALS} trials from the identical board (a fixed scan order would always pick the same one); saw only: ${[...seenChangedPositions]}`
+  );
 });
 
 test('tryReviveByAdjacentPairEscalation finds a same-type two-cell change when no single neighbour suffices (SPEC 8.3.2)', () => {
@@ -620,19 +656,22 @@ test('tryReviveByAdjacentPairEscalation finds a same-type two-cell change when n
   assert.equal(hasMatch(result.board), false);
   assert.equal(hasAnyValidMove(result.board), true);
 
-  // Both changed gems must share the SAME type as each other and as the
-  // reference - the Owner's "a further gem becomes that same type too", never
-  // two independent arbitrary substitutions.
+  // Both changed gems must share the SAME type as each other - the Owner's
+  // "a further gem becomes that same type too", never two independent
+  // arbitrary substitutions. Only the neighbour transformation needs to be
+  // adjacent to an unchanged reference gem of that type; the further gem is
+  // placed wherever legality requires, with no adjacency requirement on it
+  // (examiner correction - asserting adjacency there would be wrong for a
+  // correct implementation).
   const [first, second] = result.changedCells;
   assert.equal(first.gemType, second.gemType, 'both changed gems must share the same type');
-  assert.equal(result.rotatingCells.length, 3, 'the reference, the neighbour, and the further gem must all rotate');
-  const reference = result.rotatingCells.find(
-    (c) => !result.changedCells.some((changed) => changed.row === c.row && changed.col === c.col)
+  const oneIsAdjacentToAnUnchangedReference = result.changedCells.some((changed) =>
+    hasUnchangedAdjacentReferenceOfType(stuck, result.changedCells, changed)
   );
-  assert.ok(reference, 'expected a distinct reference cell among rotatingCells');
-  assert.equal(first.gemType, stuck[reference.row][reference.col], 'the changed gems must take the reference gem\'s own type');
-  const neighbor = result.changedCells.find((c) => isOrthogonallyAdjacent(reference, c));
-  assert.ok(neighbor, 'expected at least one of the changed cells to be the reference\'s orthogonal neighbour');
+  assert.ok(
+    oneIsAdjacentToAnUnchangedReference,
+    'expected at least one of the two changed gems (the neighbour transformation) to be adjacent to an unchanged reference gem of the same type'
+  );
 });
 
 test('reviveByIncrementalChange (the absolute last-resort fallback) always finds a valid-move-enabling board', () => {

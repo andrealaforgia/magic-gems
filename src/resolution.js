@@ -230,11 +230,13 @@
   // SPEC 8.3 (the Owner's own stated requirement, AUTOPLAY-INVALID-MOVE fix):
   // a randomly selected reference gem has one of its adjacent neighbours
   // (never a diagonal) turned into the reference's own type - a legible,
-  // visible pair forming, not an arbitrary independent substitution. Both the
-  // reference and the transformed neighbour are reported as rotatingCells so
-  // the animation can mark them together. Tried exhaustively, just in random
-  // order, so a solution is found whenever one exists anywhere on the board,
-  // not only for whichever reference happens to be drawn first.
+  // visible pair forming, not an arbitrary independent substitution. Only the
+  // transformed neighbour changed, so only it is reported in changedCells and
+  // rotates - the reference gem itself never changes and must not rotate
+  // (examiner correction: "every changed gem rotates", not both). Tried
+  // exhaustively, just in random order, so a solution is found whenever one
+  // exists anywhere on the board, not only for whichever reference happens to
+  // be drawn first.
   function tryReviveByAdjacentPair(board) {
     const size = board.length;
     for (const ref of shuffled(allCells(size))) {
@@ -247,7 +249,6 @@
           return {
             board: candidate,
             changedCells: [{ row: neighbor.row, col: neighbor.col, gemType }],
-            rotatingCells: [ref, neighbor],
           };
         }
       }
@@ -258,11 +259,14 @@
   // SPEC 8.3.2: the escalation the Owner described for when a single
   // same-type neighbour isn't enough on its own - a further gem, still the
   // SAME type as the reference (never an independent second type), is placed
-  // wherever it needs to be for the pair to actually unlock a legal swap.
-  // Same reference/neighbour search as tryReviveByAdjacentPair, since the
-  // neighbour transformation always happens first; only the further gem's
-  // position varies, searched exhaustively (in random order) across the rest
-  // of the board.
+  // wherever it needs to be for the pair to actually unlock a legal swap; no
+  // adjacency is required of this further gem, only the type match and the
+  // legality it produces. Same reference/neighbour search as
+  // tryReviveByAdjacentPair, since the neighbour transformation always
+  // happens first; only the further gem's position varies, searched
+  // exhaustively (in random order) across the rest of the board. As above,
+  // only the two cells that actually changed - never the reference - are
+  // reported and rotate.
   function tryReviveByAdjacentPairEscalation(board) {
     const size = board.length;
     for (const ref of shuffled(allCells(size))) {
@@ -285,7 +289,6 @@
                 { row: neighbor.row, col: neighbor.col, gemType },
                 { row: further.row, col: further.col, gemType },
               ],
-              rotatingCells: [ref, neighbor, further],
             };
           }
         }
@@ -313,7 +316,7 @@
         if (hasMatch(attempt)) continue;
         candidate = attempt;
         changedCells.push({ row, col, gemType });
-        if (hasAnyValidMove(candidate)) return { board: candidate, changedCells, rotatingCells: changedCells };
+        if (hasAnyValidMove(candidate)) return { board: candidate, changedCells };
         break;
       }
     }
@@ -321,7 +324,7 @@
   }
 
   function ensurePlayable(board) {
-    if (hasAnyValidMove(board)) return { board, changedCells: [], rotatingCells: [] };
+    if (hasAnyValidMove(board)) return { board, changedCells: [] };
     return (
       tryReviveByAdjacentPair(board) || tryReviveByAdjacentPairEscalation(board) || reviveByIncrementalChange(board)
     );

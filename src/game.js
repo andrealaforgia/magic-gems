@@ -15,28 +15,12 @@
     const swapAnimation = { a: selection, b: target, preSwapBoard: board, matched };
 
     if (!matched) {
-      return {
-        board,
-        interaction: nextInteraction,
-        swapAnimation,
-        steps: [],
-        revived: false,
-        changedCells: [],
-        rotatingCells: [],
-      };
+      return { board, interaction: nextInteraction, swapAnimation, steps: [], revived: false, changedCells: [] };
     }
 
     const { board: settled, steps } = resolveCascade(swapped);
-    const { board: playable, changedCells, rotatingCells } = ensurePlayable(settled);
-    return {
-      board: playable,
-      interaction: nextInteraction,
-      swapAnimation,
-      steps,
-      revived: changedCells.length > 0,
-      changedCells,
-      rotatingCells,
-    };
+    const { board: playable, changedCells } = ensurePlayable(settled);
+    return { board: playable, interaction: nextInteraction, swapAnimation, steps, revived: changedCells.length > 0, changedCells };
   }
 
   // SPEC 14.3: while the overlay is open, only Y/N are acted on - every other
