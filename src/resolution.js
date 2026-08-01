@@ -201,58 +201,92 @@
     return moves;
   }
 
-  // SPEC 8.3: exhaustively tries every (cell, gem type) substitution, in raster
-  // order, and returns the first one that creates a valid move without itself
-  // being an immediate match - never a whole-board reshuffle, and provably the
-  // smallest possible change (one cell) whenever one exists.
-  function tryReviveSingleCell(board) {
-    const size = board.length;
+  function shuffled(list) {
+    const copy = list.slice();
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+  }
+
+  function allCells(size) {
+    const cells = [];
     for (let row = 0; row < size; row++) {
-      for (let col = 0; col < size; col++) {
-        const original = board[row][col];
-        for (const gemType of GEM_TYPES) {
-          if (gemType === original) continue;
-          const candidate = board.map((r) => r.slice());
-          candidate[row][col] = gemType;
-          if (!hasMatch(candidate) && hasAnyValidMove(candidate)) {
-            return { board: candidate, changedCells: [{ row, col, gemType }] };
-          }
+      for (let col = 0; col < size; col++) cells.push({ row, col });
+    }
+    return cells;
+  }
+
+  function orthogonalNeighbors(size, row, col) {
+    const neighbors = [];
+    if (row > 0) neighbors.push({ row: row - 1, col });
+    if (row < size - 1) neighbors.push({ row: row + 1, col });
+    if (col > 0) neighbors.push({ row, col: col - 1 });
+    if (col < size - 1) neighbors.push({ row, col: col + 1 });
+    return neighbors;
+  }
+
+  // SPEC 8.3 (the Owner's own stated requirement, AUTOPLAY-INVALID-MOVE fix):
+  // a randomly selected reference gem has one of its adjacent neighbours
+  // (never a diagonal) turned into the reference's own type - a legible,
+  // visible pair forming, not an arbitrary independent substitution. Both the
+  // reference and the transformed neighbour are reported as rotatingCells so
+  // the animation can mark them together. Tried exhaustively, just in random
+  // order, so a solution is found whenever one exists anywhere on the board,
+  // not only for whichever reference happens to be drawn first.
+  function tryReviveByAdjacentPair(board) {
+    const size = board.length;
+    for (const ref of shuffled(allCells(size))) {
+      const gemType = board[ref.row][ref.col];
+      for (const neighbor of shuffled(orthogonalNeighbors(size, ref.row, ref.col))) {
+        if (board[neighbor.row][neighbor.col] === gemType) continue;
+        const candidate = board.map((r) => r.slice());
+        candidate[neighbor.row][neighbor.col] = gemType;
+        if (!hasMatch(candidate) && hasAnyValidMove(candidate)) {
+          return {
+            board: candidate,
+            changedCells: [{ row: neighbor.row, col: neighbor.col, gemType }],
+            rotatingCells: [ref, neighbor],
+          };
         }
       }
     }
     return null;
   }
 
-  // SPEC 8.3.2: the rare degenerate fallback if no single cell can do it -
-  // exhaustively tries every pair of cells and every pair of gem types, so
-  // whatever it finds is still the smallest change possible (two cells) given
-  // that one alone already provably isn't enough. More expensive than the
-  // single-cell pass, but this is a one-off event, never a per-frame cost.
-  function tryReviveTwoCells(board) {
+  // SPEC 8.3.2: the escalation the Owner described for when a single
+  // same-type neighbour isn't enough on its own - a further gem, still the
+  // SAME type as the reference (never an independent second type), is placed
+  // wherever it needs to be for the pair to actually unlock a legal swap.
+  // Same reference/neighbour search as tryReviveByAdjacentPair, since the
+  // neighbour transformation always happens first; only the further gem's
+  // position varies, searched exhaustively (in random order) across the rest
+  // of the board.
+  function tryReviveByAdjacentPairEscalation(board) {
     const size = board.length;
-    const cells = [];
-    for (let row = 0; row < size; row++) {
-      for (let col = 0; col < size; col++) cells.push({ row, col });
-    }
-
-    for (let i = 0; i < cells.length; i++) {
-      for (let j = i + 1; j < cells.length; j++) {
-        const cellA = cells[i];
-        const cellB = cells[j];
-        for (const typeA of GEM_TYPES) {
-          for (const typeB of GEM_TYPES) {
-            const candidate = board.map((r) => r.slice());
-            candidate[cellA.row][cellA.col] = typeA;
-            candidate[cellB.row][cellB.col] = typeB;
-            if (!hasMatch(candidate) && hasAnyValidMove(candidate)) {
-              return {
-                board: candidate,
-                changedCells: [
-                  { row: cellA.row, col: cellA.col, gemType: typeA },
-                  { row: cellB.row, col: cellB.col, gemType: typeB },
-                ],
-              };
-            }
+    for (const ref of shuffled(allCells(size))) {
+      const gemType = board[ref.row][ref.col];
+      for (const neighbor of shuffled(orthogonalNeighbors(size, ref.row, ref.col))) {
+        if (board[neighbor.row][neighbor.col] === gemType) continue;
+        const withNeighbor = board.map((r) => r.slice());
+        withNeighbor[neighbor.row][neighbor.col] = gemType;
+        if (hasMatch(withNeighbor)) continue;
+        for (const further of shuffled(allCells(size))) {
+          const isRef = further.row === ref.row && further.col === ref.col;
+          const isNeighbor = further.row === neighbor.row && further.col === neighbor.col;
+          if (isRef || isNeighbor || withNeighbor[further.row][further.col] === gemType) continue;
+          const candidate = withNeighbor.map((r) => r.slice());
+          candidate[further.row][further.col] = gemType;
+          if (!hasMatch(candidate) && hasAnyValidMove(candidate)) {
+            return {
+              board: candidate,
+              changedCells: [
+                { row: neighbor.row, col: neighbor.col, gemType },
+                { row: further.row, col: further.col, gemType },
+              ],
+              rotatingCells: [ref, neighbor, further],
+            };
           }
         }
       }
@@ -279,7 +313,7 @@
         if (hasMatch(attempt)) continue;
         candidate = attempt;
         changedCells.push({ row, col, gemType });
-        if (hasAnyValidMove(candidate)) return { board: candidate, changedCells };
+        if (hasAnyValidMove(candidate)) return { board: candidate, changedCells, rotatingCells: changedCells };
         break;
       }
     }
@@ -287,8 +321,10 @@
   }
 
   function ensurePlayable(board) {
-    if (hasAnyValidMove(board)) return { board, changedCells: [] };
-    return tryReviveSingleCell(board) || tryReviveTwoCells(board) || reviveByIncrementalChange(board);
+    if (hasAnyValidMove(board)) return { board, changedCells: [], rotatingCells: [] };
+    return (
+      tryReviveByAdjacentPair(board) || tryReviveByAdjacentPairEscalation(board) || reviveByIncrementalChange(board)
+    );
   }
 
   global.MagicGems.applySwap = applySwap;
@@ -301,6 +337,7 @@
   global.MagicGems.findValidMove = findValidMove;
   global.MagicGems.findAllValidMoves = findAllValidMoves;
   global.MagicGems.ensurePlayable = ensurePlayable;
-  global.MagicGems.tryReviveTwoCells = tryReviveTwoCells;
+  global.MagicGems.tryReviveByAdjacentPair = tryReviveByAdjacentPair;
+  global.MagicGems.tryReviveByAdjacentPairEscalation = tryReviveByAdjacentPairEscalation;
   global.MagicGems.reviveByIncrementalChange = reviveByIncrementalChange;
 })(typeof window !== 'undefined' ? window : globalThis);

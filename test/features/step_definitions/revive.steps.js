@@ -8,11 +8,13 @@ Then('exactly one cell was changed by the revive', async function () {
 
 Then('the live page\'s two-cell revive fallback finds a valid move with a minimal two-cell change', async function () {
   const result = await this.page.evaluate(
-    (stuckBoard) => window.MagicGems.tryReviveTwoCells(stuckBoard),
+    (stuckBoard) => window.MagicGems.tryReviveByAdjacentPairEscalation(stuckBoard),
     STUCK_BOARD
   );
   assert.ok(result, 'expected a two-cell revive to be found');
   assert.equal(result.changedCells.length, 2, 'expected a minimal two-cell change');
+  const [first, second] = result.changedCells;
+  assert.equal(first.gemType, second.gemType, 'both changed gems must share the same type (SPEC 8.3.2)');
   const hasMatch = await this.page.evaluate((board) => window.MagicGems.hasMatch(board), result.board);
   const hasAnyValidMove = await this.page.evaluate((board) => window.MagicGems.hasAnyValidMove(board), result.board);
   assert.equal(hasMatch, false);

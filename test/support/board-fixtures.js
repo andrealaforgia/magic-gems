@@ -32,18 +32,17 @@ export function buildStuckBoard(GEM_TYPES) {
   ];
 }
 
-// A second stuck Latin square (same shape as buildStuckBoard, shifted to a
-// different 3 of the 7 types) chosen so tryReviveTwoCells's very first candidate
-// (cells (0,0)/(0,1), the first two GEM_TYPES) is genuinely rejected - it leaves
-// the board still stuck (hasAnyValidMove false), forcing the search to actually
-// advance past it. buildStuckBoard's own first candidate happens to already
-// satisfy the postcondition (verified directly), which is exactly why a mutant
-// that accepts unconditionally survived against it (QA review, commit 57dd1d6) -
-// this fixture is the fix, not another copy of the same blind spot.
-export function buildStuckBoardRequiringSearch(GEM_TYPES) {
+// A second stuck 3x3 board, found by exhaustive search and confirmed (against
+// the real hasMatch/hasAnyValidMove and against tryReviveByAdjacentPair
+// itself, across many random-order trials) to have NO single-neighbour
+// same-type transform anywhere on the board that unlocks a legal swap - every
+// reference/neighbour pair either already matches or still leaves the board
+// stuck. Only escalating to a further same-type gem (tryReviveByAdjacentPairEscalation)
+// can revive it, which is exactly what this fixture exists to force.
+export function buildStuckBoardRequiringPairEscalation(GEM_TYPES) {
   return [
-    [GEM_TYPES[3], GEM_TYPES[4], GEM_TYPES[1]],
-    [GEM_TYPES[4], GEM_TYPES[1], GEM_TYPES[3]],
-    [GEM_TYPES[1], GEM_TYPES[3], GEM_TYPES[4]],
+    [GEM_TYPES[0], GEM_TYPES[2], GEM_TYPES[2]],
+    [GEM_TYPES[1], GEM_TYPES[1], GEM_TYPES[2]],
+    [GEM_TYPES[1], GEM_TYPES[1], GEM_TYPES[0]],
   ];
 }

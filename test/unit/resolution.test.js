@@ -4,7 +4,7 @@ import { loadMagicGems } from '../support/load-src.js';
 import {
   buildMatchFreeBoard as buildMatchFreeBoardFor,
   buildStuckBoard as buildStuckBoardFor,
-  buildStuckBoardRequiringSearch as buildStuckBoardRequiringSearchFor,
+  buildStuckBoardRequiringPairEscalation as buildStuckBoardRequiringPairEscalationFor,
 } from '../support/board-fixtures.js';
 
 const {
@@ -20,7 +20,8 @@ const {
   findValidMove,
   findAllValidMoves,
   ensurePlayable,
-  tryReviveTwoCells,
+  tryReviveByAdjacentPair,
+  tryReviveByAdjacentPairEscalation,
   reviveByIncrementalChange,
 } = loadMagicGems([
   new URL('../../src/gems.js', import.meta.url),
@@ -38,8 +39,16 @@ function buildStuckBoard() {
   return buildStuckBoardFor(GEM_TYPES);
 }
 
-function buildStuckBoardRequiringSearch() {
-  return buildStuckBoardRequiringSearchFor(GEM_TYPES);
+function buildStuckBoardRequiringPairEscalation() {
+  return buildStuckBoardRequiringPairEscalationFor(GEM_TYPES);
+}
+
+// dr/dc between two {row, col} cells - used throughout to assert the Owner's
+// stated adjacency requirement, not just that the board became playable.
+function isOrthogonallyAdjacent(a, b) {
+  const dr = Math.abs(a.row - b.row);
+  const dc = Math.abs(a.col - b.col);
+  return (dr === 1 && dc === 0) || (dr === 0 && dc === 1);
 }
 
 test('applySwap exchanges exactly the two given cells and leaves the rest untouched', () => {
@@ -556,9 +565,9 @@ function applyChanges(board, changedCells) {
   return next;
 }
 
-test('ensurePlayable revives a stuck board in place with a single minimal change, never a whole-board reshuffle (SPEC 8.3)', () => {
+test('ensurePlayable revives a stuck board in place with a single minimal change, adjacent to and matching its reference gem, never a whole-board reshuffle (SPEC 8.3)', () => {
   const stuck = buildStuckBoard();
-  const { board: result, changedCells } = ensurePlayable(stuck);
+  const { board: result, changedCells, rotatingCells } = ensurePlayable(stuck);
 
   assert.equal(result.length, stuck.length, 'must keep the board\'s own size - never replaced by a fresh reshuffle');
   // This fixture is known solvable with one cell - the count itself is what
@@ -568,17 +577,62 @@ test('ensurePlayable revives a stuck board in place with a single minimal change
   assert.deepEqual(applyChanges(stuck, changedCells), result, 'changedCells must fully account for the diff from the original board');
   assert.equal(hasMatch(result), false, 'the revived board must not itself contain an immediate match');
   assert.equal(hasAnyValidMove(result), true, 'the revived board must have at least one valid move');
+
+  // The Owner's stated requirement: this is not an arbitrary substitution - the
+  // changed cell must be the adjacent neighbour of some reference gem and must
+  // take THAT gem's own type (a legible pair forming), with both reported to
+  // rotate. A test asserting only playability would pass an arbitrary-type,
+  // arbitrary-position substitution unchanged.
+  assert.equal(rotatingCells.length, 2, 'both the reference and its transformed neighbour must be reported to rotate');
+  const [changed] = changedCells;
+  const reference = rotatingCells.find((c) => !(c.row === changed.row && c.col === changed.col));
+  assert.ok(reference, 'expected a distinct reference cell among rotatingCells');
+  assert.ok(isOrthogonallyAdjacent(reference, changed), 'the changed cell must be orthogonally adjacent to its reference');
+  assert.equal(changed.gemType, stuck[reference.row][reference.col], 'the changed cell must take the reference gem\'s own type, not an arbitrary one');
 });
 
-test('tryReviveTwoCells (the SPEC 8.3.2 fallback) finds a minimal two-cell change', () => {
-  const stuck = buildStuckBoardRequiringSearch();
-  const result = tryReviveTwoCells(stuck);
+test('tryReviveByAdjacentPair finds a same-type adjacent-neighbour transform when one exists (SPEC 8.3)', () => {
+  const stuck = buildStuckBoard();
+  const result = tryReviveByAdjacentPair(stuck);
+
+  assert.ok(result, 'expected a single-neighbour revive to be found');
+  assert.equal(result.changedCells.length, 1);
+  assert.deepEqual(applyChanges(stuck, result.changedCells), result.board, 'changedCells must fully account for the diff from the original board');
+  assert.equal(hasMatch(result.board), false);
+  assert.equal(hasAnyValidMove(result.board), true);
+
+  assert.equal(result.rotatingCells.length, 2);
+  const [changed] = result.changedCells;
+  const reference = result.rotatingCells.find((c) => !(c.row === changed.row && c.col === changed.col));
+  assert.ok(isOrthogonallyAdjacent(reference, changed), 'the changed cell must be orthogonally adjacent to its reference');
+  assert.equal(changed.gemType, stuck[reference.row][reference.col], 'the changed cell must take the reference gem\'s own type');
+});
+
+test('tryReviveByAdjacentPairEscalation finds a same-type two-cell change when no single neighbour suffices (SPEC 8.3.2)', () => {
+  const stuck = buildStuckBoardRequiringPairEscalation();
+  assert.equal(tryReviveByAdjacentPair(stuck), null, 'sanity: this fixture must have no single-neighbour solution, forcing genuine escalation');
+
+  const result = tryReviveByAdjacentPairEscalation(stuck);
 
   assert.ok(result, 'expected a two-cell revive to be found');
   assert.equal(result.changedCells.length, 2);
   assert.deepEqual(applyChanges(stuck, result.changedCells), result.board, 'changedCells must fully account for the diff from the original board');
   assert.equal(hasMatch(result.board), false);
   assert.equal(hasAnyValidMove(result.board), true);
+
+  // Both changed gems must share the SAME type as each other and as the
+  // reference - the Owner's "a further gem becomes that same type too", never
+  // two independent arbitrary substitutions.
+  const [first, second] = result.changedCells;
+  assert.equal(first.gemType, second.gemType, 'both changed gems must share the same type');
+  assert.equal(result.rotatingCells.length, 3, 'the reference, the neighbour, and the further gem must all rotate');
+  const reference = result.rotatingCells.find(
+    (c) => !result.changedCells.some((changed) => changed.row === c.row && changed.col === c.col)
+  );
+  assert.ok(reference, 'expected a distinct reference cell among rotatingCells');
+  assert.equal(first.gemType, stuck[reference.row][reference.col], 'the changed gems must take the reference gem\'s own type');
+  const neighbor = result.changedCells.find((c) => isOrthogonallyAdjacent(reference, c));
+  assert.ok(neighbor, 'expected at least one of the changed cells to be the reference\'s orthogonal neighbour');
 });
 
 test('reviveByIncrementalChange (the absolute last-resort fallback) always finds a valid-move-enabling board', () => {
@@ -597,10 +651,17 @@ test('reviveByIncrementalChange (the absolute last-resort fallback) always finds
 // A revive function handed the caller's own board (e.g. game.js's committed
 // board, still referenced elsewhere for animation) must never mutate it in
 // place - only ever return a new one.
-test('tryReviveTwoCells never mutates its input board', () => {
+test('tryReviveByAdjacentPair never mutates its input board', () => {
   const stuck = buildStuckBoard();
   const snapshot = JSON.stringify(stuck);
-  tryReviveTwoCells(stuck);
+  tryReviveByAdjacentPair(stuck);
+  assert.equal(JSON.stringify(stuck), snapshot, 'the input board must not be mutated');
+});
+
+test('tryReviveByAdjacentPairEscalation never mutates its input board', () => {
+  const stuck = buildStuckBoardRequiringPairEscalation();
+  const snapshot = JSON.stringify(stuck);
+  tryReviveByAdjacentPairEscalation(stuck);
   assert.equal(JSON.stringify(stuck), snapshot, 'the input board must not be mutated');
 });
 
