@@ -3,3 +3,4 @@ node_modules/
 .stryker-tmp/
 autoplay-audit/
 autoplay-audit-headed/
+autoplay-audit-calib/

@@ -134,6 +134,12 @@ const SNAPSHOT = ({ size }) => {
     cellPixels.push(rowPixels);
   }
   return {
+    // Wall clock on every snapshot, frames or not. A passing revival rate shows
+    // the instrument is not REMOVING events; it says nothing about whether it is
+    // SLOWING the game, and a slowed game is a different environment from the one
+    // a person watches. Without a per-move timestamp on every run there is no way
+    // to compare pacing against an uninstrumented baseline afterwards.
+    t: Math.round(performance.now()),
     animating: g.isAnimating(),
     board: g.getBoard().map((r) => r.slice()),
     soundLog: g.getSoundLog().slice(),
@@ -405,6 +411,9 @@ async function main() {
     const record = {
       move: index,
       revived,
+      startedAt: before.t,
+      endedAt: after.t,
+      durationMs: after.t - before.t,
       screenshots: { before: 'before.png', after: 'after.png' },
       frames: frames.map((f, i) => ({ file: `frame-${String(i).padStart(3, '0')}-${f.phase || 'settled'}.png`, t: f.t, phase: f.phase })),
       gridBefore: before.board,
@@ -436,10 +445,12 @@ async function main() {
   );
   const unobserved = moves.filter((m) => m.checks.moveIsValid.verdict === 'UNOBSERVED').length;
   const revivals = moves.filter((m) => m.revived).length;
+  const spans = moves.filter((m) => Number.isFinite(m.durationMs) && m.durationMs > 0);
+  const secondsPerMove = spans.length ? spans.reduce((n, m) => n + m.durationMs, 0) / spans.length / 1000 : null;
 
   await writeFile(
     join(OUT_DIR, 'summary.json'),
-    JSON.stringify({ movesAudited: moves.length, failures: failures.length, unobservedMoves: unobserved, movesIncludingARevival: revivals, failingMoves: failures.map((f) => f.move) }, null, 2)
+    JSON.stringify({ movesAudited: moves.length, failures: failures.length, unobservedMoves: unobserved, movesIncludingARevival: revivals, secondsPerMove, failingMoves: failures.map((f) => f.move) }, null, 2)
   );
 
   // A filmstrip per move so a person can scan the animation and point at a
@@ -477,6 +488,9 @@ async function main() {
   console.log(`\n  moves audited: ${moves.length}`);
   console.log(`  failures: ${failures.length}${failures.length ? ` (moves ${failures.map((f) => f.move).join(', ')})` : ''}`);
   console.log(`  moves whose swap could not be observed: ${unobserved}`);
+  if (secondsPerMove !== null) {
+    console.log(`  pacing: ${secondsPerMove.toFixed(2)}s per move  <- compare against an uninstrumented run before trusting any DURATION read off the frames`);
+  }
   console.log(`  moves that included a board revival: ${revivals}${revivals ? '' : '  <- revive path NOT covered by this run'}`);
   console.log(`  per-move screenshots and records: ${OUT_DIR}/`);
   console.log(`  browsable filmstrip: ${OUT_DIR}/index.html\n`);
