@@ -202,10 +202,29 @@ function selfTest() {
   return failures;
 }
 
+// The cheap read used while waiting for a move to complete. Reading every cell's
+// pixels and serialising a PNG on a 25ms poll is heavy enough to change the
+// thing being measured — instruments lighter than that demonstrably suppressed
+// board revivals entirely earlier this week. Waiting needs only the commit
+// signal and the interaction state, so the expensive read happens twice per
+// move at rest rather than forty times per second throughout.
+const PULSE = () => {
+  const g = window.MagicGems;
+  return {
+    animating: g.isAnimating(),
+    soundLog: g.getSoundLog().slice(),
+    interaction: JSON.parse(JSON.stringify(g.getInteractionState())),
+  };
+};
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function snapshot(page) {
   return page.evaluate(SNAPSHOT, { size: BOARD_SIZE });
+}
+
+async function pulse(page) {
+  return page.evaluate(PULSE);
 }
 
 // Rendered and logical only agree once the board has settled: during a swap or
@@ -213,8 +232,7 @@ async function snapshot(page) {
 // property of when the question is meaningful, not a way of avoiding an answer.
 async function snapshotAtRest(page, deadline) {
   for (;;) {
-    const s = await snapshot(page);
-    if (!s.animating) return s;
+    if ((await pulse(page)).animating === false) return snapshot(page);
     if (Date.now() > deadline) throw new Error('board never settled');
     await sleep(POLL_MS);
   }
@@ -284,15 +302,22 @@ async function main() {
     let pending = null;
     let after = null;
     let gameCue = null;
+    // Revivals are rare - roughly one move in a hundred - so a short run almost
+    // certainly contains none. Recording this per move keeps the audit honest
+    // about what it actually covered rather than letting a clean result over
+    // ordinary swaps be read as coverage of the revive path too.
+    let revived = false;
     for (;;) {
       if (Date.now() > deadline) break;
-      const s = await snapshot(page);
+      const s = await pulse(page);
       if (s.interaction && s.interaction.selection && s.interaction.target) {
         pending = { selection: s.interaction.selection, target: s.interaction.target };
       }
-      const cues = commitCuesIn(s.soundLog, before.soundLog.length);
+      const newCues = s.soundLog.slice(before.soundLog.length);
+      const cues = newCues.filter((cue) => COMMIT_CUES.has(cue));
       if (cues.length > 0) {
         gameCue = cues[0];
+        revived = newCues.includes('reshuffle');
         after = await snapshotAtRest(page, deadline);
         break;
       }
@@ -336,6 +361,7 @@ async function main() {
 
     const record = {
       move: index,
+      revived,
       screenshots: { before: 'before.png', after: 'after.png' },
       gridBefore: before.board,
       gridAfter: after.board,
@@ -365,15 +391,17 @@ async function main() {
       m.checks.moveIsValid.verdict === 'INVALID'
   );
   const unobserved = moves.filter((m) => m.checks.moveIsValid.verdict === 'UNOBSERVED').length;
+  const revivals = moves.filter((m) => m.revived).length;
 
   await writeFile(
     join(OUT_DIR, 'summary.json'),
-    JSON.stringify({ movesAudited: moves.length, failures: failures.length, unobservedMoves: unobserved, failingMoves: failures.map((f) => f.move) }, null, 2)
+    JSON.stringify({ movesAudited: moves.length, failures: failures.length, unobservedMoves: unobserved, movesIncludingARevival: revivals, failingMoves: failures.map((f) => f.move) }, null, 2)
   );
 
   console.log(`\n  moves audited: ${moves.length}`);
   console.log(`  failures: ${failures.length}${failures.length ? ` (moves ${failures.map((f) => f.move).join(', ')})` : ''}`);
   console.log(`  moves whose swap could not be observed: ${unobserved}`);
+  console.log(`  moves that included a board revival: ${revivals}${revivals ? '' : '  <- revive path NOT covered by this run'}`);
   console.log(`  per-move screenshots and records: ${OUT_DIR}/\n`);
 
   await browser.close();
