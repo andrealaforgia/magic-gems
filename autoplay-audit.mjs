@@ -437,20 +437,46 @@ async function main() {
     console.log(`move ${String(index).padStart(3, '0')}  ${flags.join('  ')}`);
   }
 
-  const failures = moves.filter(
+  // Named atRestFailures, not failures: every check here is at-rest (before-
+  // mismatch, after-mismatch, move-invalid), and a clean result on these
+  // three cannot be read as a verdict on the animated-then-reverted-swap
+  // class this tool was built to look for - that class is defined as
+  // leaving no trace at either endpoint, which is exactly what these three
+  // conditions check. A clean run here means nothing about that class one
+  // way or the other; it only means nothing wrong was caught at rest.
+  const atRestFailures = moves.filter(
     (m) =>
       !m.checks.renderedMatchesStateBefore.pass ||
       !m.checks.renderedMatchesStateAfter.pass ||
       m.checks.moveIsValid.verdict === 'INVALID'
   );
+  const failures = atRestFailures;
   const unobserved = moves.filter((m) => m.checks.moveIsValid.verdict === 'UNOBSERVED').length;
+  const frameCount = moves.reduce((n, m) => n + m.frames.length, 0);
   const revivals = moves.filter((m) => m.revived).length;
   const spans = moves.filter((m) => Number.isFinite(m.durationMs) && m.durationMs > 0);
   const secondsPerMove = spans.length ? spans.reduce((n, m) => n + m.durationMs, 0) / spans.length / 1000 : null;
+  // An unobserved move already falls into neither pass nor fail silently;
+  // the same visibility gap applies to frames that exist but have not been
+  // looked at by a person - every frame this run captured is, by definition,
+  // unreviewed the moment this summary is written.
+  const framesNotYetReviewed = moves.reduce((n, m) => n + m.frames.length, 0);
 
   await writeFile(
     join(OUT_DIR, 'summary.json'),
-    JSON.stringify({ movesAudited: moves.length, failures: failures.length, unobservedMoves: unobserved, movesIncludingARevival: revivals, secondsPerMove, failingMoves: failures.map((f) => f.move) }, null, 2)
+    JSON.stringify(
+      {
+        movesAudited: moves.length,
+        atRestFailures: atRestFailures.length,
+        unobservedMoves: unobserved,
+        movesIncludingARevival: revivals,
+        secondsPerMove,
+        framesNotYetReviewed,
+        atRestFailingMoves: atRestFailures.map((f) => f.move),
+      },
+      null,
+      2
+    )
   );
 
   // A filmstrip per move so a person can scan the animation and point at a
@@ -486,7 +512,12 @@ async function main() {
   await writeFile(join(OUT_DIR, 'index.html'), html.join('\n'));
 
   console.log(`\n  moves audited: ${moves.length}`);
-  console.log(`  failures: ${failures.length}${failures.length ? ` (moves ${failures.map((f) => f.move).join(', ')})` : ''}`);
+  console.log(`  AT-REST failures: ${failures.length}${failures.length ? ` (moves ${failures.map((f) => f.move).join(', ')})` : ''}`);
+  console.log(`    ^ before/after render-vs-state and move validity ONLY. Says nothing about the animated window.`);
+  if (frameCount) {
+    console.log(`  animated window: ${frameCount} frames captured, 0 examined by any automated check`);
+    console.log(`    ^ NOT a pass. Nobody has looked at these. Open ${OUT_DIR}/index.html.`);
+  }
   console.log(`  moves whose swap could not be observed: ${unobserved}`);
   if (secondsPerMove !== null) {
     console.log(`  pacing: ${secondsPerMove.toFixed(2)}s per move  <- compare against an uninstrumented run before trusting any DURATION read off the frames`);
