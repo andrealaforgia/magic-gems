@@ -436,8 +436,15 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
 
   await writeFile(
     join(outDir, 'summary.json'),
+    // schemaVersion 2: atRestFailures/framesNotYetReviewed naming and the
+    // schemaVersion/generatedAt fields themselves. Version 1 (pre-dating
+    // both) used "failures" for what this now calls atRestFailures and
+    // carried no version marker at all - the same staleness-is-invisible
+    // problem the light-baseline artefact had, one file over.
     JSON.stringify(
       {
+        schemaVersion: 2,
+        generatedAt: new Date().toISOString(),
         movesAudited: moves.length,
         atRestFailures: atRestFailures.length,
         unobservedMoves: unobserved,
