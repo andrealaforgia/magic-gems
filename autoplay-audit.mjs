@@ -294,6 +294,218 @@ async function writePng(dir, name, dataUrl) {
   await writeFile(join(dir, name), Buffer.from(base64, 'base64'));
 }
 
+// One full instrumented audit round: every per-move screenshot/frame/record
+// this file has always produced, unchanged - pulled into its own function
+// so it can be repeated for a variance estimate the same way the light
+// baseline already is, without duplicating this much logic inline.
+async function runInstrumentedRound(page, deadline, palette, outDir) {
+  const moves = [];
+
+  for (let index = 1; index <= MAX_MOVES && Date.now() < deadline; index++) {
+    const before = await snapshotAtRest(page, deadline);
+
+    // The swap pair is observed, not requested: the last poll before the commit
+    // signal in which autoplay had both a selection and a target. Nothing here
+    // asks the game which cells it decided to swap.
+    let pending = null;
+    let after = null;
+    let gameCue = null;
+    // Revivals are rare - roughly one move in a hundred - so a short run almost
+    // certainly contains none. Recording this per move keeps the audit honest
+    // about what it actually covered rather than letting a clean result over
+    // ordinary swaps be read as coverage of the revive path too.
+    let revived = false;
+    const frames = [];
+    for (;;) {
+      if (Date.now() > deadline) break;
+      if (CAPTURE_FRAMES) {
+        const f = await page.evaluate(FRAME);
+        if (f.animating || f.phase) frames.push(f);
+      }
+      const s = await pulse(page);
+      if (s.interaction && s.interaction.selection && s.interaction.target) {
+        pending = { selection: s.interaction.selection, target: s.interaction.target };
+      }
+      const newCues = s.soundLog.slice(before.soundLog.length);
+      const cues = newCues.filter((cue) => COMMIT_CUES.has(cue));
+      if (cues.length > 0) {
+        gameCue = cues[0];
+        revived = newCues.includes('reshuffle');
+        while (CAPTURE_FRAMES && Date.now() < deadline) {
+          const f = await page.evaluate(FRAME);
+          frames.push(f);
+          if (!f.animating) break;
+          await sleep(FRAME_MS);
+        }
+        after = await snapshotAtRest(page, deadline);
+        break;
+      }
+      await sleep(POLL_MS);
+    }
+    if (!after) break;
+
+    const dir = join(outDir, `move-${String(index).padStart(3, '0')}`);
+    await mkdir(dir, { recursive: true });
+    await writePng(dir, 'before.png', before.png);
+    await writePng(dir, 'after.png', after.png);
+    for (let i = 0; i < frames.length; i++) {
+      await writePng(dir, `frame-${String(i).padStart(3, '0')}-${frameLabel(frames[i])}.png`, frames[i].png);
+    }
+
+    const renderedBefore = renderedGrid(before.cellPixels, palette);
+    const renderedAfter = renderedGrid(after.cellPixels, palette);
+    const beforeMismatches = gridMismatches(renderedBefore, before.board);
+    const afterMismatches = gridMismatches(renderedAfter, after.board);
+
+    let moveCheck;
+    if (!pending) {
+      moveCheck = { verdict: 'UNOBSERVED', reason: 'no selection/target pair seen before the commit' };
+    } else {
+      const { selection, target } = pending;
+      const adjacent = isOrthogonallyAdjacent(selection, target);
+      const runsAfterSwap = adjacent ? matchedRuns(swapped(before.board, selection, target)) : [];
+      const verdict = adjacent && runsAfterSwap.length > 0 ? 'VALID' : 'INVALID';
+      moveCheck = {
+        verdict,
+        selection,
+        target,
+        adjacent,
+        formsMatch: runsAfterSwap.length > 0,
+        matchedRuns: runsAfterSwap,
+        // The game's own opinion, recorded but never used to decide the verdict
+        // above. If these two ever disagree, that disagreement is itself the
+        // finding: either this file's rules are wrong, or the game is calling a
+        // move valid that isn't.
+        gameCue,
+        agreesWithGame: gameCue === null ? null : (gameCue === 'swap') === (verdict === 'VALID'),
+      };
+    }
+
+    const record = {
+      move: index,
+      revived,
+      startedAt: before.t,
+      endedAt: after.t,
+      durationMs: after.t - before.t,
+      screenshots: { before: 'before.png', after: 'after.png' },
+      frames: frames.map((f, i) => ({ file: `frame-${String(i).padStart(3, '0')}-${frameLabel(f)}.png`, t: f.t, phase: f.phase, animating: f.animating })),
+      gridBefore: before.board,
+      gridAfter: after.board,
+      renderedBefore,
+      renderedAfter,
+      checks: {
+        renderedMatchesStateBefore: { pass: beforeMismatches.length === 0, mismatches: beforeMismatches },
+        moveIsValid: moveCheck,
+        renderedMatchesStateAfter: { pass: afterMismatches.length === 0, mismatches: afterMismatches },
+      },
+    };
+    await writeFile(join(dir, 'move.json'), JSON.stringify(record, null, 2));
+    moves.push(record);
+
+    const flags = [
+      beforeMismatches.length === 0 ? 'before:ok' : `before:MISMATCH(${beforeMismatches.length})`,
+      `move:${moveCheck.verdict}`,
+      afterMismatches.length === 0 ? 'after:ok' : `after:MISMATCH(${afterMismatches.length})`,
+    ];
+    console.log(`move ${String(index).padStart(3, '0')}  ${flags.join('  ')}`);
+  }
+
+  // Named atRestFailures, not failures: every check here is at-rest (before-
+  // mismatch, after-mismatch, move-invalid), and a clean result on these
+  // three cannot be read as a verdict on the animated-then-reverted-swap
+  // class this tool was built to look for - that class is defined as
+  // leaving no trace at either endpoint, which is exactly what these three
+  // conditions check. A clean run here means nothing about that class one
+  // way or the other; it only means nothing wrong was caught at rest.
+  const atRestFailures = moves.filter(
+    (m) =>
+      !m.checks.renderedMatchesStateBefore.pass ||
+      !m.checks.renderedMatchesStateAfter.pass ||
+      m.checks.moveIsValid.verdict === 'INVALID'
+  );
+  const failures = atRestFailures;
+  const unobserved = moves.filter((m) => m.checks.moveIsValid.verdict === 'UNOBSERVED').length;
+  // An unobserved move already falls into neither pass nor fail silently;
+  // the same visibility gap applies to frames that exist but have not been
+  // looked at by a person - every frame this run captured is, by
+  // definition, unreviewed the moment this summary is written.
+  const frameCount = moves.reduce((n, m) => n + m.frames.length, 0);
+  const revivals = moves.filter((m) => m.revived).length;
+  const spans = moves.filter((m) => Number.isFinite(m.durationMs) && m.durationMs > 0);
+  const secondsPerMove = spans.length ? spans.reduce((n, m) => n + m.durationMs, 0) / spans.length / 1000 : null;
+
+  await writeFile(
+    join(outDir, 'summary.json'),
+    JSON.stringify(
+      {
+        movesAudited: moves.length,
+        atRestFailures: atRestFailures.length,
+        unobservedMoves: unobserved,
+        movesIncludingARevival: revivals,
+        secondsPerMove,
+        framesNotYetReviewed: frameCount,
+        atRestFailingMoves: atRestFailures.map((f) => f.move),
+      },
+      null,
+      2
+    )
+  );
+
+  // A filmstrip per move so a person can scan the animation and point at a
+  // specific frame. Every check in this file is at-rest; the frames exist for
+  // the case those checks are structurally blind to, which is anything visible
+  // only while a move is playing.
+  const html = [
+    '<meta charset="utf-8"><title>autoplay audit</title>',
+    '<style>body{font:13px system-ui;background:#111;color:#ddd;margin:16px}',
+    'h2{margin:24px 0 4px;font-size:15px}.s{color:#888;font-size:12px;margin-bottom:6px}',
+    '.strip{display:flex;flex-wrap:wrap;gap:6px}figure{margin:0;text-align:center}',
+    'img{width:150px;border:1px solid #333;display:block}',
+    'figcaption{font-size:10px;color:#999;margin-top:2px}',
+    '.swap figcaption{color:#ffb703}.bad{outline:2px solid #e63946}</style>',
+    `<h1>autoplay audit — ${moves.length} moves, ${moves.reduce((n, m) => n + m.frames.length, 0)} frames</h1>`,
+    '<p class="s">Frames labelled <b>swap</b> are the swap animation: the window every at-rest check is blind to. Point at a move number and frame number.</p>',
+  ];
+  for (const m of moves) {
+    const dir = `move-${String(m.move).padStart(3, '0')}`;
+    const v = m.checks.moveIsValid;
+    const sel = v.selection ? `(${v.selection.row},${v.selection.col})->(${v.target.row},${v.target.col})` : 'unobserved';
+    html.push(`<h2>move ${m.move} — swap ${sel} — ${v.verdict}${m.revived ? ' — REVIVAL' : ''}</h2>`);
+    html.push(`<div class="s">before/after checks: ${m.checks.renderedMatchesStateBefore.pass ? 'ok' : 'MISMATCH'} / ${m.checks.renderedMatchesStateAfter.pass ? 'ok' : 'MISMATCH'}</div>`);
+    html.push('<div class="strip">');
+    html.push(`<figure><img src="${dir}/before.png"><figcaption>before (at rest)</figcaption></figure>`);
+    for (const f of m.frames) {
+      const cls = f.phase === 'swap' ? ' class="swap"' : '';
+      html.push(`<figure${cls}><img src="${dir}/${f.file}"><figcaption>${f.file.slice(6, 9)} ${frameLabel(f)}</figcaption></figure>`);
+    }
+    html.push(`<figure><img src="${dir}/after.png"><figcaption>after (at rest)</figcaption></figure>`);
+    html.push('</div>');
+  }
+  await writeFile(join(outDir, 'index.html'), html.join('\n'));
+
+  console.log(`\n  moves audited: ${moves.length}`);
+  console.log(`  AT-REST failures: ${failures.length}${failures.length ? ` (moves ${failures.map((f) => f.move).join(', ')})` : ''}`);
+  console.log(`    ^ before/after render-vs-state and move validity ONLY. Says nothing about the animated window.`);
+  if (frameCount) {
+    // Move validity IS examined - the attempted swap's identity is polled live
+    // during the move (not read off either endpoint) and independently
+    // re-tested against the pre-move board, so an invalid attempt still gets
+    // judged. Only the rendered FRAMES themselves - the pixels of the
+    // animated window - go unexamined by any automated check.
+    console.log(`  animated window: ${frameCount} frames captured, 0 examined by any automated check`);
+    console.log(`    ^ the frames themselves, not the move: move validity above already covers the attempted swap. NOT a pass on the frames. Nobody has looked at these. Open ${outDir}/index.html.`);
+  }
+  console.log(`  moves whose swap could not be observed: ${unobserved}`);
+  if (secondsPerMove !== null) {
+    console.log(`  pacing: ${secondsPerMove.toFixed(2)}s per move  <- compare against an uninstrumented run before trusting any DURATION read off the frames`);
+  }
+  console.log(`  moves that included a board revival: ${revivals}${revivals ? '' : '  <- revive path NOT covered by this run'}`);
+  console.log(`  per-move screenshots and records: ${outDir}/`);
+  console.log(`  browsable filmstrip: ${outDir}/index.html\n`);
+
+  return { movesAudited: moves.length, secondsPerMove, atRestFailures: atRestFailures.length, revivals };
+}
+
 // ---------------------------------------------------------------------------
 async function main() {
   const selfTestFailures = selfTest();
@@ -417,219 +629,60 @@ async function main() {
     await mkdir(OUT_DIR, { recursive: true });
     await writeFile(
       join(OUT_DIR, 'light-baseline.json'),
-      JSON.stringify({ mode: 'light', runs, secondsPerMoveMin: min, secondsPerMoveMax: max, spreadPercent: spreadPercent === null ? null : Number(spreadPercent.toFixed(1)) }, null, 2)
+      // schemaVersion 2: multi-round spread + loadavg (version 1 was a single
+      // {mode, moves, revivals, elapsedSeconds, secondsPerMove} point figure,
+      // indistinguishable from this shape by its "light" mode field alone -
+      // a stale v1 artefact left on disk after this change landed was
+      // mistakable for a fresh result until this field existed).
+      JSON.stringify({ schemaVersion: 2, mode: 'light', generatedAt: new Date().toISOString(), runs, secondsPerMoveMin: min, secondsPerMoveMax: max, spreadPercent: spreadPercent === null ? null : Number(spreadPercent.toFixed(1)) }, null, 2)
     );
     console.log(`  summary written: ${OUT_DIR}/light-baseline.json\n`);
     await browser.close();
     return;
   }
 
-  const moves = [];
-
-  for (let index = 1; index <= MAX_MOVES && Date.now() < deadline; index++) {
-    const before = await snapshotAtRest(page, deadline);
-
-    // The swap pair is observed, not requested: the last poll before the commit
-    // signal in which autoplay had both a selection and a target. Nothing here
-    // asks the game which cells it decided to swap.
-    let pending = null;
-    let after = null;
-    let gameCue = null;
-    // Revivals are rare - roughly one move in a hundred - so a short run almost
-    // certainly contains none. Recording this per move keeps the audit honest
-    // about what it actually covered rather than letting a clean result over
-    // ordinary swaps be read as coverage of the revive path too.
-    let revived = false;
-    const frames = [];
-    for (;;) {
-      if (Date.now() > deadline) break;
-      if (CAPTURE_FRAMES) {
-        const f = await page.evaluate(FRAME);
-        if (f.animating || f.phase) frames.push(f);
-      }
-      const s = await pulse(page);
-      if (s.interaction && s.interaction.selection && s.interaction.target) {
-        pending = { selection: s.interaction.selection, target: s.interaction.target };
-      }
-      const newCues = s.soundLog.slice(before.soundLog.length);
-      const cues = newCues.filter((cue) => COMMIT_CUES.has(cue));
-      if (cues.length > 0) {
-        gameCue = cues[0];
-        revived = newCues.includes('reshuffle');
-        while (CAPTURE_FRAMES && Date.now() < deadline) {
-          const f = await page.evaluate(FRAME);
-          frames.push(f);
-          if (!f.animating) break;
-          await sleep(FRAME_MS);
-        }
-        after = await snapshotAtRest(page, deadline);
-        break;
-      }
-      await sleep(POLL_MS);
-    }
-    if (!after) break;
-
-    const dir = join(OUT_DIR, `move-${String(index).padStart(3, '0')}`);
-    await mkdir(dir, { recursive: true });
-    await writePng(dir, 'before.png', before.png);
-    await writePng(dir, 'after.png', after.png);
-    for (let i = 0; i < frames.length; i++) {
-      await writePng(dir, `frame-${String(i).padStart(3, '0')}-${frameLabel(frames[i])}.png`, frames[i].png);
-    }
-
-    const renderedBefore = renderedGrid(before.cellPixels, palette);
-    const renderedAfter = renderedGrid(after.cellPixels, palette);
-    const beforeMismatches = gridMismatches(renderedBefore, before.board);
-    const afterMismatches = gridMismatches(renderedAfter, after.board);
-
-    let moveCheck;
-    if (!pending) {
-      moveCheck = { verdict: 'UNOBSERVED', reason: 'no selection/target pair seen before the commit' };
-    } else {
-      const { selection, target } = pending;
-      const adjacent = isOrthogonallyAdjacent(selection, target);
-      const runsAfterSwap = adjacent ? matchedRuns(swapped(before.board, selection, target)) : [];
-      const verdict = adjacent && runsAfterSwap.length > 0 ? 'VALID' : 'INVALID';
-      moveCheck = {
-        verdict,
-        selection,
-        target,
-        adjacent,
-        formsMatch: runsAfterSwap.length > 0,
-        matchedRuns: runsAfterSwap,
-        // The game's own opinion, recorded but never used to decide the verdict
-        // above. If these two ever disagree, that disagreement is itself the
-        // finding: either this file's rules are wrong, or the game is calling a
-        // move valid that isn't.
-        gameCue,
-        agreesWithGame: gameCue === null ? null : (gameCue === 'swap') === (verdict === 'VALID'),
-      };
-    }
-
-    const record = {
-      move: index,
-      revived,
-      startedAt: before.t,
-      endedAt: after.t,
-      durationMs: after.t - before.t,
-      screenshots: { before: 'before.png', after: 'after.png' },
-      frames: frames.map((f, i) => ({ file: `frame-${String(i).padStart(3, '0')}-${frameLabel(f)}.png`, t: f.t, phase: f.phase, animating: f.animating })),
-      gridBefore: before.board,
-      gridAfter: after.board,
-      renderedBefore,
-      renderedAfter,
-      checks: {
-        renderedMatchesStateBefore: { pass: beforeMismatches.length === 0, mismatches: beforeMismatches },
-        moveIsValid: moveCheck,
-        renderedMatchesStateAfter: { pass: afterMismatches.length === 0, mismatches: afterMismatches },
-      },
-    };
-    await writeFile(join(dir, 'move.json'), JSON.stringify(record, null, 2));
-    moves.push(record);
-
-    const flags = [
-      beforeMismatches.length === 0 ? 'before:ok' : `before:MISMATCH(${beforeMismatches.length})`,
-      `move:${moveCheck.verdict}`,
-      afterMismatches.length === 0 ? 'after:ok' : `after:MISMATCH(${afterMismatches.length})`,
-    ];
-    console.log(`move ${String(index).padStart(3, '0')}  ${flags.join('  ')}`);
+  // The instrumented path's own pacing figure had the same single-run
+  // problem the light baseline did: one number, no variance estimate, no
+  // load context. AUDIT_INSTRUMENTED_RUNS repeats the full round (screenshots,
+  // frames, and all) and reports the spread, the same way AUDIT_LIGHT_RUNS
+  // already does for the light arm - default 1 preserves today's single-run
+  // behaviour and output layout exactly for anyone not opting in.
+  const INSTRUMENTED_ROUNDS = Number(process.env.AUDIT_INSTRUMENTED_RUNS || 1);
+  const instrumentedRounds = [];
+  for (let round = 1; round <= INSTRUMENTED_ROUNDS; round++) {
+    const roundOutDir = INSTRUMENTED_ROUNDS > 1 ? join(OUT_DIR, `round-${round}`) : OUT_DIR;
+    if (INSTRUMENTED_ROUNDS > 1) console.log(`\n=== round ${round}/${INSTRUMENTED_ROUNDS} ===`);
+    const loadavgStart = loadavg();
+    const result = await runInstrumentedRound(page, deadline, palette, roundOutDir);
+    const loadavgEnd = loadavg();
+    instrumentedRounds.push({
+      round,
+      ...result,
+      loadavg1mStart: Number(loadavgStart[0].toFixed(2)),
+      loadavg1mEnd: Number(loadavgEnd[0].toFixed(2)),
+    });
   }
 
-  // Named atRestFailures, not failures: every check here is at-rest (before-
-  // mismatch, after-mismatch, move-invalid), and a clean result on these
-  // three cannot be read as a verdict on the animated-then-reverted-swap
-  // class this tool was built to look for - that class is defined as
-  // leaving no trace at either endpoint, which is exactly what these three
-  // conditions check. A clean run here means nothing about that class one
-  // way or the other; it only means nothing wrong was caught at rest.
-  const atRestFailures = moves.filter(
-    (m) =>
-      !m.checks.renderedMatchesStateBefore.pass ||
-      !m.checks.renderedMatchesStateAfter.pass ||
-      m.checks.moveIsValid.verdict === 'INVALID'
-  );
-  const failures = atRestFailures;
-  const unobserved = moves.filter((m) => m.checks.moveIsValid.verdict === 'UNOBSERVED').length;
-  // An unobserved move already falls into neither pass nor fail silently;
-  // the same visibility gap applies to frames that exist but have not been
-  // looked at by a person - every frame this run captured is, by
-  // definition, unreviewed the moment this summary is written.
-  const frameCount = moves.reduce((n, m) => n + m.frames.length, 0);
-  const revivals = moves.filter((m) => m.revived).length;
-  const spans = moves.filter((m) => Number.isFinite(m.durationMs) && m.durationMs > 0);
-  const secondsPerMove = spans.length ? spans.reduce((n, m) => n + m.durationMs, 0) / spans.length / 1000 : null;
-
-  await writeFile(
-    join(OUT_DIR, 'summary.json'),
-    JSON.stringify(
-      {
-        movesAudited: moves.length,
-        atRestFailures: atRestFailures.length,
-        unobservedMoves: unobserved,
-        movesIncludingARevival: revivals,
-        secondsPerMove,
-        framesNotYetReviewed: frameCount,
-        atRestFailingMoves: atRestFailures.map((f) => f.move),
-      },
-      null,
-      2
-    )
-  );
-
-  // A filmstrip per move so a person can scan the animation and point at a
-  // specific frame. Every check in this file is at-rest; the frames exist for
-  // the case those checks are structurally blind to, which is anything visible
-  // only while a move is playing.
-  const html = [
-    '<meta charset="utf-8"><title>autoplay audit</title>',
-    '<style>body{font:13px system-ui;background:#111;color:#ddd;margin:16px}',
-    'h2{margin:24px 0 4px;font-size:15px}.s{color:#888;font-size:12px;margin-bottom:6px}',
-    '.strip{display:flex;flex-wrap:wrap;gap:6px}figure{margin:0;text-align:center}',
-    'img{width:150px;border:1px solid #333;display:block}',
-    'figcaption{font-size:10px;color:#999;margin-top:2px}',
-    '.swap figcaption{color:#ffb703}.bad{outline:2px solid #e63946}</style>',
-    `<h1>autoplay audit — ${moves.length} moves, ${moves.reduce((n, m) => n + m.frames.length, 0)} frames</h1>`,
-    '<p class="s">Frames labelled <b>swap</b> are the swap animation: the window every at-rest check is blind to. Point at a move number and frame number.</p>',
-  ];
-  for (const m of moves) {
-    const dir = `move-${String(m.move).padStart(3, '0')}`;
-    const v = m.checks.moveIsValid;
-    const sel = v.selection ? `(${v.selection.row},${v.selection.col})->(${v.target.row},${v.target.col})` : 'unobserved';
-    html.push(`<h2>move ${m.move} — swap ${sel} — ${v.verdict}${m.revived ? ' — REVIVAL' : ''}</h2>`);
-    html.push(`<div class="s">before/after checks: ${m.checks.renderedMatchesStateBefore.pass ? 'ok' : 'MISMATCH'} / ${m.checks.renderedMatchesStateAfter.pass ? 'ok' : 'MISMATCH'}</div>`);
-    html.push('<div class="strip">');
-    html.push(`<figure><img src="${dir}/before.png"><figcaption>before (at rest)</figcaption></figure>`);
-    for (const f of m.frames) {
-      const cls = f.phase === 'swap' ? ' class="swap"' : '';
-      html.push(`<figure${cls}><img src="${dir}/${f.file}"><figcaption>${f.file.slice(6, 9)} ${frameLabel(f)}</figcaption></figure>`);
+  if (INSTRUMENTED_ROUNDS > 1) {
+    const paces = instrumentedRounds.map((r) => r.secondsPerMove).filter((p) => p !== null);
+    const min = paces.length ? Math.min(...paces) : null;
+    const max = paces.length ? Math.max(...paces) : null;
+    const spreadPercent = min !== null && min > 0 ? ((max - min) / min) * 100 : null;
+    console.log(`\n=== ${INSTRUMENTED_ROUNDS} instrumented rounds ===`);
+    console.log(`  pacing per round: ${paces.map((p) => p.toFixed(2)).join(', ')}s/move`);
+    if (spreadPercent !== null) {
+      console.log(`  spread: ${spreadPercent.toFixed(1)}% (min ${min.toFixed(2)}s, max ${max.toFixed(2)}s)`);
+      console.log(`    ^ compare against this SPREAD, not a single round's point figure\n`);
     }
-    html.push(`<figure><img src="${dir}/after.png"><figcaption>after (at rest)</figcaption></figure>`);
-    html.push('</div>');
+    await writeFile(
+      join(OUT_DIR, 'instrumented-rounds.json'),
+      JSON.stringify({ schemaVersion: 1, mode: 'instrumented', generatedAt: new Date().toISOString(), rounds: instrumentedRounds, secondsPerMoveMin: min, secondsPerMoveMax: max, spreadPercent: spreadPercent === null ? null : Number(spreadPercent.toFixed(1)) }, null, 2)
+    );
+    console.log(`  summary written: ${OUT_DIR}/instrumented-rounds.json\n`);
   }
-  await writeFile(join(OUT_DIR, 'index.html'), html.join('\n'));
-
-  console.log(`\n  moves audited: ${moves.length}`);
-  console.log(`  AT-REST failures: ${failures.length}${failures.length ? ` (moves ${failures.map((f) => f.move).join(', ')})` : ''}`);
-  console.log(`    ^ before/after render-vs-state and move validity ONLY. Says nothing about the animated window.`);
-  if (frameCount) {
-    // Move validity IS examined - the attempted swap's identity is polled live
-    // during the move (not read off either endpoint) and independently
-    // re-tested against the pre-move board, so an invalid attempt still gets
-    // judged. Only the rendered FRAMES themselves - the pixels of the
-    // animated window - go unexamined by any automated check.
-    console.log(`  animated window: ${frameCount} frames captured, 0 examined by any automated check`);
-    console.log(`    ^ the frames themselves, not the move: move validity above already covers the attempted swap. NOT a pass on the frames. Nobody has looked at these. Open ${OUT_DIR}/index.html.`);
-  }
-  console.log(`  moves whose swap could not be observed: ${unobserved}`);
-  if (secondsPerMove !== null) {
-    console.log(`  pacing: ${secondsPerMove.toFixed(2)}s per move  <- compare against an uninstrumented run before trusting any DURATION read off the frames`);
-  }
-  console.log(`  moves that included a board revival: ${revivals}${revivals ? '' : '  <- revive path NOT covered by this run'}`);
-  console.log(`  per-move screenshots and records: ${OUT_DIR}/`);
-  console.log(`  browsable filmstrip: ${OUT_DIR}/index.html\n`);
 
   await browser.close();
-  process.exitCode = failures.length ? 1 : 0;
+  process.exitCode = instrumentedRounds.some((r) => r.atRestFailures > 0) ? 1 : 0;
 }
 
 main().catch((err) => {
