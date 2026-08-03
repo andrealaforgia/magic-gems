@@ -30,6 +30,7 @@
 // Development only; never part of a deployment.
 import { chromium } from 'playwright';
 import { mkdir, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadavg } from 'node:os';
 
@@ -67,6 +68,42 @@ const DOUBLED_SWAP_FRAME_THRESHOLD = EXPECTED_SWAP_FRAME_COUNT * 1.5;
 // doesn't silently need recalibrating if capture cadence or the constant
 // itself ever changes.
 const DOUBLED_SWAP_SPAN_THRESHOLD_MS = EXPECTED_SWAP_DURATION_MS * 1.5;
+
+// Examiner directive: the span detector's whole argument for being better
+// than frame count was anchoring to the system's OWN constant - a silently-
+// stale hand-synced copy undermines that by one level. One table, not a
+// one-off check, so a second hand-synced constant added later gets the same
+// coverage for free. Verified in selfTest() (below, already mandatory and
+// already aborts on failure) by reading the named source file as plain text
+// and extracting the value - a number, never game logic or behaviour, so
+// this doesn't touch the INDEPENDENCE principle above: the checker still
+// never asks the game whether a move is legal, only confirms a constant it
+// copied is still the constant it copied.
+const HAND_SYNCED_PRODUCTION_CONSTANTS = [{ name: 'SWAP_DURATION_MS', file: 'src/main.js', localValue: EXPECTED_SWAP_DURATION_MS }];
+
+function checkHandSyncedConstants() {
+  const failures = [];
+  for (const { name, file, localValue } of HAND_SYNCED_PRODUCTION_CONSTANTS) {
+    let source;
+    try {
+      source = readFileSync(file, 'utf8');
+    } catch (err) {
+      failures.push(`${name}: could not read ${file} to verify it's still in sync (${err.message})`);
+      continue;
+    }
+    const match = source.match(new RegExp(`const ${name}\\s*=\\s*(\\d+)`));
+    if (!match) {
+      failures.push(`${name}: pattern "const ${name} = <number>" not found in ${file} - it may have been renamed or restructured; this file's own copy can no longer be verified`);
+      continue;
+    }
+    const actual = Number(match[1]);
+    if (actual !== localValue) {
+      failures.push(`${name}: this file's own copy is ${localValue}, but ${file} now has ${actual} - update the local copy to match`);
+    }
+  }
+  return failures;
+}
+
 const CAPTURE_FRAMES = process.env.AUDIT_FRAMES !== '0';
 // AUDIT_FRAMES=0 was mislabelled "uninstrumented": it gates only the
 // mid-animation frame reads, while every move still ran a 64-cell pixel read, a
@@ -291,6 +328,10 @@ function selfTest() {
   altered[2][1] = 'z';
   check('one altered cell is caught', gridMismatches(altered, logical).length, 1);
   check('an unclassifiable cell is caught', gridMismatches([[null]], [['a']]).length, 1);
+
+  // Every hand-synced copy of a production constant this file relies on -
+  // see HAND_SYNCED_PRODUCTION_CONSTANTS above.
+  failures.push(...checkHandSyncedConstants());
 
   return failures;
 }
