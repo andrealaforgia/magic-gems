@@ -31,6 +31,7 @@
 import { chromium } from 'playwright';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { loadavg } from 'node:os';
 
 const URL = process.env.GAME_URL || 'http://127.0.0.1:3000';
 const OUT_DIR = process.env.AUDIT_OUT || 'autoplay-audit';
@@ -350,29 +351,63 @@ async function main() {
   await page.keyboard.press('a');
 
   if (LIGHT_ONLY) {
-    // Nothing here reads pixels, encodes an image, copies a board or touches
-    // disk. Moves are counted from the commit cues alone.
-    const started = Date.now();
-    let seen = 0;
-    let revivals = 0;
-    let cursor = (await pulse(page)).soundLog.length;
-    while (seen < MAX_MOVES && Date.now() < deadline) {
-      const s2 = await pulse(page);
-      const fresh = s2.soundLog.slice(cursor);
-      const commits = fresh.filter((cue) => COMMIT_CUES.has(cue)).length;
-      if (commits > 0) {
-        seen += commits;
-        if (fresh.includes('reshuffle')) revivals += 1;
-        cursor = s2.soundLog.length;
-        console.log(`move ${String(seen).padStart(3, '0')}  (light: cue-counted only)`);
+    // A single run's pacing figure was confirmed unreliable: two identical
+    // 40-move light runs on this machine produced a 12.9% swing - larger than
+    // the 2-15% overhead the whole comparison exists to detect - because this
+    // machine carries real, documented concurrent load that varies run to
+    // run. A point figure can't tell real overhead from that noise. Several
+    // independent runs and their SPREAD can: either the spread is small
+    // enough that a comparison figure means something, or the spread itself
+    // (reported honestly) is the finding - overhead is unmeasurable at this
+    // sample on this machine, not a failure to produce a number.
+    const RUNS = Number(process.env.AUDIT_LIGHT_RUNS || 4);
+    const runs = [];
+    for (let run = 1; run <= RUNS; run++) {
+      const loadavgStart = loadavg();
+      const started = Date.now();
+      let seen = 0;
+      let revivals = 0;
+      let cursor = (await pulse(page)).soundLog.length;
+      while (seen < MAX_MOVES && Date.now() < deadline) {
+        const s2 = await pulse(page);
+        const fresh = s2.soundLog.slice(cursor);
+        const commits = fresh.filter((cue) => COMMIT_CUES.has(cue)).length;
+        if (commits > 0) {
+          seen += commits;
+          if (fresh.includes('reshuffle')) revivals += 1;
+          cursor = s2.soundLog.length;
+        }
+        await sleep(POLL_MS);
       }
-      await sleep(POLL_MS);
+      const elapsedSeconds = (Date.now() - started) / 1000;
+      const secondsPerMove = elapsedSeconds / Math.max(seen, 1);
+      const loadavgEnd = loadavg();
+      runs.push({
+        run,
+        moves: seen,
+        revivals,
+        elapsedSeconds: Number(elapsedSeconds.toFixed(1)),
+        secondsPerMove: Number(secondsPerMove.toFixed(3)),
+        // 1-minute load average, the figure closest to "what was competing for
+        // the CPU during this specific run" - recorded so a future large swing
+        // can be attributed instead of re-discovered by another re-run.
+        loadavg1mStart: Number(loadavgStart[0].toFixed(2)),
+        loadavg1mEnd: Number(loadavgEnd[0].toFixed(2)),
+      });
+      console.log(`  run ${run}/${RUNS}: ${seen} moves, ${revivals} revivals, ${secondsPerMove.toFixed(2)}s/move, loadavg(1m) ${loadavgStart[0].toFixed(2)} -> ${loadavgEnd[0].toFixed(2)}`);
     }
-    const elapsed = (Date.now() - started) / 1000;
-    console.log(`\n  LIGHT BASELINE — no pixel reads, no images, no disk writes`);
-    console.log(`  moves: ${seen}, revivals: ${revivals}`);
-    console.log(`  pacing: ${(elapsed / Math.max(seen, 1)).toFixed(2)}s per move`);
-    console.log(`    ^ this is the figure an instrumented run must be compared against\n`);
+
+    const paces = runs.map((r) => r.secondsPerMove);
+    const min = Math.min(...paces);
+    const max = Math.max(...paces);
+    const spreadPercent = min > 0 ? ((max - min) / min) * 100 : null;
+
+    console.log(`\n  LIGHT BASELINE across ${RUNS} runs — no pixel reads, no images, no disk writes per move`);
+    console.log(`  pacing per run: ${paces.map((p) => p.toFixed(2)).join(', ')}s/move`);
+    if (spreadPercent !== null) {
+      console.log(`  spread: ${spreadPercent.toFixed(1)}% (min ${min.toFixed(2)}s, max ${max.toFixed(2)}s)`);
+      console.log(`    ^ compare an instrumented run's pacing against this SPREAD, not a single point figure - if the spread itself is this large, overhead is unmeasurable at this sample on this machine\n`);
+    }
     // Writing nothing to disk made this mode's own result unverifiable: the
     // figure existed only in whatever stdout someone happened to capture, and a
     // reviewer checking afterwards found no artefact and no running process, so
@@ -382,7 +417,7 @@ async function main() {
     await mkdir(OUT_DIR, { recursive: true });
     await writeFile(
       join(OUT_DIR, 'light-baseline.json'),
-      JSON.stringify({ mode: 'light', moves: seen, revivals, elapsedSeconds: Number(elapsed.toFixed(1)), secondsPerMove: Number((elapsed / Math.max(seen, 1)).toFixed(3)) }, null, 2)
+      JSON.stringify({ mode: 'light', runs, secondsPerMoveMin: min, secondsPerMoveMax: max, spreadPercent: spreadPercent === null ? null : Number(spreadPercent.toFixed(1)) }, null, 2)
     );
     console.log(`  summary written: ${OUT_DIR}/light-baseline.json\n`);
     await browser.close();
