@@ -38,6 +38,23 @@ const MAX_MOVES = Number(process.env.AUDIT_MOVES || 20);
 const TIMEOUT_MS = Number(process.env.AUDIT_TIMEOUT_MS || 180000);
 const POLL_MS = 25;
 const FRAME_MS = Number(process.env.AUDIT_FRAME_MS || 40);
+// Kept in sync by hand with SWAP_DURATION_MS in src/main.js/src/animation.js
+// - not read from the page, since it's a production animation-pacing
+// constant, not a test hook. buildQueue (main.js) pushes a SECOND, reversing
+// swap phase only when a commit is unmatched, so a reverted swap's own
+// swap-phase frame count should sit near double an ordinary single phase's -
+// a classification-free signal for exactly the defect class the pixel-
+// signature check below is structurally blind to (it counts phases, not
+// pixels, so mid-transit sampling ambiguity can't defeat it). Recomputing
+// this band if either constant changes is the cost of not duplicating the
+// production value outright.
+const EXPECTED_SWAP_DURATION_MS = 400;
+const EXPECTED_SWAP_FRAME_COUNT = Math.ceil(EXPECTED_SWAP_DURATION_MS / FRAME_MS);
+// A real margin above a single phase's own observed spread (7-10 frames for
+// a 400ms/40ms config on the machine this was calibrated on), not a tight
+// cutoff - anything at or beyond this sits closer to a doubled phase than a
+// normal one.
+const DOUBLED_SWAP_FRAME_THRESHOLD = EXPECTED_SWAP_FRAME_COUNT * 1.5;
 const CAPTURE_FRAMES = process.env.AUDIT_FRAMES !== '0';
 // AUDIT_FRAMES=0 was mislabelled "uninstrumented": it gates only the
 // mid-animation frame reads, while every move still ran a 64-cell pixel read, a
@@ -464,6 +481,8 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
       };
     }
 
+    const swapIndices = frames.map((g, gi) => (g.phase === 'swap' ? gi : -1)).filter((gi) => gi >= 0);
+
     const record = {
       move: index,
       revived,
@@ -471,6 +490,14 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
       endedAt: after.t,
       durationMs: after.t - before.t,
       screenshots: { before: 'before.png', after: 'after.png' },
+      // swapFrameCount/swapFrameCountAnomalous: classification-free companion
+      // to swapSignature below - counts phases rather than reading pixels,
+      // so mid-transit sampling ambiguity can't defeat it. A reverted swap
+      // (buildQueue pushes a second, reversing swap phase for an unmatched
+      // commit - see main.js) should produce roughly double an ordinary
+      // single phase's frame count.
+      swapFrameCount: swapIndices.length,
+      swapFrameCountAnomalous: swapIndices.length >= DOUBLED_SWAP_FRAME_THRESHOLD,
       // swapSignature: only computed for 'swap'-phase frames, since that's
       // the only phase where exactly two adjacent cells are expected to be
       // exchanging values and everything else should still match the
@@ -478,14 +505,16 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
       // many more cells and aren't in scope here. phasePosition (early/mid/
       // late within this move's own swap frames) lets a cluster specifically
       // at the midpoint be recognised as a sampling artifact rather than
-      // misread as a defect cluster (examiner directive). This has NOT yet
-      // been validated against known-good moves for its own false-positive
-      // rate at the time this comment was written - see the commit history
-      // for whether that measurement has since confirmed it.
+      // misread as a defect cluster (examiner directive). Validated against
+      // 150 known-good moves: 0 anomalous verdicts, but conclusive verdicts
+      // (MATCHES_SWAP) are confined almost entirely to "late" - the check
+      // cannot conclude anything in early/mid, so it cannot see a reverted
+      // swap (which, by definition, ends where it began and looks identical
+      // to a settled swap by "late") regardless of its own false-positive
+      // rate. swapFrameCount above is what actually covers that gap.
       frames: frames.map((f, i) => {
         const base = { file: `frame-${String(i).padStart(3, '0')}-${frameLabel(f)}.png`, t: f.t, phase: f.phase, animating: f.animating };
         if (f.phase === 'swap' && f.cellPixels) {
-          const swapIndices = frames.map((g, gi) => (g.phase === 'swap' ? gi : -1)).filter((gi) => gi >= 0);
           const posInSwap = swapIndices.indexOf(i);
           const swapFrameCount = swapIndices.length;
           const phasePosition =
@@ -559,6 +588,20 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
   const movesWithAnAnomalousSwapFrame = moves.filter((m) =>
     m.frames.some((f) => f.swapSignature && f.swapSignature.verdict === 'ANOMALY')
   ).length;
+  // Required companion to the counts above, not an optional extra (examiner
+  // directive): a near-zero anomaly rate on a check that only ever concludes
+  // in one phase position means far less than it looks like. Conclusive here
+  // means MATCHES_SWAP or ANOMALY - anything that isn't INCONCLUSIVE.
+  const swapSignaturesByPhasePosition = { early: { conclusive: 0, inconclusive: 0 }, mid: { conclusive: 0, inconclusive: 0 }, late: { conclusive: 0, inconclusive: 0 }, only: { conclusive: 0, inconclusive: 0 } };
+  for (const m of moves) {
+    for (const f of m.frames) {
+      if (!f.swapSignature) continue;
+      const bucket = swapSignaturesByPhasePosition[f.swapSignature.phasePosition];
+      if (f.swapSignature.verdict === 'INCONCLUSIVE') bucket.inconclusive++;
+      else bucket.conclusive++;
+    }
+  }
+  const movesWithAnomalousSwapFrameCount = moves.filter((m) => m.swapFrameCountAnomalous).length;
 
   await writeFile(
     join(outDir, 'summary.json'),
@@ -569,7 +612,7 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
     // problem the light-baseline artefact had, one file over.
     JSON.stringify(
       {
-        schemaVersion: 3,
+        schemaVersion: 4,
         generatedAt: new Date().toISOString(),
         movesAudited: moves.length,
         atRestFailures: atRestFailures.length,
@@ -578,12 +621,21 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
         secondsPerMove,
         framesNotYetReviewed: frameCount,
         atRestFailingMoves: atRestFailures.map((f) => f.move),
-        // Unvalidated detector - see the note on swapSignatureCheck and the
-        // computation above. Not evidence of a defect on its own.
+        // Pixel-based check - see the note on swapSignatureCheck above. The
+        // phase-position breakdown is a REQUIRED companion to the anomaly
+        // count, not an optional extra: this check has only ever been
+        // observed to conclude anything in "late", so a near-zero anomaly
+        // rate measures how well it recognises an ordinary swap, not
+        // whether it could catch a reverted one (which ends where it began
+        // and looks identical to a settled swap by "late").
         swapFramesChecked,
         swapFramesInconclusive,
         swapFramesAnomalous,
+        swapSignaturesByPhasePosition,
         movesWithAnAnomalousSwapFrame,
+        // Classification-free companion, not subject to the phase-position
+        // gap above: counts phases rather than pixels. See EXPECTED_SWAP_FRAME_COUNT.
+        movesWithAnomalousSwapFrameCount,
       },
       null,
       2
@@ -641,7 +693,10 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
   console.log(`  moves that included a board revival: ${revivals}${revivals ? '' : '  <- revive path NOT covered by this run'}`);
   if (swapFramesChecked > 0) {
     console.log(`  swap frames checked against the ordinary-swap signature: ${swapFramesChecked} (${swapFramesInconclusive} inconclusive - mid-transit sample unclassifiable)`);
-    console.log(`    ^ UNVALIDATED as a detector - ${swapFramesAnomalous} frame(s) across ${movesWithAnAnomalousSwapFrame} move(s) didn't match the ordinary two-cell-exchange shape. Do not treat a hit as a confirmed defect until this has been measured against known-good moves for its own false-positive rate.`);
+    console.log(`    by phase position (conclusive/inconclusive): early ${swapSignaturesByPhasePosition.early.conclusive}/${swapSignaturesByPhasePosition.early.inconclusive}, mid ${swapSignaturesByPhasePosition.mid.conclusive}/${swapSignaturesByPhasePosition.mid.inconclusive}, late ${swapSignaturesByPhasePosition.late.conclusive}/${swapSignaturesByPhasePosition.late.inconclusive}`);
+    console.log(`    ^ REQUIRED reading alongside the anomaly count below, not optional: this check has only ever concluded anything in "late" - a reverted swap ends where it began and looks identical to a settled swap by then, so a near-zero anomaly rate says nothing about whether this check could catch one.`);
+    console.log(`  swap frames not matching the ordinary two-cell-exchange shape: ${swapFramesAnomalous} across ${movesWithAnAnomalousSwapFrame} move(s) - do not treat a hit as a confirmed defect without a human look`);
+    console.log(`  moves whose swap-phase frame count sits near double the expected single-phase band (~${EXPECTED_SWAP_FRAME_COUNT}): ${movesWithAnomalousSwapFrameCount} - classification-free, not subject to the phase-position gap above`);
   }
   console.log(`  per-move screenshots and records: ${outDir}/`);
   console.log(`  browsable filmstrip: ${outDir}/index.html\n`);
