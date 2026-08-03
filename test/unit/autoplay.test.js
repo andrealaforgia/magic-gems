@@ -187,13 +187,20 @@ test('planAutoplaySteps draws its move choice from an injected randomFn, never f
 // look correct while occasional individual swaps are invalid. This drives
 // planAutoplaySteps end-to-end through handleGameKey across many
 // generated boards and many moves per board, checking EVERY single
-// committed swap, not a sample - a fixed seed per trial keeps this fully
-// reproducible in CI while still covering a wide range of real board
-// states (including whatever revive/reshuffle states arise along the way).
-// Local to this test only - swaps Math.random for the duration of fn so a
-// seeded generator drives board generation/refills reproducibly. Not a
-// production seam: nothing in src/ needs this anymore now that remote sync
-// is a direct snapshot draw rather than a seeded replay (MP-SYNC-SNAPSHOT).
+// committed swap, not a sample, across a wide range of real board states
+// (including whatever revive/reshuffle states arise along the way).
+//
+// Correction (verified empirically, not asserted): the per-trial seed below
+// does NOT actually make this reproducible run to run, despite the intent -
+// the production functions this file imports load into a VM sandbox with
+// their own separate Math object, so patching THIS file's own Math.random
+// never reaches resolution.js's/board.js's real random calls at all.
+// Confirmed directly: running this exact pattern twice with the identical
+// trial seed produces two different boards both times. This test's own
+// pass/fail doesn't depend on the claim (it checks per-trial invariants,
+// not board identity across runs), so nothing here needs to change
+// behaviourally - but genuine reproducibility would need a real change to
+// how the test loads production code, not this monkey-patch.
 function withSeededRandom(seededRandom, fn) {
   const previous = Math.random;
   Math.random = seededRandom;
