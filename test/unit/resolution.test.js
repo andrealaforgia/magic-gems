@@ -974,13 +974,22 @@ test('ensurePlayable\'s delegated result reconciles with its returned board (SPE
   assert.deepEqual(applyChanges(stuck, changedCells), result, 'changedCells must fully account for the diff from the original board');
 });
 
-test('reviveByIncrementalChange (the absolute last-resort fallback) always finds a valid-move-enabling board', () => {
+test('reviveByIncrementalChange (the absolute last-resort fallback) produces a legal, valid-move-enabling board', () => {
   const stuck = buildStuckBoard();
-  const { board: result, changedCells } = reviveByIncrementalChange(stuck);
-
+  const { board: result } = reviveByIncrementalChange(stuck);
   assert.equal(hasMatch(result), false);
   assert.equal(hasAnyValidMove(result), true);
+});
+
+test('reviveByIncrementalChange: changedCells fully reconciles with the returned board', () => {
+  const stuck = buildStuckBoard();
+  const { board: result, changedCells } = reviveByIncrementalChange(stuck);
   assert.deepEqual(applyChanges(stuck, changedCells), result, 'changedCells must fully account for the diff from the original board');
+});
+
+test('reviveByIncrementalChange changes a bounded number of cells, never more than the whole board', () => {
+  const stuck = buildStuckBoard();
+  const { changedCells } = reviveByIncrementalChange(stuck);
   assert.ok(
     changedCells.length >= 1 && changedCells.length <= stuck.length * stuck.length,
     'expected a bounded number of changes'
