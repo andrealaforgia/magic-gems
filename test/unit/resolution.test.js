@@ -756,10 +756,20 @@ function allSingleNeighborChangedPositions(board) {
 test('tryReviveByAdjacentPair genuinely randomizes which cell it revives, reaching every reachable position, not a fixed scan order', () => {
   const stuck = buildStuckBoard();
   const expected = allSingleNeighborChangedPositions(stuck);
-  assert.ok(expected.size > 1, 'sanity: this fixture must have more than one reachable single-neighbour solution');
+  const reachableCount = expected.size;
+  assert.ok(reachableCount > 1, 'sanity: this fixture must have more than one reachable single-neighbour solution');
+
+  // Examiner correction: a hand-picked trial count is a coupon-collector
+  // problem in disguise - seeing all K reachable outcomes takes on the order
+  // of K*ln(K) trials, not K, and a number picked without reference to K can
+  // fail intermittently for reasons that have nothing to do with the code.
+  // Deriving the count from the independently-computed K instead keeps this
+  // safe (and self-scaling) rather than probabilistically flaky: the union
+  // bound puts the chance that ANY one of K equally-likely outcomes is still
+  // missing after K*(ln(K) + 30) trials below e^-30 (~1e-13).
+  const TRIALS = Math.ceil(reachableCount * (Math.log(reachableCount) + 30));
 
   const seenChangedPositions = new Set();
-  const TRIALS = 500;
   for (let i = 0; i < TRIALS; i++) {
     const result = tryReviveByAdjacentPair(stuck);
     assert.ok(result, 'expected a solution on every trial for this fixture');
