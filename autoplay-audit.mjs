@@ -254,6 +254,19 @@ const FRAME = () => {
   };
 };
 
+// A frame's own phase is null between named animation phases (e.g. the
+// instant a swap finishes and before a cascade phase starts), and null was
+// previously mislabelled "settled" regardless of whether anything was still
+// moving - of frames landing in that bucket in one calibration run, the
+// overwhelming majority were still-animating (falling shatter debris etc.)
+// wearing a label that says nothing is happening, exactly the frames a
+// person triaging by filename would skip. "Settled" is reserved for the one
+// genuinely at-rest frame captured after a move's tail loop exits.
+function frameLabel(f) {
+  if (f.phase) return f.phase;
+  return f.animating ? 'mid-animation' : 'settled';
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function snapshot(page) {
@@ -426,7 +439,7 @@ async function main() {
     await writePng(dir, 'before.png', before.png);
     await writePng(dir, 'after.png', after.png);
     for (let i = 0; i < frames.length; i++) {
-      await writePng(dir, `frame-${String(i).padStart(3, '0')}-${frames[i].phase || 'settled'}.png`, frames[i].png);
+      await writePng(dir, `frame-${String(i).padStart(3, '0')}-${frameLabel(frames[i])}.png`, frames[i].png);
     }
 
     const renderedBefore = renderedGrid(before.cellPixels, palette);
@@ -465,7 +478,7 @@ async function main() {
       endedAt: after.t,
       durationMs: after.t - before.t,
       screenshots: { before: 'before.png', after: 'after.png' },
-      frames: frames.map((f, i) => ({ file: `frame-${String(i).padStart(3, '0')}-${f.phase || 'settled'}.png`, t: f.t, phase: f.phase })),
+      frames: frames.map((f, i) => ({ file: `frame-${String(i).padStart(3, '0')}-${frameLabel(f)}.png`, t: f.t, phase: f.phase, animating: f.animating })),
       gridBefore: before.board,
       gridAfter: after.board,
       renderedBefore,
@@ -553,7 +566,7 @@ async function main() {
     html.push(`<figure><img src="${dir}/before.png"><figcaption>before (at rest)</figcaption></figure>`);
     for (const f of m.frames) {
       const cls = f.phase === 'swap' ? ' class="swap"' : '';
-      html.push(`<figure${cls}><img src="${dir}/${f.file}"><figcaption>${f.file.slice(6, 9)} ${f.phase || 'settled'}</figcaption></figure>`);
+      html.push(`<figure${cls}><img src="${dir}/${f.file}"><figcaption>${f.file.slice(6, 9)} ${frameLabel(f)}</figcaption></figure>`);
     }
     html.push(`<figure><img src="${dir}/after.png"><figcaption>after (at rest)</figcaption></figure>`);
     html.push('</div>');
@@ -564,8 +577,13 @@ async function main() {
   console.log(`  AT-REST failures: ${failures.length}${failures.length ? ` (moves ${failures.map((f) => f.move).join(', ')})` : ''}`);
   console.log(`    ^ before/after render-vs-state and move validity ONLY. Says nothing about the animated window.`);
   if (frameCount) {
+    // Move validity IS examined - the attempted swap's identity is polled live
+    // during the move (not read off either endpoint) and independently
+    // re-tested against the pre-move board, so an invalid attempt still gets
+    // judged. Only the rendered FRAMES themselves - the pixels of the
+    // animated window - go unexamined by any automated check.
     console.log(`  animated window: ${frameCount} frames captured, 0 examined by any automated check`);
-    console.log(`    ^ NOT a pass. Nobody has looked at these. Open ${OUT_DIR}/index.html.`);
+    console.log(`    ^ the frames themselves, not the move: move validity above already covers the attempted swap. NOT a pass on the frames. Nobody has looked at these. Open ${OUT_DIR}/index.html.`);
   }
   console.log(`  moves whose swap could not be observed: ${unobserved}`);
   if (secondsPerMove !== null) {
