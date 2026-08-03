@@ -114,11 +114,15 @@ Then('a real completion clearing a {int}-run and a {int}-run together on the liv
     return { runLengths: steps[0].runLengths, base: summedBasePoints(steps[0].runLengths) };
   }, TWO_RUN_SPEC(lengthA, lengthB));
 
-  // Simultaneity is already fully proven here: if the two runs had cleared in
+  // Simultaneity is already fully proven here, with nothing lost by the
+  // stepCount === 1 assertion removed alongside this comment (standing test
+  // for any assertion removal: can the requirement still fail the suite
+  // afterward? Here, demonstrably yes) - if the two runs had cleared in
   // separate steps, steps[0].runLengths would contain only one of them, not
-  // both. A whole-cascade step COUNT would also react to any later,
-  // unrelated step a random refill is fully entitled to produce - flaky by
-  // construction, and provable no other way (examiner correction).
+  // both, and this line would fail on its own. A whole-cascade step COUNT
+  // measured something the requirement never asked about instead, and would
+  // also react to any later, unrelated step a random refill is fully
+  // entitled to produce - flaky by construction, not by circumstance.
   assert.deepEqual([...result.runLengths].sort(), [lengthA, lengthB].sort());
   assert.equal(result.base, expectedBase);
 });
