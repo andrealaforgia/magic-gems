@@ -360,6 +360,18 @@ async function main() {
     console.log(`  moves: ${seen}, revivals: ${revivals}`);
     console.log(`  pacing: ${(elapsed / Math.max(seen, 1)).toFixed(2)}s per move`);
     console.log(`    ^ this is the figure an instrumented run must be compared against\n`);
+    // Writing nothing to disk made this mode's own result unverifiable: the
+    // figure existed only in whatever stdout someone happened to capture, and a
+    // reviewer checking afterwards found no artefact and no running process, so
+    // could neither confirm nor refute it. A measurement nobody else can check
+    // is a recollection. One small summary file - still no pixels, no images,
+    // no per-move records - so the number can be audited rather than believed.
+    await mkdir(OUT_DIR, { recursive: true });
+    await writeFile(
+      join(OUT_DIR, 'light-baseline.json'),
+      JSON.stringify({ mode: 'light', moves: seen, revivals, elapsedSeconds: Number(elapsed.toFixed(1)), secondsPerMove: Number((elapsed / Math.max(seen, 1)).toFixed(3)) }, null, 2)
+    );
+    console.log(`  summary written: ${OUT_DIR}/light-baseline.json\n`);
     await browser.close();
     return;
   }
