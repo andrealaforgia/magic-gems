@@ -32,16 +32,24 @@ function buildStuckBoard() {
   return buildStuckBoardFor(GEM_TYPES);
 }
 
-test('planAutoplaySteps returns no steps when no valid move exists (SPEC 8.3 guarantees this never happens live)', () => {
-  assert.deepEqual(planAutoplaySteps(buildStuckBoard(), { row: 0, col: 0 }), []);
-});
-
-test('planAutoplaySteps ends with SPACE, an orthogonal arrow, then SPACE - select, aim, commit (SPEC 12.2)', () => {
+// A match-free board with exactly one planted valid move: (2,1)<->(2,2)
+// completes a vertical run at column 2. Shared by every scenario below that
+// only cares about exercising that one known move.
+function buildSingleMoveBoard() {
   const board = buildMatchFreeBoard();
   board[0][2] = GEM_TYPES[0];
   board[1][2] = GEM_TYPES[0];
   board[2][2] = GEM_TYPES[1];
   board[2][1] = GEM_TYPES[0];
+  return board;
+}
+
+test('planAutoplaySteps returns no steps when no valid move exists (SPEC 8.3 guarantees this never happens live)', () => {
+  assert.deepEqual(planAutoplaySteps(buildStuckBoard(), { row: 0, col: 0 }), []);
+});
+
+test('planAutoplaySteps ends with SPACE, an orthogonal arrow, then SPACE - select, aim, commit (SPEC 12.2)', () => {
+  const board = buildSingleMoveBoard();
 
   const steps = planAutoplaySteps(board, { row: 2, col: 1 });
   assert.ok(steps.length >= 3, 'expected at least select, aim, and commit');
@@ -49,11 +57,7 @@ test('planAutoplaySteps ends with SPACE, an orthogonal arrow, then SPACE - selec
 });
 
 test('planAutoplaySteps moves the cursor from its current position to the move\'s own first cell before selecting', () => {
-  const board = buildMatchFreeBoard();
-  board[0][2] = GEM_TYPES[0];
-  board[1][2] = GEM_TYPES[0];
-  board[2][2] = GEM_TYPES[1];
-  board[2][1] = GEM_TYPES[0];
+  const board = buildSingleMoveBoard();
 
   // Cursor starts two cells away (up and left) from the move's own cell (2,1).
   const steps = planAutoplaySteps(board, { row: 0, col: 0 });
@@ -65,11 +69,7 @@ test('planAutoplaySteps moves the cursor from its current position to the move\'
 });
 
 test('planAutoplaySteps selects the exact cell the found move starts from, not wherever the cursor already is', () => {
-  const board = buildMatchFreeBoard();
-  board[0][2] = GEM_TYPES[0];
-  board[1][2] = GEM_TYPES[0];
-  board[2][2] = GEM_TYPES[1];
-  board[2][1] = GEM_TYPES[0];
+  const board = buildSingleMoveBoard();
 
   const steps = planAutoplaySteps(board, { row: 2, col: 1 });
   // Cursor already at the move's own cell - no movement needed before selecting.
@@ -77,33 +77,21 @@ test('planAutoplaySteps selects the exact cell the found move starts from, not w
 });
 
 test('planAutoplaySteps moves up and left when the cursor sits below and to the right of the move (SPEC 12.2)', () => {
-  const board = buildMatchFreeBoard();
-  board[0][2] = GEM_TYPES[0];
-  board[1][2] = GEM_TYPES[0];
-  board[2][2] = GEM_TYPES[1];
-  board[2][1] = GEM_TYPES[0];
+  const board = buildSingleMoveBoard();
 
   const steps = planAutoplaySteps(board, { row: 5, col: 5 });
   assert.deepEqual(steps, ['ArrowUp', 'ArrowUp', 'ArrowUp', 'ArrowLeft', 'ArrowLeft', 'ArrowLeft', 'ArrowLeft', ' ', 'ArrowRight', ' ']);
 });
 
 test('planAutoplaySteps moves purely left when the cursor already shares the move\'s own row', () => {
-  const board = buildMatchFreeBoard();
-  board[0][2] = GEM_TYPES[0];
-  board[1][2] = GEM_TYPES[0];
-  board[2][2] = GEM_TYPES[1];
-  board[2][1] = GEM_TYPES[0];
+  const board = buildSingleMoveBoard();
 
   const steps = planAutoplaySteps(board, { row: 2, col: 5 });
   assert.deepEqual(steps, ['ArrowLeft', 'ArrowLeft', 'ArrowLeft', 'ArrowLeft', ' ', 'ArrowRight', ' ']);
 });
 
 test('planAutoplaySteps moves purely up when the cursor already shares the move\'s own column', () => {
-  const board = buildMatchFreeBoard();
-  board[0][2] = GEM_TYPES[0];
-  board[1][2] = GEM_TYPES[0];
-  board[2][2] = GEM_TYPES[1];
-  board[2][1] = GEM_TYPES[0];
+  const board = buildSingleMoveBoard();
 
   const steps = planAutoplaySteps(board, { row: 5, col: 1 });
   assert.deepEqual(steps, ['ArrowUp', 'ArrowUp', 'ArrowUp', ' ', 'ArrowRight', ' ']);
@@ -126,11 +114,7 @@ test('planAutoplaySteps aims ArrowDown when the found move\'s pair is a vertical
 // independent moves in different corners and checks that repeated calls
 // don't always return the same one.
 test('planAutoplaySteps picks among ALL available valid moves at random, not always the same one (SPEC 12.5)', () => {
-  const board = buildMatchFreeBoard();
-  board[0][2] = GEM_TYPES[0];
-  board[1][2] = GEM_TYPES[0];
-  board[2][2] = GEM_TYPES[1];
-  board[2][1] = GEM_TYPES[0];
+  const board = buildSingleMoveBoard();
   board[5][5] = GEM_TYPES[2];
   board[5][6] = GEM_TYPES[2];
   board[5][7] = GEM_TYPES[3];
@@ -151,11 +135,7 @@ test('planAutoplaySteps picks among ALL available valid moves at random, not alw
 // Proves the seam that prevents it: an explicit randomFn is used for move
 // choice, and the ambient Math.random is never touched.
 test('planAutoplaySteps draws its move choice from an injected randomFn, never from the ambient Math.random (SPEC 12.5/MP4-FIX)', () => {
-  const board = buildMatchFreeBoard();
-  board[0][2] = GEM_TYPES[0];
-  board[1][2] = GEM_TYPES[0];
-  board[2][2] = GEM_TYPES[1];
-  board[2][1] = GEM_TYPES[0];
+  const board = buildSingleMoveBoard();
   board[5][5] = GEM_TYPES[2];
   board[5][6] = GEM_TYPES[2];
   board[5][7] = GEM_TYPES[3];
