@@ -34,7 +34,6 @@ import { join } from 'node:path';
 import { loadavg } from 'node:os';
 
 const URL = process.env.GAME_URL || 'http://127.0.0.1:3000';
-const OUT_DIR = process.env.AUDIT_OUT || 'autoplay-audit';
 const MAX_MOVES = Number(process.env.AUDIT_MOVES || 20);
 const TIMEOUT_MS = Number(process.env.AUDIT_TIMEOUT_MS || 180000);
 const POLL_MS = 25;
@@ -49,6 +48,15 @@ const CAPTURE_FRAMES = process.env.AUDIT_FRAMES !== '0';
 // animation budget. This mode is the genuinely light baseline: cue counting
 // through the existing light poll, no snapshot, no pixels, no images, no disk.
 const LIGHT_ONLY = process.env.AUDIT_LIGHT === '1';
+// Both modes defaulted to the same directory, so a light-baseline.json and an
+// instrumented summary.json could land side by side unless AUDIT_OUT was
+// explicitly given different values - an open invitation to compare one
+// mode's artefact against the other's as if they were the same measurement,
+// which is exactly the invalid single-point comparison already withdrawn
+// once. Not fixable with a label: a hand-written note on a generated file
+// gets deleted by that same file's next ordinary run. Separating the
+// defaults removes the invitation structurally instead.
+const OUT_DIR = process.env.AUDIT_OUT || (LIGHT_ONLY ? 'autoplay-audit-light' : 'autoplay-audit');
 const BOARD_SIZE = 8;
 const CLASSIFY_TOLERANCE = 40;
 
