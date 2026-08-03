@@ -131,27 +131,42 @@ function gridMismatches(rendered, logical) {
   return out;
 }
 
-// Unlike gridMismatches (used at rest, where every cell must be resolvable
-// and a null classification already counts as wrong), a mid-animation frame
-// can legitimately land its pixel sample between cells or on background - a
-// null cell there means "gem in flight, no information", not a mismatch.
-// Only a CONFIDENT disagreement (both sides classified, and they differ)
-// counts. excludeCells lets the caller exclude cells already known to be
-// legitimately different at this instant (e.g. the pair mid-swap) so this
-// only speaks to cells that should NOT be changing right now.
-function confidentMismatches(rendered, logical, excludeCells = []) {
-  const excluded = new Set(excludeCells.map((c) => `${c.row},${c.col}`));
-  const out = [];
+// Examiner correction: naive rendered-vs-logical disagreement fires on every
+// swap frame by design (the two cells mid-transit ARE different from the
+// pre-move board) and means nothing on its own. What's actually checkable is
+// the SHAPE of the disagreement: an ordinary in-flight swap disagrees with
+// the pre-move board at EXACTLY two cells, those two are orthogonally
+// adjacent, and each now holds the other's pre-move value. Anything that
+// doesn't match that shape - more than two cells disagreeing, or two that
+// aren't adjacent, or adjacent cells that don't show a clean exchange - is a
+// candidate worth a human look; matching the shape is an ordinary swap in
+// flight, not a finding.
+//
+// A mid-transit gem can sample as unclassifiable (null) - between cells or
+// on background. That's treated as INCONCLUSIVE, not a disagreement and not
+// a signature mismatch: fewer than two classified disagreements (0 or 1)
+// means there isn't enough information yet to judge this frame either way,
+// not that something is wrong.
+function swapSignatureCheck(rendered, logical) {
+  const disagreements = [];
   for (let row = 0; row < logical.length; row++) {
     for (let col = 0; col < logical.length; col++) {
-      if (excluded.has(`${row},${col}`)) continue;
       const r = rendered[row][col];
       const l = logical[row][col];
-      if (r === null || l === null) continue;
-      if (r !== l) out.push({ row, col, rendered: r, logical: l });
+      if (r === null) continue;
+      if (r !== l) disagreements.push({ row, col, rendered: r, logical: l });
     }
   }
-  return out;
+  if (disagreements.length < 2) {
+    return { verdict: 'INCONCLUSIVE', disagreements };
+  }
+  if (disagreements.length > 2) {
+    return { verdict: 'ANOMALY', disagreements };
+  }
+  const [a, b] = disagreements;
+  const adjacent = Math.abs(a.row - b.row) + Math.abs(a.col - b.col) === 1;
+  const exchanged = a.rendered === b.logical && b.rendered === a.logical;
+  return { verdict: adjacent && exchanged ? 'MATCHES_SWAP' : 'ANOMALY', disagreements };
 }
 
 // ---------------------------------------------------------------------------
@@ -280,7 +295,7 @@ const PULSE = () => {
 // same class of read already found heavy enough to suppress events at rest,
 // now on every captured frame instead of twice per move) - not added
 // lightly, and its output must be validated against known-good moves before
-// being trusted as a detector (see confidentMismatches below).
+// being trusted as a detector (see swapSignatureCheck below).
 const FRAME = ({ size }) => {
   const g = window.MagicGems;
   const canvas = document.getElementById('board');
@@ -456,22 +471,32 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
       endedAt: after.t,
       durationMs: after.t - before.t,
       screenshots: { before: 'before.png', after: 'after.png' },
-      // confidentMismatchesOutsidePair: only computed for 'swap'-phase
-      // frames, since that's the only phase where exactly two cells (the
-      // attempted pair) are expected to be changing and everything else on
-      // the board should still match the pre-commit board exactly. Cascade/
-      // revive frames legitimately move many more cells and aren't in scope
-      // here. This has NOT yet been validated against known-good moves for
-      // a false-positive rate - do not treat a hit as a confirmed defect
-      // without that check (examiner directive).
+      // swapSignature: only computed for 'swap'-phase frames, since that's
+      // the only phase where exactly two adjacent cells are expected to be
+      // exchanging values and everything else should still match the
+      // pre-commit board exactly. Cascade/revive frames legitimately move
+      // many more cells and aren't in scope here. phasePosition (early/mid/
+      // late within this move's own swap frames) lets a cluster specifically
+      // at the midpoint be recognised as a sampling artifact rather than
+      // misread as a defect cluster (examiner directive). This has NOT yet
+      // been validated against known-good moves for its own false-positive
+      // rate at the time this comment was written - see the commit history
+      // for whether that measurement has since confirmed it.
       frames: frames.map((f, i) => {
         const base = { file: `frame-${String(i).padStart(3, '0')}-${frameLabel(f)}.png`, t: f.t, phase: f.phase, animating: f.animating };
-        if (f.phase === 'swap' && f.cellPixels && moveCheck.selection && moveCheck.target) {
-          base.confidentMismatchesOutsidePair = confidentMismatches(
-            renderedGrid(f.cellPixels, palette),
-            before.board,
-            [moveCheck.selection, moveCheck.target]
-          );
+        if (f.phase === 'swap' && f.cellPixels) {
+          const swapIndices = frames.map((g, gi) => (g.phase === 'swap' ? gi : -1)).filter((gi) => gi >= 0);
+          const posInSwap = swapIndices.indexOf(i);
+          const swapFrameCount = swapIndices.length;
+          const phasePosition =
+            swapFrameCount <= 1
+              ? 'only'
+              : posInSwap < swapFrameCount / 3
+              ? 'early'
+              : posInSwap < (2 * swapFrameCount) / 3
+              ? 'mid'
+              : 'late';
+          base.swapSignature = { ...swapSignatureCheck(renderedGrid(f.cellPixels, palette), before.board), phasePosition };
         }
         return base;
       }),
@@ -519,16 +544,20 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
   const revivals = moves.filter((m) => m.revived).length;
   const spans = moves.filter((m) => Number.isFinite(m.durationMs) && m.durationMs > 0);
   const secondsPerMove = spans.length ? spans.reduce((n, m) => n + m.durationMs, 0) / spans.length / 1000 : null;
-  // NOT a defect count - a false-positive-rate measurement input. Must be
-  // checked against known-good moves before this comparison is trusted as a
-  // detector (examiner directive) - see confidentMismatches's own comment.
-  const swapFramesChecked = moves.reduce((n, m) => n + m.frames.filter((f) => f.confidentMismatchesOutsidePair).length, 0);
-  const swapFramesWithConfidentMismatch = moves.reduce(
-    (n, m) => n + m.frames.filter((f) => f.confidentMismatchesOutsidePair && f.confidentMismatchesOutsidePair.length > 0).length,
+  // NOT a defect count on its own - a false-positive-rate measurement input
+  // until checked against known-good moves (examiner directive) - see
+  // swapSignatureCheck's own comment.
+  const swapFramesChecked = moves.reduce((n, m) => n + m.frames.filter((f) => f.swapSignature).length, 0);
+  const swapFramesInconclusive = moves.reduce(
+    (n, m) => n + m.frames.filter((f) => f.swapSignature && f.swapSignature.verdict === 'INCONCLUSIVE').length,
     0
   );
-  const movesWithAConfidentMismatch = moves.filter((m) =>
-    m.frames.some((f) => f.confidentMismatchesOutsidePair && f.confidentMismatchesOutsidePair.length > 0)
+  const swapFramesAnomalous = moves.reduce(
+    (n, m) => n + m.frames.filter((f) => f.swapSignature && f.swapSignature.verdict === 'ANOMALY').length,
+    0
+  );
+  const movesWithAnAnomalousSwapFrame = moves.filter((m) =>
+    m.frames.some((f) => f.swapSignature && f.swapSignature.verdict === 'ANOMALY')
   ).length;
 
   await writeFile(
@@ -549,11 +578,12 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
         secondsPerMove,
         framesNotYetReviewed: frameCount,
         atRestFailingMoves: atRestFailures.map((f) => f.move),
-        // Unvalidated detector - see the note on confidentMismatches and the
+        // Unvalidated detector - see the note on swapSignatureCheck and the
         // computation above. Not evidence of a defect on its own.
-        swapFramesCheckedForConfidentMismatch: swapFramesChecked,
-        swapFramesWithConfidentMismatch,
-        movesWithAConfidentMismatch,
+        swapFramesChecked,
+        swapFramesInconclusive,
+        swapFramesAnomalous,
+        movesWithAnAnomalousSwapFrame,
       },
       null,
       2
@@ -610,8 +640,8 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
   }
   console.log(`  moves that included a board revival: ${revivals}${revivals ? '' : '  <- revive path NOT covered by this run'}`);
   if (swapFramesChecked > 0) {
-    console.log(`  swap frames checked for a confident rendered-vs-logical disagreement outside the attempted pair: ${swapFramesChecked}`);
-    console.log(`    ^ UNVALIDATED as a detector - ${swapFramesWithConfidentMismatch} frame(s) across ${movesWithAConfidentMismatch} move(s) flagged. Do not treat a hit as a confirmed defect until this has been measured against known-good moves for its own false-positive rate.`);
+    console.log(`  swap frames checked against the ordinary-swap signature: ${swapFramesChecked} (${swapFramesInconclusive} inconclusive - mid-transit sample unclassifiable)`);
+    console.log(`    ^ UNVALIDATED as a detector - ${swapFramesAnomalous} frame(s) across ${movesWithAnAnomalousSwapFrame} move(s) didn't match the ordinary two-cell-exchange shape. Do not treat a hit as a confirmed defect until this has been measured against known-good moves for its own false-positive rate.`);
   }
   console.log(`  per-move screenshots and records: ${outDir}/`);
   console.log(`  browsable filmstrip: ${outDir}/index.html\n`);
