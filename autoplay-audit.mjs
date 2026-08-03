@@ -55,6 +55,18 @@ const EXPECTED_SWAP_FRAME_COUNT = Math.ceil(EXPECTED_SWAP_DURATION_MS / FRAME_MS
 // cutoff - anything at or beyond this sits closer to a doubled phase than a
 // normal one.
 const DOUBLED_SWAP_FRAME_THRESHOLD = EXPECTED_SWAP_FRAME_COUNT * 1.5;
+// Examiner amendment: the SPAN between a move's first and last swap-frame
+// timestamp is the PRIMARY signal, frame count above only a secondary/
+// diagnostic one - span is anchored to EXPECTED_SWAP_DURATION_MS itself
+// (a source constant), while frame count is anchored to capture cadence and
+// so is corrupted by a capture stall (drops frames from the middle without
+// shortening the real animation). Confirmed against the 150-move
+// calibration data: a stalled capture produced an anomalously low frame
+// count but a normal span, correctly staying unflagged. Threshold derived
+// from the constant directly, not from any one run's observed range, so it
+// doesn't silently need recalibrating if capture cadence or the constant
+// itself ever changes.
+const DOUBLED_SWAP_SPAN_THRESHOLD_MS = EXPECTED_SWAP_DURATION_MS * 1.5;
 const CAPTURE_FRAMES = process.env.AUDIT_FRAMES !== '0';
 // AUDIT_FRAMES=0 was mislabelled "uninstrumented": it gates only the
 // mid-animation frame reads, while every move still ran a 64-cell pixel read, a
@@ -482,6 +494,11 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
     }
 
     const swapIndices = frames.map((g, gi) => (g.phase === 'swap' ? gi : -1)).filter((gi) => gi >= 0);
+    // A move with fewer than 2 swap frames has no meaningful span - UNMEASURED
+    // is a real third outcome here, not folded into NORMAL by an absent or
+    // zero value (examiner directive).
+    const swapSpanMs = swapIndices.length >= 2 ? frames[swapIndices[swapIndices.length - 1]].t - frames[swapIndices[0]].t : null;
+    const swapSpanVerdict = swapSpanMs === null ? 'UNMEASURED' : swapSpanMs >= DOUBLED_SWAP_SPAN_THRESHOLD_MS ? 'FLAGGED' : 'NORMAL';
 
     const record = {
       move: index,
@@ -490,12 +507,15 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
       endedAt: after.t,
       durationMs: after.t - before.t,
       screenshots: { before: 'before.png', after: 'after.png' },
-      // swapFrameCount/swapFrameCountAnomalous: classification-free companion
-      // to swapSignature below - counts phases rather than reading pixels,
-      // so mid-transit sampling ambiguity can't defeat it. A reverted swap
-      // (buildQueue pushes a second, reversing swap phase for an unmatched
-      // commit - see main.js) should produce roughly double an ordinary
-      // single phase's frame count.
+      // swapSpanMs/swapSpanVerdict: PRIMARY classification-free signal for a
+      // reverted swap (buildQueue pushes a second, reversing swap phase only
+      // for an unmatched commit - see main.js). Anchored to
+      // EXPECTED_SWAP_DURATION_MS itself, so unlike frame count it survives
+      // a capture stall (drops frames from the middle without shortening the
+      // real animation). swapFrameCount is kept as a secondary/diagnostic
+      // figure alongside, not the primary signal.
+      swapSpanMs,
+      swapSpanVerdict,
       swapFrameCount: swapIndices.length,
       swapFrameCountAnomalous: swapIndices.length >= DOUBLED_SWAP_FRAME_THRESHOLD,
       // swapSignature: only computed for 'swap'-phase frames, since that's
@@ -602,6 +622,10 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
     }
   }
   const movesWithAnomalousSwapFrameCount = moves.filter((m) => m.swapFrameCountAnomalous).length;
+  // Primary classification-free signal (span), with frame count kept only as
+  // a secondary/diagnostic figure alongside it (examiner amendment).
+  const movesWithUnmeasuredSwapSpan = moves.filter((m) => m.swapSpanVerdict === 'UNMEASURED').length;
+  const movesWithFlaggedSwapSpan = moves.filter((m) => m.swapSpanVerdict === 'FLAGGED').length;
 
   await writeFile(
     join(outDir, 'summary.json'),
@@ -612,7 +636,7 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
     // problem the light-baseline artefact had, one file over.
     JSON.stringify(
       {
-        schemaVersion: 4,
+        schemaVersion: 5,
         generatedAt: new Date().toISOString(),
         movesAudited: moves.length,
         atRestFailures: atRestFailures.length,
@@ -633,8 +657,16 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
         swapFramesAnomalous,
         swapSignaturesByPhasePosition,
         movesWithAnAnomalousSwapFrame,
-        // Classification-free companion, not subject to the phase-position
-        // gap above: counts phases rather than pixels. See EXPECTED_SWAP_FRAME_COUNT.
+        // PRIMARY classification-free signal - anchored to
+        // EXPECTED_SWAP_DURATION_MS itself, survives a capture stall where
+        // frame count would not (examiner amendment). movesWithUnmeasuredSwapSpan
+        // covers moves with fewer than 2 swap frames (no meaningful span),
+        // a real third outcome, not folded into "normal".
+        movesWithUnmeasuredSwapSpan,
+        movesWithFlaggedSwapSpan,
+        // Secondary/diagnostic companion to the span figures above - counts
+        // phases rather than pixels, but corrupted by a capture stall in a
+        // way span is not. See EXPECTED_SWAP_FRAME_COUNT.
         movesWithAnomalousSwapFrameCount,
       },
       null,
@@ -696,7 +728,8 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
     console.log(`    by phase position (conclusive/inconclusive): early ${swapSignaturesByPhasePosition.early.conclusive}/${swapSignaturesByPhasePosition.early.inconclusive}, mid ${swapSignaturesByPhasePosition.mid.conclusive}/${swapSignaturesByPhasePosition.mid.inconclusive}, late ${swapSignaturesByPhasePosition.late.conclusive}/${swapSignaturesByPhasePosition.late.inconclusive}`);
     console.log(`    ^ REQUIRED reading alongside the anomaly count below, not optional: this check has only ever concluded anything in "late" - a reverted swap ends where it began and looks identical to a settled swap by then, so a near-zero anomaly rate says nothing about whether this check could catch one.`);
     console.log(`  swap frames not matching the ordinary two-cell-exchange shape: ${swapFramesAnomalous} across ${movesWithAnAnomalousSwapFrame} move(s) - do not treat a hit as a confirmed defect without a human look`);
-    console.log(`  moves whose swap-phase frame count sits near double the expected single-phase band (~${EXPECTED_SWAP_FRAME_COUNT}): ${movesWithAnomalousSwapFrameCount} - classification-free, not subject to the phase-position gap above`);
+    console.log(`  swap-phase span vs expected single-phase duration (~${EXPECTED_SWAP_DURATION_MS}ms): ${movesWithFlaggedSwapSpan} flagged, ${movesWithUnmeasuredSwapSpan} unmeasured (fewer than 2 swap frames) - PRIMARY classification-free signal, survives a capture stall`);
+    console.log(`  moves whose swap-phase frame count sits near double the expected single-phase band (~${EXPECTED_SWAP_FRAME_COUNT}): ${movesWithAnomalousSwapFrameCount} - secondary/diagnostic only, corrupted by a capture stall in a way span is not`);
   }
   console.log(`  per-move screenshots and records: ${outDir}/`);
   console.log(`  browsable filmstrip: ${outDir}/index.html\n`);

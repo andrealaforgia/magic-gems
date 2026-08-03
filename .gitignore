@@ -1,7 +1,9 @@
 .relay/
 node_modules/
 .stryker-tmp/
-autoplay-audit/
-autoplay-audit-headed/
-autoplay-audit-calib/
-autoplay-audit-light/
+# Wildcard, not four (now five) individually-named entries: a validation
+# run's own output dir (autoplay-audit-validate/) was already lost once as
+# untracked clutter because a custom AUDIT_OUT value has to be added here by
+# hand before it's covered - any future custom name is covered from its
+# first run instead of after something notices it's missing.
+autoplay-audit*/
