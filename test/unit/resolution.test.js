@@ -818,6 +818,27 @@ test('tryReviveByAdjacentPairEscalation: changedCells fully reconciles with the 
   assert.equal(hasAnyValidMove(result.board), true);
 });
 
+// Reaper-flagged gap: reconciling changedCells against the resulting board
+// (above) can't catch a PHANTOM entry - one reporting a cell as changed to
+// a type it already held, which is a no-op that leaves the board identical
+// either way and so is invisible to a pure content-equality check. Every
+// reported entry must be a real change from the original.
+test('tryReviveByAdjacentPairEscalation: every changedCells entry is a real change, never a phantom no-op', () => {
+  const stuck = buildStuckBoardRequiringPairEscalation();
+  const TRIALS = 300;
+  for (let i = 0; i < TRIALS; i++) {
+    const result = tryReviveByAdjacentPairEscalation(stuck);
+    assert.ok(result, `expected a two-cell revive to be found on trial ${i}`);
+    for (const { row, col, gemType } of result.changedCells) {
+      assert.notEqual(
+        stuck[row][col],
+        gemType,
+        `trial ${i}: changedCells reported (${row},${col}) as changed to ${gemType}, but it already held that type`
+      );
+    }
+  }
+});
+
 test('tryReviveByAdjacentPairEscalation: both changed gems share the same type, and one is adjacent to an unchanged reference of it (SPEC 8.3.2)', () => {
   const stuck = buildStuckBoardRequiringPairEscalation();
   const result = tryReviveByAdjacentPairEscalation(stuck);
