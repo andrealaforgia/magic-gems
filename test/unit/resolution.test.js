@@ -728,59 +728,79 @@ test('tryReviveByAdjacentPair: the changed cell forms an adjacent same-type pair
   );
 });
 
-// Examiner correction: randomness isn't visible in a single event, and
-// merely seeing MORE THAN ONE outcome doesn't rule out a shuffle biased
-// toward just a couple of positions - a fixed top-left scan would satisfy a
-// weaker check too, always returning the SAME pair. This requires every
-// reachable single-neighbour position (independently enumerated below,
-// against production's own hasMatch/hasAnyValidMove - the property under
-// test here is reachability, not the adjacency definition, which is policed
-// independently above) to actually turn up.
-function allSingleNeighborChangedPositions(board) {
+// Examiner correction (twice over): randomness isn't visible in a single
+// event, but neither "more than one outcome across 50 trials" nor "every
+// reachable outcome turns up" actually pins the property that matters -
+// both can pass a shuffle that's biased, just not biased to the point of
+// starving a position entirely. The property that matters is BIAS itself,
+// checked against its true null - which on this fixture is NOT a flat 1/K,
+// nor simply proportional to each position's raw count of valid reference/
+// neighbour pairs (an earlier version of this test assumed that and was
+// itself measurably wrong, confirmed against a 50,000-trial sample). The
+// search is two independent random choices, not one flat pool: first WHICH
+// reference (uniform among references that have any valid neighbour at
+// all, regardless of how many), THEN which of THAT reference's own valid
+// neighbours (uniform among just its own). A reference with four valid
+// neighbours does not make any one of them four times as likely - it makes
+// each of its own four equally likely, same as a reference with only one.
+function expectedProportionsByReferenceThenNeighbor(board) {
   const size = board.length;
-  const positions = new Set();
+  const successfulReferences = [];
   for (const ref of allCells(size)) {
     const gemType = board[ref.row][ref.col];
+    const validNeighbors = [];
     for (const neighbor of orthogonalNeighbors(size, ref.row, ref.col)) {
       if (board[neighbor.row][neighbor.col] === gemType) continue;
       const candidate = board.map((r) => r.slice());
       candidate[neighbor.row][neighbor.col] = gemType;
-      if (!hasMatch(candidate) && hasAnyValidMove(candidate)) {
-        positions.add(`${neighbor.row},${neighbor.col}`);
-      }
+      if (!hasMatch(candidate) && hasAnyValidMove(candidate)) validNeighbors.push(`${neighbor.row},${neighbor.col}`);
+    }
+    if (validNeighbors.length > 0) successfulReferences.push(validNeighbors);
+  }
+  const proportions = new Map();
+  for (const validNeighbors of successfulReferences) {
+    const shareOfThisReference = 1 / successfulReferences.length / validNeighbors.length;
+    for (const key of validNeighbors) {
+      proportions.set(key, (proportions.get(key) || 0) + shareOfThisReference);
     }
   }
-  return positions;
+  return proportions;
 }
 
-test('tryReviveByAdjacentPair genuinely randomizes which cell it revives, reaching every reachable position, not a fixed scan order', () => {
+test('tryReviveByAdjacentPair selects among reachable positions in proportion to how the reference/neighbour search actually reaches each, not a fixed scan or a biased shuffle (SPEC 8.3)', () => {
   const stuck = buildStuckBoard();
-  const expected = allSingleNeighborChangedPositions(stuck);
-  const reachableCount = expected.size;
-  assert.ok(reachableCount > 1, 'sanity: this fixture must have more than one reachable single-neighbour solution');
+  const expected = expectedProportionsByReferenceThenNeighbor(stuck);
+  assert.ok(expected.size > 1, 'sanity: this fixture must have more than one reachable single-neighbour solution');
 
-  // Examiner correction: a hand-picked trial count is a coupon-collector
-  // problem in disguise - seeing all K reachable outcomes takes on the order
-  // of K*ln(K) trials, not K, and a number picked without reference to K can
-  // fail intermittently for reasons that have nothing to do with the code.
-  // Deriving the count from the independently-computed K instead keeps this
-  // safe (and self-scaling) rather than probabilistically flaky: the union
-  // bound puts the chance that ANY one of K equally-likely outcomes is still
-  // missing after K*(ln(K) + 30) trials below e^-30 (~1e-13).
-  const TRIALS = Math.ceil(reachableCount * (Math.log(reachableCount) + 30));
-
-  const seenChangedPositions = new Set();
+  const TRIALS = 5000;
+  const observedCounts = new Map();
   for (let i = 0; i < TRIALS; i++) {
     const result = tryReviveByAdjacentPair(stuck);
     assert.ok(result, 'expected a solution on every trial for this fixture');
     const [changed] = result.changedCells;
-    seenChangedPositions.add(`${changed.row},${changed.col}`);
+    const key = `${changed.row},${changed.col}`;
+    observedCounts.set(key, (observedCounts.get(key) || 0) + 1);
   }
+
   assert.deepEqual(
-    seenChangedPositions,
-    expected,
-    `expected every reachable position to turn up across ${TRIALS} trials from the identical board; saw ${[...seenChangedPositions]}, expected ${[...expected]}`
+    [...observedCounts.keys()].sort(),
+    [...expected.keys()].sort(),
+    'every independently-derived reachable position must actually turn up, and nothing else'
   );
+
+  // Tolerance: 6 standard errors of a binomial proportion at this sample
+  // size - astronomically unlikely to reject correct behaviour by chance
+  // (roughly 1e-9 per position under the normal approximation) while still
+  // catching a real bias, which shifts a proportion far more than that.
+  for (const [key, expectedProportion] of expected) {
+    const observedProportion = (observedCounts.get(key) || 0) / TRIALS;
+    const standardError = Math.sqrt((expectedProportion * (1 - expectedProportion)) / TRIALS);
+    const tolerance = 6 * standardError;
+    assert.ok(
+      Math.abs(observedProportion - expectedProportion) <= tolerance,
+      `position ${key}: expected ~${(expectedProportion * 100).toFixed(1)}% (its share of valid reference/neighbour pairs), observed ${(observedProportion * 100).toFixed(1)}% across ${TRIALS} trials - outside the +/-${(tolerance * 100).toFixed(1)}pp tolerance`
+    );
+  }
 });
 
 test('the escalation fixture genuinely has no single-neighbour solution, forcing real escalation', () => {
