@@ -869,10 +869,10 @@ test('tryReviveByAdjacentPairEscalation: changedCells fully reconciles with the 
   const stuck = buildStuckBoardRequiringPairEscalation();
   const result = tryReviveByAdjacentPairEscalation(stuck);
   assert.ok(result, 'expected a two-cell revive to be found');
-  assert.equal(result.changedCells.length, 2);
+  assert.equal(result.changedCells.length, 2, 'expected exactly two changed cells');
   assert.deepEqual(applyChanges(stuck, result.changedCells), result.board, 'changedCells must fully account for the diff from the original board');
-  assert.equal(hasMatch(result.board), false);
-  assert.equal(hasAnyValidMove(result.board), true);
+  assert.equal(hasMatch(result.board), false, 'the revived board must not itself contain an immediate match');
+  assert.equal(hasAnyValidMove(result.board), true, 'the revived board must have at least one valid move');
 });
 
 // Reaper-flagged gap: reconciling changedCells against the resulting board
