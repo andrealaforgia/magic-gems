@@ -29,7 +29,7 @@
 //
 // Development only; never part of a deployment.
 import { chromium } from 'playwright';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadavg } from 'node:os';
@@ -102,6 +102,31 @@ function checkHandSyncedConstants() {
     }
   }
   return failures;
+}
+
+// A default output directory shared across separate invocations already mixed
+// two runs' files once: the newer run's move-NNN/ directories and summary.json
+// landed next to the older run's leftovers, and a stale figure from that
+// leftover was read as current and quoted onward. Refusing to write into a
+// directory that already holds something - rather than silently adding to it -
+// removes that failure mode structurally instead of relying on someone
+// noticing mismatched timestamps after the fact.
+async function outputDirIsDirty(dir) {
+  let entries;
+  try {
+    entries = await readdir(dir);
+  } catch (err) {
+    if (err.code === 'ENOENT') return false;
+    throw err;
+  }
+  if (entries.length === 0) return false;
+  if (process.env.AUDIT_ALLOW_DIRTY_OUTPUT === '1') {
+    console.log(`  ${dir} already has ${entries.length} entries from a prior run - proceeding anyway (AUDIT_ALLOW_DIRTY_OUTPUT=1).\n`);
+    return false;
+  }
+  console.error(`REFUSING TO RUN: ${dir} already has ${entries.length} entries from a prior run.`);
+  console.error(`Writing into it would risk mixing this run's files with the leftovers. Move or delete ${dir}, pick a fresh AUDIT_OUT, or set AUDIT_ALLOW_DIRTY_OUTPUT=1 to proceed anyway.`);
+  return true;
 }
 
 const CAPTURE_FRAMES = process.env.AUDIT_FRAMES !== '0';
@@ -790,6 +815,10 @@ async function main() {
   console.log('self-test: audit rules reject what they should\n');
   if (process.argv.includes('--self-test')) return;
 
+  if (await outputDirIsDirty(OUT_DIR)) {
+    process.exitCode = 1;
+    return;
+  }
   await mkdir(OUT_DIR, { recursive: true });
   // The one difference never closed all week is that every instrument has run
   // in an automated browser while the defect was reported from a real one. An
