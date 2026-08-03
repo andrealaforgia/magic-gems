@@ -590,6 +590,45 @@ test('hasUnchangedAdjacentReferenceOfType is false when no unchanged neighbour h
   assert.equal(hasUnchangedAdjacentReferenceOfType(board, [changed], changed), false);
 });
 
+// QA-flagged gap: this file keeps its own independent orthogonalNeighborsOf
+// rather than importing production's orthogonalNeighbors (deliberately - the
+// examiner withdrew a suggestion to consolidate them, since a test using
+// production's own adjacency definition would police the requirement
+// against production's own mistake and pass regardless). Independence only
+// pays for itself if THIS copy is exhaustively tested too, the same as the
+// production one above - otherwise the two can drift apart unnoticed.
+test('orthogonalNeighborsOf (the test file\'s own independent copy) returns exactly the 2 correct neighbours for the top-left corner', () => {
+  const size = 5;
+  assert.deepEqual(
+    sortedCells(orthogonalNeighborsOf(size, 0, 0)),
+    sortedCells([{ row: 0, col: 1 }, { row: 1, col: 0 }])
+  );
+});
+
+test('orthogonalNeighborsOf (the test file\'s own independent copy) returns exactly the 2 correct neighbours for the bottom-right corner', () => {
+  const size = 5;
+  assert.deepEqual(
+    sortedCells(orthogonalNeighborsOf(size, 4, 4)),
+    sortedCells([{ row: 3, col: 4 }, { row: 4, col: 3 }])
+  );
+});
+
+test('orthogonalNeighborsOf (the test file\'s own independent copy) returns exactly the 3 correct neighbours for a left-edge cell', () => {
+  const size = 5;
+  assert.deepEqual(
+    sortedCells(orthogonalNeighborsOf(size, 2, 0)),
+    sortedCells([{ row: 1, col: 0 }, { row: 3, col: 0 }, { row: 2, col: 1 }])
+  );
+});
+
+test('orthogonalNeighborsOf (the test file\'s own independent copy) returns exactly the 4 correct neighbours for an interior cell', () => {
+  const size = 5;
+  assert.deepEqual(
+    sortedCells(orthogonalNeighborsOf(size, 2, 2)),
+    sortedCells([{ row: 1, col: 2 }, { row: 3, col: 2 }, { row: 2, col: 1 }, { row: 2, col: 3 }])
+  );
+});
+
 // Reaper-flagged gap: shuffled's own defensive copy was unproven.
 test('shuffled returns a new array without mutating or aliasing its input', () => {
   const input = [0, 1, 2, 3, 4];
