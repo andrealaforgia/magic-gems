@@ -862,6 +862,14 @@ test('tryReviveByAdjacentPairEscalation: changedCells fully reconciles with the 
 // a type it already held, which is a no-op that leaves the board identical
 // either way and so is invisible to a pure content-equality check. Every
 // reported entry must be a real change from the original.
+//
+// This is not just a reporting-accuracy nicety: since rotatingCells was
+// removed and changedCells alone now drives both what changed and what the
+// renderer spins, THIS is the only test guarding against an unchanged gem
+// visibly spinning - the exact defect this whole investigation built,
+// reverted, and closed once already (the "both rotate" inversion), arriving
+// again through a different door if this ever regresses. Do not remove this
+// for looking minor.
 test('tryReviveByAdjacentPairEscalation: every changedCells entry is a real change, never a phantom no-op', () => {
   const stuck = buildStuckBoardRequiringPairEscalation();
   const TRIALS = 300;
