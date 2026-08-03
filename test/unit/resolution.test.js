@@ -74,9 +74,8 @@ function sortedCells(cells) {
   return [...cells].sort((a, b) => a.row - b.row || a.col - b.col);
 }
 
-test('applySwap exchanges exactly the two given cells and leaves the rest untouched', () => {
+test('applySwap exchanges exactly the two given cells\' values', () => {
   const board = buildMatchFreeBoard();
-  const before = JSON.stringify(board);
   const a = { row: 2, col: 3 };
   const b = { row: 2, col: 4 };
   const originalA = board[a.row][a.col];
@@ -86,7 +85,21 @@ test('applySwap exchanges exactly the two given cells and leaves the rest untouc
 
   assert.equal(swapped[a.row][a.col], originalB);
   assert.equal(swapped[b.row][b.col], originalA);
-  assert.equal(JSON.stringify(board), before, 'applySwap must not mutate its input');
+});
+
+test('applySwap does not mutate its input board', () => {
+  const board = buildMatchFreeBoard();
+  const before = JSON.stringify(board);
+  applySwap(board, { row: 2, col: 3 }, { row: 2, col: 4 });
+  assert.equal(JSON.stringify(board), before);
+});
+
+test('applySwap leaves every cell other than the two given untouched', () => {
+  const board = buildMatchFreeBoard();
+  const a = { row: 2, col: 3 };
+  const b = { row: 2, col: 4 };
+
+  const swapped = applySwap(board, a, b);
 
   for (let row = 0; row < SIZE; row++) {
     for (let col = 0; col < SIZE; col++) {
@@ -847,6 +860,11 @@ test('the escalation fixture genuinely has no single-neighbour solution, forcing
   assert.equal(tryReviveByAdjacentPair(stuck), null);
 });
 
+// Kept alongside the many-trial stress version further below rather than
+// merged into it: this is the fast single-shot smoke check for the
+// property (readable in isolation, fails fast on a basic regression); the
+// 300-trial version exists specifically to surface the rare cross-candidate
+// corruption case this one is very unlikely to ever hit on its own.
 test('tryReviveByAdjacentPairEscalation: changedCells fully reconciles with the returned board and is legal (SPEC 8.3.2)', () => {
   const stuck = buildStuckBoardRequiringPairEscalation();
   const result = tryReviveByAdjacentPairEscalation(stuck);
@@ -886,20 +904,25 @@ test('tryReviveByAdjacentPairEscalation: every changedCells entry is a real chan
   }
 });
 
-test('tryReviveByAdjacentPairEscalation: both changed gems share the same type, and one is adjacent to an unchanged reference of it (SPEC 8.3.2)', () => {
+// Both changed gems must share the SAME type as each other - the Owner's
+// "a further gem becomes that same type too", never two independent
+// arbitrary substitutions.
+test('tryReviveByAdjacentPairEscalation: both changed gems share the same type (SPEC 8.3.2)', () => {
   const stuck = buildStuckBoardRequiringPairEscalation();
   const result = tryReviveByAdjacentPairEscalation(stuck);
   assert.ok(result);
-
-  // Both changed gems must share the SAME type as each other - the Owner's
-  // "a further gem becomes that same type too", never two independent
-  // arbitrary substitutions. Only the neighbour transformation needs to be
-  // adjacent to an unchanged reference gem of that type; the further gem is
-  // placed wherever legality requires, with no adjacency requirement on it
-  // (examiner correction - asserting adjacency there would be wrong for a
-  // correct implementation).
   const [first, second] = result.changedCells;
   assert.equal(first.gemType, second.gemType, 'both changed gems must share the same type');
+});
+
+// Only the neighbour transformation needs to be adjacent to an unchanged
+// reference gem of that type; the further gem is placed wherever legality
+// requires, with no adjacency requirement on it (examiner correction -
+// asserting adjacency there would be wrong for a correct implementation).
+test('tryReviveByAdjacentPairEscalation: the neighbour transformation is adjacent to an unchanged reference of its type (SPEC 8.3.2)', () => {
+  const stuck = buildStuckBoardRequiringPairEscalation();
+  const result = tryReviveByAdjacentPairEscalation(stuck);
+  assert.ok(result);
   const oneIsAdjacentToAnUnchangedReference = result.changedCells.some((changed) =>
     hasUnchangedAdjacentReferenceOfType(stuck, result.changedCells, changed)
   );
@@ -932,18 +955,22 @@ test('tryReviveByAdjacentPairEscalation stays internally consistent across many 
   }
 });
 
-test('ensurePlayable delegates to the minimal single-cell revive when one exists, never falling through to a larger fallback (SPEC 8.3)', () => {
+// This fixture is known solvable with one cell - the length itself is what
+// would catch an orchestration bug that falls through to a larger,
+// non-minimal fallback even though the smallest pass already succeeded.
+// The changed cell's own adjacency/type/legality properties are already
+// proven directly against tryReviveByAdjacentPair above; re-asserting them
+// here would just be the same things twice.
+test('ensurePlayable keeps the board\'s own size and chooses the minimal single-cell revive when one exists, never falling through to a larger fallback (SPEC 8.3)', () => {
   const stuck = buildStuckBoard();
   const { board: result, changedCells } = ensurePlayable(stuck);
-
   assert.equal(result.length, stuck.length, 'must keep the board\'s own size - never replaced by a fresh reshuffle');
-  // This fixture is known solvable with one cell - the count itself is what
-  // would catch an orchestration bug that falls through to a larger,
-  // non-minimal fallback even though the smallest pass already succeeded.
-  // The changed cell's own adjacency/type/legality properties are already
-  // proven directly against tryReviveByAdjacentPair above; re-asserting them
-  // here would just be the same six things twice.
   assert.equal(changedCells.length, 1, 'expected exactly one changed cell for this fixture');
+});
+
+test('ensurePlayable\'s delegated result reconciles with its returned board (SPEC 8.3)', () => {
+  const stuck = buildStuckBoard();
+  const { board: result, changedCells } = ensurePlayable(stuck);
   assert.deepEqual(applyChanges(stuck, changedCells), result, 'changedCells must fully account for the diff from the original board');
 });
 
