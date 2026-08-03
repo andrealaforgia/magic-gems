@@ -318,6 +318,14 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
     let pending = null;
     let after = null;
     let gameCue = null;
+    // Only the FIRST cue was ever kept; how many landed in this same polling
+    // gap was computed and then discarded. The "at most one commit per gap"
+    // assumption behind reading an unjudged move off its board diff alone
+    // held on the real timing constants (POLL_MS well under
+    // AUTOPLAY_STEP_MS/SWAP_DURATION_MS), but was unwritten and unchecked per
+    // move - two different files' constants could drift without this ever
+    // noticing. Recording it turns the assumption into a checkable fact.
+    let gameCueCount = 0;
     // Revivals are rare - roughly one move in a hundred - so a short run almost
     // certainly contains none. Recording this per move keeps the audit honest
     // about what it actually covered rather than letting a clean result over
@@ -338,6 +346,7 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
       const cues = newCues.filter((cue) => COMMIT_CUES.has(cue));
       if (cues.length > 0) {
         gameCue = cues[0];
+        gameCueCount = cues.length;
         revived = newCues.includes('reshuffle');
         while (CAPTURE_FRAMES && Date.now() < deadline) {
           const f = await page.evaluate(FRAME);
@@ -373,7 +382,7 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
       // the game's own opinion gets thrown away instead of recorded. No
       // agreesWithGame here: that specifically needs a verdict to compare
       // against, which this branch by definition doesn't have.
-      moveCheck = { verdict: 'UNOBSERVED', reason: 'no selection/target pair seen before the commit', gameCue };
+      moveCheck = { verdict: 'UNOBSERVED', reason: 'no selection/target pair seen before the commit', gameCue, gameCueCount };
     } else {
       const { selection, target } = pending;
       const adjacent = isOrthogonallyAdjacent(selection, target);
@@ -391,6 +400,7 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
         // finding: either this file's rules are wrong, or the game is calling a
         // move valid that isn't.
         gameCue,
+        gameCueCount,
         agreesWithGame: gameCue === null ? null : (gameCue === 'swap') === (verdict === 'VALID'),
       };
     }
