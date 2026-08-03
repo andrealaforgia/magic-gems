@@ -131,6 +131,29 @@ function gridMismatches(rendered, logical) {
   return out;
 }
 
+// Unlike gridMismatches (used at rest, where every cell must be resolvable
+// and a null classification already counts as wrong), a mid-animation frame
+// can legitimately land its pixel sample between cells or on background - a
+// null cell there means "gem in flight, no information", not a mismatch.
+// Only a CONFIDENT disagreement (both sides classified, and they differ)
+// counts. excludeCells lets the caller exclude cells already known to be
+// legitimately different at this instant (e.g. the pair mid-swap) so this
+// only speaks to cells that should NOT be changing right now.
+function confidentMismatches(rendered, logical, excludeCells = []) {
+  const excluded = new Set(excludeCells.map((c) => `${c.row},${c.col}`));
+  const out = [];
+  for (let row = 0; row < logical.length; row++) {
+    for (let col = 0; col < logical.length; col++) {
+      if (excluded.has(`${row},${col}`)) continue;
+      const r = rendered[row][col];
+      const l = logical[row][col];
+      if (r === null || l === null) continue;
+      if (r !== l) out.push({ row, col, rendered: r, logical: l });
+    }
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // The single atomic read. Everything compared comes from this one call.
 // ---------------------------------------------------------------------------
@@ -249,16 +272,37 @@ const PULSE = () => {
 // consistent and the committed move is valid, so every at-rest check passes
 // while a person watching sees two gems exchange places for no reason.
 //
-// This captures the move itself. Only the canvas image and the phase, one call
-// each - deliberately not the 64-cell pixel read, which is what made the
-// original instrument heavy enough to suppress the events it needed to see.
-const FRAME = () => {
+// This captures the move itself. The canvas image, the phase, AND now the
+// same 64-cell pixel sample SNAPSHOT takes, so the existing rendered-vs-
+// logical machinery can run against a mid-animation frame instead of only
+// ever the two at-rest endpoints - exactly where the animated-then-reverted
+// defect class is defined to be invisible. This is real added weight (the
+// same class of read already found heavy enough to suppress events at rest,
+// now on every captured frame instead of twice per move) - not added
+// lightly, and its output must be validated against known-good moves before
+// being trusted as a detector (see confidentMismatches below).
+const FRAME = ({ size }) => {
   const g = window.MagicGems;
   const canvas = document.getElementById('board');
+  const ctx = canvas.getContext('2d');
+  const cellW = canvas.width / size;
+  const cellH = canvas.height / size;
+  const cellPixels = [];
+  for (let row = 0; row < size; row++) {
+    const rowPixels = [];
+    for (let col = 0; col < size; col++) {
+      const cx = Math.round(col * cellW + cellW / 2);
+      const cy = Math.round(row * cellH + cellH / 2);
+      const [r, gr, b, a] = ctx.getImageData(cx, cy, 1, 1).data;
+      rowPixels.push([r, gr, b, a]);
+    }
+    cellPixels.push(rowPixels);
+  }
   return {
     t: Math.round(performance.now()),
     phase: g.getAnimationPhase(),
     animating: g.isAnimating(),
+    cellPixels,
     png: canvas.toDataURL('image/png'),
   };
 };
@@ -335,7 +379,7 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
     for (;;) {
       if (Date.now() > deadline) break;
       if (CAPTURE_FRAMES) {
-        const f = await page.evaluate(FRAME);
+        const f = await page.evaluate(FRAME, { size: BOARD_SIZE });
         if (f.animating || f.phase) frames.push(f);
       }
       const s = await pulse(page);
@@ -349,7 +393,7 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
         gameCueCount = cues.length;
         revived = newCues.includes('reshuffle');
         while (CAPTURE_FRAMES && Date.now() < deadline) {
-          const f = await page.evaluate(FRAME);
+          const f = await page.evaluate(FRAME, { size: BOARD_SIZE });
           frames.push(f);
           if (!f.animating) break;
           await sleep(FRAME_MS);
@@ -412,7 +456,25 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
       endedAt: after.t,
       durationMs: after.t - before.t,
       screenshots: { before: 'before.png', after: 'after.png' },
-      frames: frames.map((f, i) => ({ file: `frame-${String(i).padStart(3, '0')}-${frameLabel(f)}.png`, t: f.t, phase: f.phase, animating: f.animating })),
+      // confidentMismatchesOutsidePair: only computed for 'swap'-phase
+      // frames, since that's the only phase where exactly two cells (the
+      // attempted pair) are expected to be changing and everything else on
+      // the board should still match the pre-commit board exactly. Cascade/
+      // revive frames legitimately move many more cells and aren't in scope
+      // here. This has NOT yet been validated against known-good moves for
+      // a false-positive rate - do not treat a hit as a confirmed defect
+      // without that check (examiner directive).
+      frames: frames.map((f, i) => {
+        const base = { file: `frame-${String(i).padStart(3, '0')}-${frameLabel(f)}.png`, t: f.t, phase: f.phase, animating: f.animating };
+        if (f.phase === 'swap' && f.cellPixels && moveCheck.selection && moveCheck.target) {
+          base.confidentMismatchesOutsidePair = confidentMismatches(
+            renderedGrid(f.cellPixels, palette),
+            before.board,
+            [moveCheck.selection, moveCheck.target]
+          );
+        }
+        return base;
+      }),
       gridBefore: before.board,
       gridAfter: after.board,
       renderedBefore,
@@ -457,6 +519,17 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
   const revivals = moves.filter((m) => m.revived).length;
   const spans = moves.filter((m) => Number.isFinite(m.durationMs) && m.durationMs > 0);
   const secondsPerMove = spans.length ? spans.reduce((n, m) => n + m.durationMs, 0) / spans.length / 1000 : null;
+  // NOT a defect count - a false-positive-rate measurement input. Must be
+  // checked against known-good moves before this comparison is trusted as a
+  // detector (examiner directive) - see confidentMismatches's own comment.
+  const swapFramesChecked = moves.reduce((n, m) => n + m.frames.filter((f) => f.confidentMismatchesOutsidePair).length, 0);
+  const swapFramesWithConfidentMismatch = moves.reduce(
+    (n, m) => n + m.frames.filter((f) => f.confidentMismatchesOutsidePair && f.confidentMismatchesOutsidePair.length > 0).length,
+    0
+  );
+  const movesWithAConfidentMismatch = moves.filter((m) =>
+    m.frames.some((f) => f.confidentMismatchesOutsidePair && f.confidentMismatchesOutsidePair.length > 0)
+  ).length;
 
   await writeFile(
     join(outDir, 'summary.json'),
@@ -467,7 +540,7 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
     // problem the light-baseline artefact had, one file over.
     JSON.stringify(
       {
-        schemaVersion: 2,
+        schemaVersion: 3,
         generatedAt: new Date().toISOString(),
         movesAudited: moves.length,
         atRestFailures: atRestFailures.length,
@@ -476,6 +549,11 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
         secondsPerMove,
         framesNotYetReviewed: frameCount,
         atRestFailingMoves: atRestFailures.map((f) => f.move),
+        // Unvalidated detector - see the note on confidentMismatches and the
+        // computation above. Not evidence of a defect on its own.
+        swapFramesCheckedForConfidentMismatch: swapFramesChecked,
+        swapFramesWithConfidentMismatch,
+        movesWithAConfidentMismatch,
       },
       null,
       2
@@ -531,6 +609,10 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
     console.log(`  pacing: ${secondsPerMove.toFixed(2)}s per move  <- compare against an uninstrumented run before trusting any DURATION read off the frames`);
   }
   console.log(`  moves that included a board revival: ${revivals}${revivals ? '' : '  <- revive path NOT covered by this run'}`);
+  if (swapFramesChecked > 0) {
+    console.log(`  swap frames checked for a confident rendered-vs-logical disagreement outside the attempted pair: ${swapFramesChecked}`);
+    console.log(`    ^ UNVALIDATED as a detector - ${swapFramesWithConfidentMismatch} frame(s) across ${movesWithAConfidentMismatch} move(s) flagged. Do not treat a hit as a confirmed defect until this has been measured against known-good moves for its own false-positive rate.`);
+  }
   console.log(`  per-move screenshots and records: ${outDir}/`);
   console.log(`  browsable filmstrip: ${outDir}/index.html\n`);
 
