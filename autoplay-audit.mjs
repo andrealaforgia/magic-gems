@@ -39,6 +39,15 @@ const TIMEOUT_MS = Number(process.env.AUDIT_TIMEOUT_MS || 180000);
 const POLL_MS = 25;
 const FRAME_MS = Number(process.env.AUDIT_FRAME_MS || 40);
 const CAPTURE_FRAMES = process.env.AUDIT_FRAMES !== '0';
+// AUDIT_FRAMES=0 was mislabelled "uninstrumented": it gates only the
+// mid-animation frame reads, while every move still ran a 64-cell pixel read, a
+// full canvas encode, a board and log copy, and two image writes to disk. So the
+// 0.97 pacing ratio measured the marginal cost of frame capture ON TOP of all
+// that, and said nothing about what the at-rest instrumentation itself costs -
+// which matters, because 4.73s per move is several times the game's own
+// animation budget. This mode is the genuinely light baseline: cue counting
+// through the existing light poll, no snapshot, no pixels, no images, no disk.
+const LIGHT_ONLY = process.env.AUDIT_LIGHT === '1';
 const BOARD_SIZE = 8;
 const CLASSIFY_TOLERANCE = 40;
 
@@ -326,6 +335,35 @@ async function main() {
   }, { size: BOARD_SIZE });
 
   await page.keyboard.press('a');
+
+  if (LIGHT_ONLY) {
+    // Nothing here reads pixels, encodes an image, copies a board or touches
+    // disk. Moves are counted from the commit cues alone.
+    const started = Date.now();
+    let seen = 0;
+    let revivals = 0;
+    let cursor = (await pulse(page)).soundLog.length;
+    while (seen < MAX_MOVES && Date.now() < deadline) {
+      const s2 = await pulse(page);
+      const fresh = s2.soundLog.slice(cursor);
+      const commits = fresh.filter((cue) => COMMIT_CUES.has(cue)).length;
+      if (commits > 0) {
+        seen += commits;
+        if (fresh.includes('reshuffle')) revivals += 1;
+        cursor = s2.soundLog.length;
+        console.log(`move ${String(seen).padStart(3, '0')}  (light: cue-counted only)`);
+      }
+      await sleep(POLL_MS);
+    }
+    const elapsed = (Date.now() - started) / 1000;
+    console.log(`\n  LIGHT BASELINE — no pixel reads, no images, no disk writes`);
+    console.log(`  moves: ${seen}, revivals: ${revivals}`);
+    console.log(`  pacing: ${(elapsed / Math.max(seen, 1)).toFixed(2)}s per move`);
+    console.log(`    ^ this is the figure an instrumented run must be compared against\n`);
+    await browser.close();
+    return;
+  }
+
   const moves = [];
 
   for (let index = 1; index <= MAX_MOVES && Date.now() < deadline; index++) {
