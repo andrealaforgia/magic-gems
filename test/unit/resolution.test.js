@@ -888,6 +888,13 @@ test('tryReviveByAdjacentPairEscalation: changedCells fully reconciles with the 
 // reverted, and closed once already (the "both rotate" inversion), arriving
 // again through a different door if this ever regresses. Do not remove this
 // for looking minor.
+//
+// Ruled on, not overlooked: this stays on live, unseeded randomness. Each
+// trial is an independent random input against the same invariant, not a
+// repeated assertion of one case - seeding would collapse that to a single
+// fixed trajectory and remove the coverage this test exists to provide. The
+// trial count is sized to a measured per-trial catch rate on this fixture,
+// not picked arbitrarily.
 test('tryReviveByAdjacentPairEscalation: every changedCells entry is a real change, never a phantom no-op', () => {
   const stuck = buildStuckBoardRequiringPairEscalation();
   const TRIALS = 300;
@@ -939,6 +946,12 @@ test('tryReviveByAdjacentPairEscalation: the neighbour transformation is adjacen
 // left behind, and this reconciliation check would catch it. Many trials
 // against a fixture dense with both valid and rejected combinations, so most
 // runs try and discard several candidates before accepting one.
+//
+// Ruled on, not overlooked: this stays on live, unseeded randomness for the
+// same reason as the phantom-entry test above - each trial is an
+// independent random input against the same invariant, not a repeated
+// assertion of one case, so seeding would collapse that to a single fixed
+// trajectory and remove the coverage this test exists to provide.
 test('tryReviveByAdjacentPairEscalation stays internally consistent across many independent searches (no cross-candidate corruption)', () => {
   const stuck = buildStuckBoardRequiringPairEscalation();
   const TRIALS = 300;
