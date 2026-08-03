@@ -452,15 +452,14 @@ async function main() {
   );
   const failures = atRestFailures;
   const unobserved = moves.filter((m) => m.checks.moveIsValid.verdict === 'UNOBSERVED').length;
+  // An unobserved move already falls into neither pass nor fail silently;
+  // the same visibility gap applies to frames that exist but have not been
+  // looked at by a person - every frame this run captured is, by
+  // definition, unreviewed the moment this summary is written.
   const frameCount = moves.reduce((n, m) => n + m.frames.length, 0);
   const revivals = moves.filter((m) => m.revived).length;
   const spans = moves.filter((m) => Number.isFinite(m.durationMs) && m.durationMs > 0);
   const secondsPerMove = spans.length ? spans.reduce((n, m) => n + m.durationMs, 0) / spans.length / 1000 : null;
-  // An unobserved move already falls into neither pass nor fail silently;
-  // the same visibility gap applies to frames that exist but have not been
-  // looked at by a person - every frame this run captured is, by definition,
-  // unreviewed the moment this summary is written.
-  const framesNotYetReviewed = moves.reduce((n, m) => n + m.frames.length, 0);
 
   await writeFile(
     join(OUT_DIR, 'summary.json'),
@@ -471,7 +470,7 @@ async function main() {
         unobservedMoves: unobserved,
         movesIncludingARevival: revivals,
         secondsPerMove,
-        framesNotYetReviewed,
+        framesNotYetReviewed: frameCount,
         atRestFailingMoves: atRestFailures.map((f) => f.move),
       },
       null,
