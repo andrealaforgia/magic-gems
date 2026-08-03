@@ -343,4 +343,7 @@
   global.MagicGems.tryReviveByAdjacentPair = tryReviveByAdjacentPair;
   global.MagicGems.tryReviveByAdjacentPairEscalation = tryReviveByAdjacentPairEscalation;
   global.MagicGems.reviveByIncrementalChange = reviveByIncrementalChange;
+  global.MagicGems.shuffled = shuffled;
+  global.MagicGems.allCells = allCells;
+  global.MagicGems.orthogonalNeighbors = orthogonalNeighbors;
 })(typeof window !== 'undefined' ? window : globalThis);

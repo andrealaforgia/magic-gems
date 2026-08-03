@@ -23,6 +23,9 @@ const {
   tryReviveByAdjacentPair,
   tryReviveByAdjacentPairEscalation,
   reviveByIncrementalChange,
+  shuffled,
+  allCells,
+  orthogonalNeighbors,
 } = loadMagicGems([
   new URL('../../src/gems.js', import.meta.url),
   new URL('../../src/board.js', import.meta.url),
@@ -65,6 +68,10 @@ function hasUnchangedAdjacentReferenceOfType(originalBoard, changedCells, change
     const isAnotherChangedCell = changedCells.some((c) => c.row === n.row && c.col === n.col);
     return !isAnotherChangedCell && originalBoard[n.row][n.col] === changed.gemType;
   });
+}
+
+function sortedCells(cells) {
+  return [...cells].sort((a, b) => a.row - b.row || a.col - b.col);
 }
 
 test('applySwap exchanges exactly the two given cells and leaves the rest untouched', () => {
@@ -560,6 +567,112 @@ test('hasAnyValidMove detects a valid move that can only be found via a vertical
   assert.equal(hasAnyValidMove(board), true);
 });
 
+// Reaper/examiner-flagged gap: this helper backs every adjacency-and-type
+// assertion below via assert.ok, and had no direct test of its own - a bug
+// making it always return true would turn all of those green and silent.
+test('hasUnchangedAdjacentReferenceOfType is true when an unchanged neighbour of the right type exists', () => {
+  const board = [
+    [GEM_TYPES[0], GEM_TYPES[1]],
+    [GEM_TYPES[2], GEM_TYPES[3]],
+  ];
+  const changed = { row: 0, col: 1, gemType: GEM_TYPES[0] };
+  assert.ok(hasUnchangedAdjacentReferenceOfType(board, [changed], changed));
+});
+
+test('hasUnchangedAdjacentReferenceOfType is false when no unchanged neighbour holds that type', () => {
+  const board = [
+    [GEM_TYPES[0], GEM_TYPES[1]],
+    [GEM_TYPES[2], GEM_TYPES[3]],
+  ];
+  // (0,1)'s only neighbours are (0,0)=type0 and (1,1)=type3 - neither is type1,
+  // so a claim that (0,1) became type1 from an adjacent reference is false.
+  const changed = { row: 0, col: 1, gemType: GEM_TYPES[1] };
+  assert.equal(hasUnchangedAdjacentReferenceOfType(board, [changed], changed), false);
+});
+
+// Reaper-flagged gap: shuffled's own defensive copy was unproven.
+test('shuffled returns a new array without mutating or aliasing its input', () => {
+  const input = [0, 1, 2, 3, 4];
+  const snapshot = [...input];
+  const result = shuffled(input);
+  assert.notStrictEqual(result, input, 'must not return the same array reference');
+  assert.deepEqual(input, snapshot, 'the input array itself must be left untouched');
+  assert.deepEqual([...result].sort(), snapshot, 'the result must contain exactly the same elements');
+});
+
+// Reaper-flagged gap: the prior randomness test only proved "more than one
+// outcome appears" - a shuffle biased toward just two positions would still
+// pass that. This proves every element can reach every position, which a
+// biased Fisher-Yates range (e.g. a swap partner range that excludes the
+// last index) cannot do.
+test('shuffled can place any element at any position, given enough trials', () => {
+  const input = [0, 1, 2, 3, 4];
+  const seenAtPosition = input.map(() => new Set());
+  const TRIALS = 3000;
+  for (let i = 0; i < TRIALS; i++) {
+    shuffled(input).forEach((value, position) => seenAtPosition[position].add(value));
+  }
+  seenAtPosition.forEach((seen, position) => {
+    assert.equal(
+      seen.size,
+      input.length,
+      `expected position ${position} to eventually show every value across ${TRIALS} trials; saw only ${[...seen].sort()}`
+    );
+  });
+});
+
+// Reaper-flagged gap: allCells's own bounds were unproven at the edge.
+test('allCells returns exactly every in-bounds cell once, with none out of bounds', () => {
+  const size = 4;
+  const cells = allCells(size);
+  assert.equal(cells.length, size * size);
+  for (const { row, col } of cells) {
+    assert.ok(row >= 0 && row < size, `row ${row} out of bounds for size ${size}`);
+    assert.ok(col >= 0 && col < size, `col ${col} out of bounds for size ${size}`);
+  }
+  assert.equal(new Set(cells.map((c) => `${c.row},${c.col}`)).size, size * size, 'expected no duplicate cells');
+});
+
+// Reaper/examiner-flagged gap: orthogonalNeighbors had no direct test at all.
+// The Owner's own wording is "either vertical or horizontal" - if this
+// silently dropped, say, both column directions, revive would only ever
+// transform vertical neighbours and every existing adjacency assertion would
+// still pass (still adjacent, still same-type, still legal). These test the
+// neighbour function itself: exact count and exact identity, for a corner
+// (2, both boundaries active), the opposite corner (2, the other two
+// boundaries), an edge cell (3), and an interior cell (4, all four).
+test('orthogonalNeighbors returns exactly the 2 correct neighbours for the top-left corner', () => {
+  const size = 5;
+  assert.deepEqual(
+    sortedCells(orthogonalNeighbors(size, 0, 0)),
+    sortedCells([{ row: 0, col: 1 }, { row: 1, col: 0 }])
+  );
+});
+
+test('orthogonalNeighbors returns exactly the 2 correct neighbours for the bottom-right corner', () => {
+  const size = 5;
+  assert.deepEqual(
+    sortedCells(orthogonalNeighbors(size, 4, 4)),
+    sortedCells([{ row: 3, col: 4 }, { row: 4, col: 3 }])
+  );
+});
+
+test('orthogonalNeighbors returns exactly the 3 correct neighbours for a left-edge cell', () => {
+  const size = 5;
+  assert.deepEqual(
+    sortedCells(orthogonalNeighbors(size, 2, 0)),
+    sortedCells([{ row: 1, col: 0 }, { row: 3, col: 0 }, { row: 2, col: 1 }])
+  );
+});
+
+test('orthogonalNeighbors returns exactly the 4 correct neighbours for an interior cell', () => {
+  const size = 5;
+  assert.deepEqual(
+    sortedCells(orthogonalNeighbors(size, 2, 2)),
+    sortedCells([{ row: 1, col: 2 }, { row: 3, col: 2 }, { row: 2, col: 1 }, { row: 2, col: 3 }])
+  );
+});
+
 test('ensurePlayable leaves an already-playable board untouched', () => {
   const board = buildMatchFreeBoard();
   board[0][2] = GEM_TYPES[0];
@@ -581,41 +694,33 @@ function applyChanges(board, changedCells) {
   return next;
 }
 
-test('ensurePlayable revives a stuck board in place with a single minimal change, adjacent to and matching its reference gem, never a whole-board reshuffle (SPEC 8.3)', () => {
-  const stuck = buildStuckBoard();
-  const { board: result, changedCells } = ensurePlayable(stuck);
+// QA/examiner-flagged: the two tests below used to bundle six-plus
+// independent invariants each, nearly duplicating one another (one through
+// ensurePlayable, one through the raw function). Split into one assertion
+// per test; ensurePlayable's own test (further below) is trimmed to just the
+// orchestration property tryReviveByAdjacentPair's tests can't prove on
+// their own - that it's actually the path chosen, not a larger fallback.
 
-  assert.equal(result.length, stuck.length, 'must keep the board\'s own size - never replaced by a fresh reshuffle');
-  // This fixture is known solvable with one cell - the count itself is what
-  // would catch an orchestration bug that falls through to a larger, non-minimal
-  // fallback even though the smallest pass already succeeded.
-  assert.equal(changedCells.length, 1, 'expected exactly one changed cell for this fixture');
-  assert.deepEqual(applyChanges(stuck, changedCells), result, 'changedCells must fully account for the diff from the original board');
-  assert.equal(hasMatch(result), false, 'the revived board must not itself contain an immediate match');
-  assert.equal(hasAnyValidMove(result), true, 'the revived board must have at least one valid move');
-
-  // The Owner's stated requirement: this is not an arbitrary substitution -
-  // the changed cell must be the adjacent neighbour of some (unchanged)
-  // reference gem and must take THAT gem's own type (a legible pair
-  // forming). A test asserting only playability would pass an arbitrary-type,
-  // arbitrary-position substitution unchanged.
-  const [changed] = changedCells;
-  assert.ok(
-    hasUnchangedAdjacentReferenceOfType(stuck, changedCells, changed),
-    'the changed cell must be orthogonally adjacent to an unchanged reference gem of the type it became'
-  );
-});
-
-test('tryReviveByAdjacentPair finds a same-type adjacent-neighbour transform when one exists (SPEC 8.3)', () => {
+test('tryReviveByAdjacentPair: changedCells fully reconciles with the returned board (SPEC 8.3)', () => {
   const stuck = buildStuckBoard();
   const result = tryReviveByAdjacentPair(stuck);
-
   assert.ok(result, 'expected a single-neighbour revive to be found');
-  assert.equal(result.changedCells.length, 1);
+  assert.equal(result.changedCells.length, 1, 'expected exactly one changed cell for this fixture');
   assert.deepEqual(applyChanges(stuck, result.changedCells), result.board, 'changedCells must fully account for the diff from the original board');
-  assert.equal(hasMatch(result.board), false);
-  assert.equal(hasAnyValidMove(result.board), true);
+});
 
+test('tryReviveByAdjacentPair: the result is legal - no immediate match, at least one valid move (SPEC 8.3)', () => {
+  const stuck = buildStuckBoard();
+  const result = tryReviveByAdjacentPair(stuck);
+  assert.ok(result);
+  assert.equal(hasMatch(result.board), false, 'the revived board must not itself contain an immediate match');
+  assert.equal(hasAnyValidMove(result.board), true, 'the revived board must have at least one valid move');
+});
+
+test('tryReviveByAdjacentPair: the changed cell forms an adjacent same-type pair with a reference gem, not an arbitrary substitution (SPEC 8.3)', () => {
+  const stuck = buildStuckBoard();
+  const result = tryReviveByAdjacentPair(stuck);
+  assert.ok(result);
   const [changed] = result.changedCells;
   assert.ok(
     hasUnchangedAdjacentReferenceOfType(stuck, result.changedCells, changed),
@@ -623,38 +728,70 @@ test('tryReviveByAdjacentPair finds a same-type adjacent-neighbour transform whe
   );
 });
 
-// Examiner correction: randomness isn't visible in a single event - a fixed
-// top-left scan would satisfy every assertion above too, just always
-// returning the SAME (reference, neighbour) pair for a given board. This
-// forces the revive repeatedly from the identical starting board and checks
-// the selected cell varies, which only a genuine random selection can do.
-test('tryReviveByAdjacentPair genuinely randomizes which cell it revives, not a fixed scan order', () => {
+// Examiner correction: randomness isn't visible in a single event, and
+// merely seeing MORE THAN ONE outcome doesn't rule out a shuffle biased
+// toward just a couple of positions - a fixed top-left scan would satisfy a
+// weaker check too, always returning the SAME pair. This requires every
+// reachable single-neighbour position (independently enumerated below,
+// against production's own hasMatch/hasAnyValidMove - the property under
+// test here is reachability, not the adjacency definition, which is policed
+// independently above) to actually turn up.
+function allSingleNeighborChangedPositions(board) {
+  const size = board.length;
+  const positions = new Set();
+  for (const ref of allCells(size)) {
+    const gemType = board[ref.row][ref.col];
+    for (const neighbor of orthogonalNeighbors(size, ref.row, ref.col)) {
+      if (board[neighbor.row][neighbor.col] === gemType) continue;
+      const candidate = board.map((r) => r.slice());
+      candidate[neighbor.row][neighbor.col] = gemType;
+      if (!hasMatch(candidate) && hasAnyValidMove(candidate)) {
+        positions.add(`${neighbor.row},${neighbor.col}`);
+      }
+    }
+  }
+  return positions;
+}
+
+test('tryReviveByAdjacentPair genuinely randomizes which cell it revives, reaching every reachable position, not a fixed scan order', () => {
   const stuck = buildStuckBoard();
+  const expected = allSingleNeighborChangedPositions(stuck);
+  assert.ok(expected.size > 1, 'sanity: this fixture must have more than one reachable single-neighbour solution');
+
   const seenChangedPositions = new Set();
-  const TRIALS = 50;
+  const TRIALS = 500;
   for (let i = 0; i < TRIALS; i++) {
     const result = tryReviveByAdjacentPair(stuck);
     assert.ok(result, 'expected a solution on every trial for this fixture');
     const [changed] = result.changedCells;
     seenChangedPositions.add(`${changed.row},${changed.col}`);
   }
-  assert.ok(
-    seenChangedPositions.size > 1,
-    `expected the revived cell to vary across ${TRIALS} trials from the identical board (a fixed scan order would always pick the same one); saw only: ${[...seenChangedPositions]}`
+  assert.deepEqual(
+    seenChangedPositions,
+    expected,
+    `expected every reachable position to turn up across ${TRIALS} trials from the identical board; saw ${[...seenChangedPositions]}, expected ${[...expected]}`
   );
 });
 
-test('tryReviveByAdjacentPairEscalation finds a same-type two-cell change when no single neighbour suffices (SPEC 8.3.2)', () => {
+test('the escalation fixture genuinely has no single-neighbour solution, forcing real escalation', () => {
   const stuck = buildStuckBoardRequiringPairEscalation();
-  assert.equal(tryReviveByAdjacentPair(stuck), null, 'sanity: this fixture must have no single-neighbour solution, forcing genuine escalation');
+  assert.equal(tryReviveByAdjacentPair(stuck), null);
+});
 
+test('tryReviveByAdjacentPairEscalation: changedCells fully reconciles with the returned board and is legal (SPEC 8.3.2)', () => {
+  const stuck = buildStuckBoardRequiringPairEscalation();
   const result = tryReviveByAdjacentPairEscalation(stuck);
-
   assert.ok(result, 'expected a two-cell revive to be found');
   assert.equal(result.changedCells.length, 2);
   assert.deepEqual(applyChanges(stuck, result.changedCells), result.board, 'changedCells must fully account for the diff from the original board');
   assert.equal(hasMatch(result.board), false);
   assert.equal(hasAnyValidMove(result.board), true);
+});
+
+test('tryReviveByAdjacentPairEscalation: both changed gems share the same type, and one is adjacent to an unchanged reference of it (SPEC 8.3.2)', () => {
+  const stuck = buildStuckBoardRequiringPairEscalation();
+  const result = tryReviveByAdjacentPairEscalation(stuck);
+  assert.ok(result);
 
   // Both changed gems must share the SAME type as each other - the Owner's
   // "a further gem becomes that same type too", never two independent
@@ -672,6 +809,44 @@ test('tryReviveByAdjacentPairEscalation finds a same-type two-cell change when n
     oneIsAdjacentToAnUnchangedReference,
     'expected at least one of the two changed gems (the neighbour transformation) to be adjacent to an unchanged reference gem of the same type'
   );
+});
+
+// Reaper-flagged risk: if the escalation search's candidate clone were ever
+// dropped, a rejected candidate's row would alias the shared working board,
+// corrupting it for every later candidate built from it - reported
+// changedCells would then miss whatever a rejected-but-corrupting attempt
+// left behind, and this reconciliation check would catch it. Many trials
+// against a fixture dense with both valid and rejected combinations, so most
+// runs try and discard several candidates before accepting one.
+test('tryReviveByAdjacentPairEscalation stays internally consistent across many independent searches (no cross-candidate corruption)', () => {
+  const stuck = buildStuckBoardRequiringPairEscalation();
+  const TRIALS = 300;
+  for (let i = 0; i < TRIALS; i++) {
+    const result = tryReviveByAdjacentPairEscalation(stuck);
+    assert.ok(result, `expected a two-cell revive to be found on trial ${i}`);
+    assert.deepEqual(
+      applyChanges(stuck, result.changedCells),
+      result.board,
+      `trial ${i}: changedCells must fully account for the diff from the original board`
+    );
+    assert.equal(hasMatch(result.board), false, `trial ${i}: revived board must not contain an immediate match`);
+    assert.equal(hasAnyValidMove(result.board), true, `trial ${i}: revived board must have a valid move`);
+  }
+});
+
+test('ensurePlayable delegates to the minimal single-cell revive when one exists, never falling through to a larger fallback (SPEC 8.3)', () => {
+  const stuck = buildStuckBoard();
+  const { board: result, changedCells } = ensurePlayable(stuck);
+
+  assert.equal(result.length, stuck.length, 'must keep the board\'s own size - never replaced by a fresh reshuffle');
+  // This fixture is known solvable with one cell - the count itself is what
+  // would catch an orchestration bug that falls through to a larger,
+  // non-minimal fallback even though the smallest pass already succeeded.
+  // The changed cell's own adjacency/type/legality properties are already
+  // proven directly against tryReviveByAdjacentPair above; re-asserting them
+  // here would just be the same six things twice.
+  assert.equal(changedCells.length, 1, 'expected exactly one changed cell for this fixture');
+  assert.deepEqual(applyChanges(stuck, changedCells), result, 'changedCells must fully account for the diff from the original board');
 });
 
 test('reviveByIncrementalChange (the absolute last-resort fallback) always finds a valid-move-enabling board', () => {
