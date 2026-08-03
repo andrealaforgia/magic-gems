@@ -225,6 +225,13 @@
       }
     }
 
+    // Draws NO ring or box of its own - only a rotation-frame sprite redraw
+    // on its own changedCells. Any highlight visible over a cell during a
+    // revive-phase frame is drawn by something else in render() below
+    // (the cursor ring, unconditionally; falling shatter fragments,
+    // unconditionally) and is not this function marking which cell revived -
+    // this was misread as the revive marker multiple times in one sitting
+    // before the rendering code here was actually checked.
     function renderRevivePhase(anim, progress) {
       const hidden = new Set(anim.changedCells.map((c) => `${c.row},${c.col}`));
       drawBoard(ctx, anim.board, cellSize, sprites, hidden);
@@ -248,6 +255,12 @@
       } else {
         drawBoard(ctx, board, cellSize, sprites);
       }
+      // Both of these draw unconditionally, regardless of animation phase -
+      // during a revive-phase frame, the cursor's ring can sit near or on
+      // any cell, and a falling shatter fragment can visibly overlap any
+      // cell, including one that never itself changed or rotated. Neither
+      // indicates which cell revived; only renderRevivePhase's own spin-
+      // frame redraw above does that.
       drawInteraction(ctx, interaction, cellSize);
       drawFragments(ctx, fragments);
     }
@@ -810,6 +823,13 @@
       }
     }
 
+    // Draws NO ring or box of its own - only a rotation-frame sprite redraw
+    // on its own changedCells. Any highlight visible over a cell during a
+    // revive-phase frame is drawn by something else in renderLocal() below
+    // (the cursor ring, unconditionally; falling shatter fragments,
+    // unconditionally) and is not this function marking which cell revived -
+    // this was misread as the revive marker multiple times in one sitting
+    // before the rendering code here was actually checked.
     function renderRevivePhase(anim, progress) {
       const hidden = new Set(anim.changedCells.map((c) => `${c.row},${c.col}`));
       drawBoard(localCtx, anim.board, cellSize, sprites, hidden);
@@ -829,6 +849,12 @@
       } else {
         drawBoard(localCtx, board, cellSize, sprites);
       }
+      // Both of these draw unconditionally, regardless of animation phase -
+      // during a revive-phase frame, the cursor's ring can sit near or on
+      // any cell, and a falling shatter fragment can visibly overlap any
+      // cell, including one that never itself changed or rotated. Neither
+      // indicates which cell revived; only renderRevivePhase's own spin-
+      // frame redraw above does that.
       drawInteraction(localCtx, interaction, cellSize);
       drawFragments(localCtx, fragments);
     }
