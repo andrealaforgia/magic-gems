@@ -278,8 +278,15 @@ async function main() {
   if (process.argv.includes('--self-test')) return;
 
   await mkdir(OUT_DIR, { recursive: true });
-  const browser = await chromium.launch();
+  // The one difference never closed all week is that every instrument has run
+  // in an automated browser while the defect was reported from a real one. An
+  // instrument that cannot reproduce the environment cannot rule anything out
+  // about it, so this is switchable rather than assumed: AUDIT_HEADED=1 runs a
+  // visible browser at the real frame pacing a person actually watches.
+  const headed = process.env.AUDIT_HEADED === '1';
+  const browser = await chromium.launch({ headless: !headed, slowMo: 0 });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  if (headed) console.log('running HEADED — visible browser, real frame pacing\n');
   const deadline = Date.now() + TIMEOUT_MS;
 
   await page.goto(URL);
