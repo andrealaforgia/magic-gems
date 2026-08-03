@@ -889,12 +889,20 @@ test('tryReviveByAdjacentPairEscalation: changedCells fully reconciles with the 
 // again through a different door if this ever regresses. Do not remove this
 // for looking minor.
 //
-// Ruled on, not overlooked: this stays on live, unseeded randomness. Each
-// trial is an independent random input against the same invariant, not a
-// repeated assertion of one case - seeding would collapse that to a single
-// fixed trajectory and remove the coverage this test exists to provide. The
-// trial count is sized to a measured per-trial catch rate on this fixture,
-// not picked arbitrarily.
+// Ruled on, not overlooked: this stays on live, unseeded randomness. A
+// per-trial seed (one deterministic seed per trial index, not one fixed
+// seed for the whole loop) WOULD preserve per-trial variety while adding
+// reproducibility, in principle - but verified directly that the seam this
+// suite already uses for that elsewhere doesn't actually reach here: the
+// sandbox this file's imports are loaded into gives resolution.js its own,
+// separate Math object, so monkey-patching the test file's own Math.random
+// (the technique test/unit/autoplay.test.js uses) has no effect on it at
+// all - confirmed empirically, the "seeded" boards there aren't actually
+// reproducible run to run either. Making this genuinely seedable would need
+// a real change to the loader or to resolution.js's own random source, not
+// a copy-paste of an existing pattern; not undertaken here. The trial count
+// is sized to a measured per-trial catch rate on this fixture instead, not
+// picked arbitrarily.
 test('tryReviveByAdjacentPairEscalation: every changedCells entry is a real change, never a phantom no-op', () => {
   const stuck = buildStuckBoardRequiringPairEscalation();
   const TRIALS = 300;
@@ -948,10 +956,11 @@ test('tryReviveByAdjacentPairEscalation: the neighbour transformation is adjacen
 // runs try and discard several candidates before accepting one.
 //
 // Ruled on, not overlooked: this stays on live, unseeded randomness for the
-// same reason as the phantom-entry test above - each trial is an
-// independent random input against the same invariant, not a repeated
-// assertion of one case, so seeding would collapse that to a single fixed
-// trajectory and remove the coverage this test exists to provide.
+// same reason as the phantom-entry test above - the existing seed-per-trial
+// seam this suite uses elsewhere doesn't actually reach the sandboxed
+// resolution.js functions this file loads (verified directly; see that
+// test's own comment for the full account), so genuine reproducibility
+// here isn't a copy-paste away.
 test('tryReviveByAdjacentPairEscalation stays internally consistent across many independent searches (no cross-candidate corruption)', () => {
   const stuck = buildStuckBoardRequiringPairEscalation();
   const TRIALS = 300;
