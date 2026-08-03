@@ -111,10 +111,14 @@ Then('a real completion clearing a {int}-run and a {int}-run together on the liv
     const { resolveCascade, summedBasePoints } = window.MagicGems;
     const board = window.__buildBoardWithRuns(runs);
     const { steps } = resolveCascade(board);
-    return { stepCount: steps.length, runLengths: steps[0].runLengths, base: summedBasePoints(steps[0].runLengths) };
+    return { runLengths: steps[0].runLengths, base: summedBasePoints(steps[0].runLengths) };
   }, TWO_RUN_SPEC(lengthA, lengthB));
 
-  assert.equal(result.stepCount, 1, 'both runs must clear together in a single completion, not two separate ones');
+  // Simultaneity is already fully proven here: if the two runs had cleared in
+  // separate steps, steps[0].runLengths would contain only one of them, not
+  // both. A whole-cascade step COUNT would also react to any later,
+  // unrelated step a random refill is fully entitled to produce - flaky by
+  // construction, and provable no other way (examiner correction).
   assert.deepEqual([...result.runLengths].sort(), [lengthA, lengthB].sort());
   assert.equal(result.base, expectedBase);
 });
