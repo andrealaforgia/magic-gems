@@ -359,7 +359,13 @@ async function runInstrumentedRound(page, deadline, palette, outDir) {
 
     let moveCheck;
     if (!pending) {
-      moveCheck = { verdict: 'UNOBSERVED', reason: 'no selection/target pair seen before the commit' };
+      // gameCue is captured whenever a commit cue is seen, independent of
+      // whether the interaction pair was observed - the one case with no
+      // independently-computed verdict shouldn't also be the one case where
+      // the game's own opinion gets thrown away instead of recorded. No
+      // agreesWithGame here: that specifically needs a verdict to compare
+      // against, which this branch by definition doesn't have.
+      moveCheck = { verdict: 'UNOBSERVED', reason: 'no selection/target pair seen before the commit', gameCue };
     } else {
       const { selection, target } = pending;
       const adjacent = isOrthogonallyAdjacent(selection, target);
