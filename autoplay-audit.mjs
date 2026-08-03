@@ -37,6 +37,8 @@ const OUT_DIR = process.env.AUDIT_OUT || 'autoplay-audit';
 const MAX_MOVES = Number(process.env.AUDIT_MOVES || 20);
 const TIMEOUT_MS = Number(process.env.AUDIT_TIMEOUT_MS || 180000);
 const POLL_MS = 25;
+const FRAME_MS = Number(process.env.AUDIT_FRAME_MS || 40);
+const CAPTURE_FRAMES = process.env.AUDIT_FRAMES !== '0';
 const BOARD_SIZE = 8;
 const CLASSIFY_TOLERANCE = 40;
 
@@ -217,6 +219,26 @@ const PULSE = () => {
   };
 };
 
+// Everything above samples AT REST, and at rest the screen and the board agree
+// by construction once a move has settled. A swap that is animated and then
+// reverted leaves no trace at either endpoint: the board before and after are
+// consistent and the committed move is valid, so every at-rest check passes
+// while a person watching sees two gems exchange places for no reason.
+//
+// This captures the move itself. Only the canvas image and the phase, one call
+// each - deliberately not the 64-cell pixel read, which is what made the
+// original instrument heavy enough to suppress the events it needed to see.
+const FRAME = () => {
+  const g = window.MagicGems;
+  const canvas = document.getElementById('board');
+  return {
+    t: Math.round(performance.now()),
+    phase: g.getAnimationPhase(),
+    animating: g.isAnimating(),
+    png: canvas.toDataURL('image/png'),
+  };
+};
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function snapshot(page) {
@@ -307,8 +329,13 @@ async function main() {
     // about what it actually covered rather than letting a clean result over
     // ordinary swaps be read as coverage of the revive path too.
     let revived = false;
+    const frames = [];
     for (;;) {
       if (Date.now() > deadline) break;
+      if (CAPTURE_FRAMES) {
+        const f = await page.evaluate(FRAME);
+        if (f.animating || f.phase) frames.push(f);
+      }
       const s = await pulse(page);
       if (s.interaction && s.interaction.selection && s.interaction.target) {
         pending = { selection: s.interaction.selection, target: s.interaction.target };
@@ -318,6 +345,12 @@ async function main() {
       if (cues.length > 0) {
         gameCue = cues[0];
         revived = newCues.includes('reshuffle');
+        while (CAPTURE_FRAMES && Date.now() < deadline) {
+          const f = await page.evaluate(FRAME);
+          frames.push(f);
+          if (!f.animating) break;
+          await sleep(FRAME_MS);
+        }
         after = await snapshotAtRest(page, deadline);
         break;
       }
@@ -329,6 +362,9 @@ async function main() {
     await mkdir(dir, { recursive: true });
     await writePng(dir, 'before.png', before.png);
     await writePng(dir, 'after.png', after.png);
+    for (let i = 0; i < frames.length; i++) {
+      await writePng(dir, `frame-${String(i).padStart(3, '0')}-${frames[i].phase || 'settled'}.png`, frames[i].png);
+    }
 
     const renderedBefore = renderedGrid(before.cellPixels, palette);
     const renderedAfter = renderedGrid(after.cellPixels, palette);
@@ -363,6 +399,7 @@ async function main() {
       move: index,
       revived,
       screenshots: { before: 'before.png', after: 'after.png' },
+      frames: frames.map((f, i) => ({ file: `frame-${String(i).padStart(3, '0')}-${f.phase || 'settled'}.png`, t: f.t, phase: f.phase })),
       gridBefore: before.board,
       gridAfter: after.board,
       renderedBefore,
@@ -398,11 +435,44 @@ async function main() {
     JSON.stringify({ movesAudited: moves.length, failures: failures.length, unobservedMoves: unobserved, movesIncludingARevival: revivals, failingMoves: failures.map((f) => f.move) }, null, 2)
   );
 
+  // A filmstrip per move so a person can scan the animation and point at a
+  // specific frame. Every check in this file is at-rest; the frames exist for
+  // the case those checks are structurally blind to, which is anything visible
+  // only while a move is playing.
+  const html = [
+    '<meta charset="utf-8"><title>autoplay audit</title>',
+    '<style>body{font:13px system-ui;background:#111;color:#ddd;margin:16px}',
+    'h2{margin:24px 0 4px;font-size:15px}.s{color:#888;font-size:12px;margin-bottom:6px}',
+    '.strip{display:flex;flex-wrap:wrap;gap:6px}figure{margin:0;text-align:center}',
+    'img{width:150px;border:1px solid #333;display:block}',
+    'figcaption{font-size:10px;color:#999;margin-top:2px}',
+    '.swap figcaption{color:#ffb703}.bad{outline:2px solid #e63946}</style>',
+    `<h1>autoplay audit — ${moves.length} moves, ${moves.reduce((n, m) => n + m.frames.length, 0)} frames</h1>`,
+    '<p class="s">Frames labelled <b>swap</b> are the swap animation: the window every at-rest check is blind to. Point at a move number and frame number.</p>',
+  ];
+  for (const m of moves) {
+    const dir = `move-${String(m.move).padStart(3, '0')}`;
+    const v = m.checks.moveIsValid;
+    const sel = v.selection ? `(${v.selection.row},${v.selection.col})->(${v.target.row},${v.target.col})` : 'unobserved';
+    html.push(`<h2>move ${m.move} — swap ${sel} — ${v.verdict}${m.revived ? ' — REVIVAL' : ''}</h2>`);
+    html.push(`<div class="s">before/after checks: ${m.checks.renderedMatchesStateBefore.pass ? 'ok' : 'MISMATCH'} / ${m.checks.renderedMatchesStateAfter.pass ? 'ok' : 'MISMATCH'}</div>`);
+    html.push('<div class="strip">');
+    html.push(`<figure><img src="${dir}/before.png"><figcaption>before (at rest)</figcaption></figure>`);
+    for (const f of m.frames) {
+      const cls = f.phase === 'swap' ? ' class="swap"' : '';
+      html.push(`<figure${cls}><img src="${dir}/${f.file}"><figcaption>${f.file.slice(6, 9)} ${f.phase || 'settled'}</figcaption></figure>`);
+    }
+    html.push(`<figure><img src="${dir}/after.png"><figcaption>after (at rest)</figcaption></figure>`);
+    html.push('</div>');
+  }
+  await writeFile(join(OUT_DIR, 'index.html'), html.join('\n'));
+
   console.log(`\n  moves audited: ${moves.length}`);
   console.log(`  failures: ${failures.length}${failures.length ? ` (moves ${failures.map((f) => f.move).join(', ')})` : ''}`);
   console.log(`  moves whose swap could not be observed: ${unobserved}`);
   console.log(`  moves that included a board revival: ${revivals}${revivals ? '' : '  <- revive path NOT covered by this run'}`);
-  console.log(`  per-move screenshots and records: ${OUT_DIR}/\n`);
+  console.log(`  per-move screenshots and records: ${OUT_DIR}/`);
+  console.log(`  browsable filmstrip: ${OUT_DIR}/index.html\n`);
 
   await browser.close();
   process.exitCode = failures.length ? 1 : 0;
